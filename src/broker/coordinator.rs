@@ -599,6 +599,7 @@ async fn advance(
         analyses,
         admitted,
         summary_numbers_masked,
+        step_numbers_masked,
         query_places_cast,
         lessons_trimmed,
     } = match checked {
@@ -780,14 +781,12 @@ async fn advance(
     {
         record["query_facts"] = facts_record;
     }
-    // A count only: a record without a mask keeps its earlier shape.
-    if summary_numbers_masked > 0 {
-        record["summary_numbers_masked"] = json!(summary_numbers_masked);
-    }
-    // A count only: the cast queries themselves are in the steps.
-    if query_places_cast > 0 {
-        record["query_places_cast"] = json!(query_places_cast);
-    }
+    record_masked_counts(
+        &mut record,
+        summary_numbers_masked,
+        step_numbers_masked,
+        query_places_cast,
+    );
     // What the lead check left out of the lessons: context ids and counts, never the reply's text.
     if lessons_trimmed.refs_total > 0 {
         record["lessons_trimmed"] = json!({"context_refs": lessons_trimmed.context_refs,
@@ -1089,4 +1088,23 @@ pub(super) async fn run_prepared(args: CoordinatorArgs, mut ready: ReadyFile) ->
     active.abort_all();
     while active.join_next().await.is_some() {}
     outcome
+}
+
+/// The turn record's counts of masked numbers and cast queries, each written only when nonzero so a record without one
+/// keeps its earlier shape. Counts only: the masked text and the cast queries themselves are in the steps.
+fn record_masked_counts(
+    record: &mut Value,
+    summary_numbers_masked: usize,
+    step_numbers_masked: usize,
+    query_places_cast: usize,
+) {
+    if summary_numbers_masked > 0 {
+        record["summary_numbers_masked"] = json!(summary_numbers_masked);
+    }
+    if step_numbers_masked > 0 {
+        record["step_numbers_masked"] = json!(step_numbers_masked);
+    }
+    if query_places_cast > 0 {
+        record["query_places_cast"] = json!(query_places_cast);
+    }
 }

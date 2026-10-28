@@ -298,7 +298,8 @@ pub fn check_lead_replies(
                         "findings": checked.proposal.findings.len(), "composed": composed,
                         "table_statements": checked.proposal.table_statements.len(),
                         "lessons": checked.proposal.lessons.len(), "parts": checked.proposal.parts.len(),
-                        "summary_numbers_masked": checked.summary_numbers_masked});
+                        "summary_numbers_masked": checked.summary_numbers_masked,
+                        "step_numbers_masked": checked.step_numbers_masked});
                         // Named only when a query was cast, so earlier scores keep their shape.
                         if checked.query_places_cast > 0 {
                             out["query_places_cast"] = json!(checked.query_places_cast);

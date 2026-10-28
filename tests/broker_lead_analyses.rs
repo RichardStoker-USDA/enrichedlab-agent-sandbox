@@ -312,7 +312,16 @@ fn the_lead_sees_the_analyses_and_its_choice_is_checked_as_the_coordinator_check
     assert_eq!(turn.check(&said).unwrap().summary_numbers_masked, 0);
     said["summary"] = json!("Compare the two foods; a group may hold up to 487 rows.");
     assert_eq!(turn.check(&said).unwrap().summary_numbers_masked, 1);
+    // A number no shown analysis sets is masked in a step's words, so it never reaches the record; one
+    // inside a name nothing shows is still refused.
     said["actions"][0]["title"] = json!("Compare foods with at most 488 rows a group");
+    let masked = turn.check(&said).unwrap();
+    assert_eq!(masked.step_numbers_masked, 1);
+    assert_eq!(
+        masked.proposal.actions[0].title,
+        "Compare foods with at most (a number) rows a group"
+    );
+    said["actions"][0]["title"] = json!("Compare foods by Gene488 rows a group");
     let refused = turn.check(&said).err().unwrap();
     assert_eq!(refused.to_string(), "proposal_prose_number");
     assert_eq!(refusal(&refused).names, ["actions.title: 488"]);

@@ -5815,13 +5815,15 @@ fn check_lead_replies_scores_each_reply_with_the_coordinators_own_checks() {
     assert_eq!(
         by("good"),
         json!({"id":"good","outcome":"accepted","normalized":null,"action":"review_required","answer":"answered",
-            "steps":0,"findings":1,"composed":0,"table_statements":0,"lessons":0,"parts":1,"summary_numbers_masked":0})
+            "steps":0,"findings":1,"composed":0,"table_statements":0,"lessons":0,"parts":1,"summary_numbers_masked":0,
+            "step_numbers_masked":0})
     );
     // A table statement is composed into findings the scorer counts apart.
     assert_eq!(
         by("table"),
         json!({"id":"table","outcome":"accepted","normalized":null,"action":"review_required","answer":"answered",
-            "steps":0,"findings":1,"composed":1,"table_statements":1,"lessons":0,"parts":1,"summary_numbers_masked":0})
+            "steps":0,"findings":1,"composed":1,"table_statements":1,"lessons":0,"parts":1,"summary_numbers_masked":0,
+            "step_numbers_masked":0})
     );
     assert_eq!(
         by("table_unbound")["code"],
@@ -6399,11 +6401,26 @@ fn a_methods_check_sends_a_proposal_back_with_checked_findings_within_the_budget
         )
         .is_ok()
     );
-    // A number in a detail follows the reason's rule.
+    // A number in a detail follows the reason's rule: a standalone one is masked and the review stands,
+    // one inside a name the context does not show is refused.
+    let masked = check_method_review(
+        &json!({"decision":"revise","reason":"Wrong rows in 3 places.","findings":[
+            {"about":"summary","problem":"wrong_value","detail":"The table shows 42 foods."}]}),
+        &proposal,
+        &compiled.index,
+    )
+    .unwrap();
+    assert_eq!(
+        (masked.reason.as_str(), masked.findings[0].detail.as_str()),
+        (
+            "Wrong rows in (a number) places.",
+            "The table shows (a number) foods."
+        )
+    );
     assert_eq!(
         refused(
             json!({"decision":"revise","reason":"Wrong rows.","findings":[
-            {"about":"summary","problem":"wrong_value","detail":"The table shows 42 foods."}]})
+            {"about":"summary","problem":"wrong_value","detail":"The table shows Gene42 foods."}]})
         ),
         (
             "method_review_prose_number",

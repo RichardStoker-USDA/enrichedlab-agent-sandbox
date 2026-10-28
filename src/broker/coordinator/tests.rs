@@ -3635,7 +3635,8 @@ async fn a_refused_methods_reply_is_asked_once_more_with_its_faults_named() {
     };
     let long = review(&"x".repeat(301));
     let fine = review("The step reads raw foods where the question asks for boiled ones.");
-    let number = review("The table shows 42 foods.");
+    // A standalone number is masked; a number inside a name the context does not show is still refused.
+    let number = review("The table shows Gene42 foods.");
     let context = serde_json::json!({"question": "Which foods keep vitamin C after boiling?"});
     let asked =
         |bodies: &std::sync::Mutex<Vec<serde_json::Value>>, i: usize| -> serde_json::Value {
@@ -3817,4 +3818,16 @@ fn the_methods_check_may_name_what_a_cited_read_part_writes() {
             .to_string(),
         "method_review_prose_number"
     );
+}
+
+#[test]
+fn the_turn_record_counts_masked_step_numbers_only_when_some_were_masked() {
+    use serde_json::json;
+    let mut record = json!({"outcome": "commit"});
+    super::record_masked_counts(&mut record, 0, 0, 0);
+    assert_eq!(record, json!({"outcome": "commit"}));
+    super::record_masked_counts(&mut record, 1, 2, 3);
+    assert_eq!(record["summary_numbers_masked"], 1);
+    assert_eq!(record["step_numbers_masked"], 2);
+    assert_eq!(record["query_places_cast"], 3);
 }

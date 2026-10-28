@@ -122,7 +122,7 @@ pub fn check_method_review_with_parts(
     index: &ResultIndex,
     parts: &HashSet<String>,
 ) -> Result<MethodReview> {
-    let method: MethodReview =
+    let mut method: MethodReview =
         serde_json::from_value(value.clone()).map_err(|_| anyhow!("method_review_invalid"))?;
     if !matches!(
         method.decision.as_str(),
@@ -185,6 +185,18 @@ pub fn check_method_review_with_parts(
             names: faults,
         }
         .into());
+    }
+    // An unbound standalone number in the reason or a detail is masked, as a step's words are; a number inside a name
+    // the context does not show is still refused below.
+    let (reason, _) = index.mask_step_numbers(&method.reason, None);
+    if reason.len() <= 2048 {
+        method.reason = reason;
+    }
+    for f in &mut method.findings {
+        let (detail, _) = index.mask_step_numbers(&f.detail, None);
+        if detail.chars().count() <= REVIEW_DETAIL_CHARS {
+            f.detail = detail;
+        }
     }
     let mut numbers = refused_numbers(index, [("reason", method.reason.as_str())]);
     for (i, f) in method.findings.iter().enumerate() {

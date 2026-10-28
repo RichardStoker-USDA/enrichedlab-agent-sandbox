@@ -29,6 +29,8 @@ pub struct CheckedLead {
     pub admitted: HashMap<String, (String, String, codegen::AdmissionReport, Option<Value>)>,
     /// Numbers in the summary written as `(a number)` because the prose rule refuses them.
     pub summary_numbers_masked: usize,
+    /// Numbers in step titles and rationales written as `(a number)` because the prose rule refuses them.
+    pub step_numbers_masked: usize,
     /// `round` and `trunc` calls in the proposal's queries whose first argument was cast to numeric.
     pub query_places_cast: usize,
     /// Lesson evidence refs outside what the call was shown, and observations left with none.
@@ -149,6 +151,7 @@ pub fn check_lead_reply(check: &LeadCheck<'_>, reply: &Value) -> Result<CheckedL
     // reading parts or the literature claims were placed would disagree with what the lead was shown).
     let named = check.index.with_names_from(check.context);
     let summary_numbers_masked = proposal.mask_summary_numbers(&named);
+    let step_numbers_masked = proposal.mask_step_numbers(&named);
     proposal.validate_prose(&named)?;
     // The methods review sends this context, the proposal and every finding's values: refuse what it could not send,
     // asked again after an unreadable reply too, with a code the lead can act on, rather than fail the turn as
@@ -208,6 +211,7 @@ pub fn check_lead_reply(check: &LeadCheck<'_>, reply: &Value) -> Result<CheckedL
         analyses,
         admitted,
         summary_numbers_masked,
+        step_numbers_masked,
         query_places_cast,
         lessons_trimmed,
     })

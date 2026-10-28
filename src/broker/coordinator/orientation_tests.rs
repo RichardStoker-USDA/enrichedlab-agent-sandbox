@@ -210,6 +210,7 @@ fn admitted(orientation: &Orientation) -> CheckedLead {
         analyses: HashMap::new(),
         admitted: HashMap::new(),
         summary_numbers_masked: 0,
+        step_numbers_masked: 0,
         query_places_cast: 0,
         lessons_trimmed: LessonTrim::default(),
     }

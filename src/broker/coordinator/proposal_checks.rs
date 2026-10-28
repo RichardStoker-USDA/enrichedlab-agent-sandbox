@@ -521,6 +521,24 @@ impl Proposal {
         count
     }
 
+    /// Each step's title and rationale with every standalone number the prose rule refuses written as `(a number)`
+    /// (`ResultIndex::mask_step_numbers`, with the step's own SQL literals allowed), and how many in all. A text the mask
+    /// would take past its admitted length keeps its numbers, so the rule refuses them.
+    pub fn mask_step_numbers(&mut self, index: &ResultIndex) -> usize {
+        let mut total = 0;
+        for action in &mut self.actions {
+            let own = step_literals::step_own_numbers(action);
+            for (text, max) in [(&mut action.title, 512), (&mut action.rationale, 2048)] {
+                let (masked, count) = index.mask_step_numbers(text, Some(&own));
+                if count > 0 && masked.len() <= max {
+                    *text = masked;
+                    total += count;
+                }
+            }
+        }
+        total
+    }
+
     /// No number in the lead's prose unless the question, constraints or method descriptions
     /// hold it; result values appear only through bound placeholders. A step's title and rationale may also state the
     /// numbers that step's own SQL sets in a comparison or an `IN` list (`step_literals`), and only its own. A refusal

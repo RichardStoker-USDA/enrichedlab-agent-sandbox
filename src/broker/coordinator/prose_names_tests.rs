@@ -39,10 +39,10 @@ fn a_name_the_call_shows_may_stand_in_prose() {
     assert!(index.prose_allowed("Fmo3 lies under it."));
     // The number standing alone in the passage stays refused, as before.
     assert_eq!(index.prose_refused("It lies on chromosome 17."), ["17"]);
-    // A name matches only as the shown text writes it.
+    // A name matches only with the digits the shown text writes; its letters' case may differ (FMO3 for a shown Fmo3).
     assert_eq!(
-        index.prose_refused("Fmo31 and fmo3 and Cyp7a2."),
-        ["31", "3", "7", "2"]
+        index.prose_refused("Fmo31 and fmo3 and FMO3 and Cyp7a2."),
+        ["31", "7", "2"]
     );
     assert_eq!(index.prose_refused("IL-7 rose."), ["7"]);
     // An index as compiled holds no names: they come only from the context a reply is checked against.
@@ -149,8 +149,15 @@ fn a_quantity_or_an_invisible_join_is_never_a_name() {
             "{joined:?}"
         );
     }
-    // Two shown names joined by a slash or a colon read as one name nothing showed; a numeral outside ASCII is refused.
+    // Two shown names joined by a slash or a colon read as one name nothing showed, even where each alone would stand
+    // with a digit-free affix; a numeral outside ASCII is refused.
     assert_eq!(index.prose_refused("A7/B3 rose."), ["7", "3"]);
+    assert_eq!(index.prose_refused("A7-B3 rose."), ["7", "3"]);
+    assert!(
+        index
+            .prose_refused("A7-dependent and anti-B3 rose.")
+            .is_empty()
+    );
     assert_eq!(index.prose_refused("A7:B3 rose."), ["7", "3"]);
     assert_eq!(
         index.prose_refused("Fmo\u{FF13} and 4\u{0663} rose."),
@@ -184,7 +191,39 @@ fn a_name_is_read_whole_and_plain() {
             && !plain_name("A7\u{200e}B3")
     );
     assert_eq!(
-        names_with_numbers("Fmo3 on chromosome 3, IL-6 and 7.1mg"),
-        ["Fmo3", "IL-6"]
+        shown_name_keys(
+            "Fmo3 on chromosome 3, IL-6 and 7.1mg, Apoa1-knockout and Fmo3\u{2212}/\u{2212}"
+        ),
+        ["fmo3", "il-6", "apoa1-knockout", "apoa1", "fmo3"]
     );
+}
+
+#[test]
+fn a_shown_name_stands_in_another_case_or_with_a_digit_free_affix() {
+    // In a lab test run, summaries naming a shown gene as FMO3, Fmo3-dependent or Fmo3−/− were refused.
+    let index = named(
+        "data_cards",
+        json!([{"title": "Liver expression", "text": "Fmo3 expression by strain."}]),
+    );
+    for prose in [
+        "FMO3 rose.",
+        "fmo3 rose.",
+        "Fmo3-dependent TMAO rose.",
+        "Fmo3\u{2212}/\u{2212} mice and Fmo3-/- mice.",
+        "anti-Fmo3 and Fmo3_KO and Fmo3.",
+        "Fmo3\u{2011}null mice.",
+    ] {
+        assert!(index.prose_refused(prose).is_empty(), "{prose:?}");
+    }
+    // Every digit stays one the sources wrote, in a name they wrote.
+    for (prose, refused) in [
+        ("Fmo31 rose.", vec!["31"]),
+        ("Fmo3.5 rose.", vec!["3.5"]),
+        ("Fmo3-1 rose.", vec!["3", "1"]),
+        ("Fmo3/Fmo3 rose.", vec!["3", "3"]),
+        ("Fmo3\u{200b}x rose.", vec!["3"]),
+        ("\u{03b1}Fmo3 rose.", vec!["3"]),
+    ] {
+        assert_eq!(index.prose_refused(prose), refused, "{prose:?}");
+    }
 }

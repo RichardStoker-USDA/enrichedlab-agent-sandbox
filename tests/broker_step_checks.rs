@@ -345,35 +345,38 @@ fn a_step_may_state_its_own_sql_literals_through_the_lead_check() {
             &reply,
         )
     };
-    assert!(check("Keep nutrients 1003 and 1004 above 25 grams.").is_ok());
-    for (rationale, refused) in [
+    let kept = check("Keep nutrients 1003 and 1004 above 25 grams.").unwrap();
+    assert_eq!(kept.step_numbers_masked, 0);
+    // Anything else is no literal of the step's own SQL as it writes it: masked in the stored rationale,
+    // so the composed and wrapped forms the r33 reviews found never reach the record either.
+    for (rationale, stored) in [
         (
             "Keep nutrients 1003 and 1004 above 30 grams.",
-            vec!["actions.rationale: 30"],
+            "Keep nutrients 1003 and 1004 above (a number) grams.",
         ),
         (
             "Keep nutrient 1003\u{200e}1004 above 25.",
-            vec!["actions.rationale: 1003", "actions.rationale: 1004"],
+            "Keep nutrient (a number)\u{200e}(a number) above 25.",
         ),
         (
             "Keep nutrients 1003 and 1004 above .25 grams.",
-            vec!["actions.rationale: 25"],
+            "Keep nutrients 1003 and 1004 above .(a number) grams.",
         ),
         (
             "Keep nutrients 1003 and 1004 above -.25 grams.",
-            vec!["actions.rationale: 25"],
+            "Keep nutrients 1003 and 1004 above -.(a number) grams.",
         ),
-        (
-            "Keep 25^1003 rows.",
-            vec!["actions.rationale: 25", "actions.rationale: 1003"],
-        ),
+        ("Keep 25^1003 rows.", "Keep (a number)^(a number) rows."),
     ] {
-        let error = check(rationale).err().unwrap();
+        let checked = check(rationale).unwrap();
         assert_eq!(
-            refusal(&error).reason,
-            "proposal_prose_number",
+            checked.proposal.actions[0].rationale, stored,
             "{rationale:?}"
         );
-        assert_eq!(refusal(&error).names, refused, "{rationale:?}");
+        assert!(checked.step_numbers_masked > 0, "{rationale:?}");
     }
+    // A number inside a name nothing shows is still refused.
+    let error = check("Keep nutrient Gene1003 above 25.").err().unwrap();
+    assert_eq!(refusal(&error).reason, "proposal_prose_number");
+    assert_eq!(refusal(&error).names, ["actions.rationale: 1003"]);
 }

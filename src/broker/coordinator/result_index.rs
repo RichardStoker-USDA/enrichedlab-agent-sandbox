@@ -267,19 +267,56 @@ impl ResultIndex {
             .map(|c| c.to_string());
         number_spans(&chars)
             .into_iter()
-            .filter_map(|(start, end)| {
-                let n: String = chars[start..end].iter().collect();
-                let shown = self.allowed_numbers.contains(&n)
-                    || (step && self.setting_numbers.contains(&n))
-                    || own.is_some_and(|own| own.contains(&literal_occurrence(&chars, start, end)));
-                let named = in_a_name(&chars, start, end) && {
-                    let name = name_around(&chars, start, end);
-                    plain_name(&name) && self.allowed_names.contains(&name)
-                };
-                (!(shown || named)).then_some(n)
-            })
+            .filter(|&(start, end)| self.number_refused(&chars, start, end, step, own))
+            .map(|(start, end)| chars[start..end].iter().collect())
             .chain(other_numerals)
             .collect()
+    }
+
+    /// Whether the prose rule refuses the number at `start..end` of `chars`: neither shown (a result's number, a shown
+    /// analysis's setting in step words, or a step's own SQL literal written as a whole token) nor inside a name the
+    /// call shows (`shown_name`).
+    fn number_refused(
+        &self,
+        chars: &[char],
+        start: usize,
+        end: usize,
+        step: bool,
+        own: Option<&HashSet<String>>,
+    ) -> bool {
+        let n: String = chars[start..end].iter().collect();
+        let shown = self.allowed_numbers.contains(&n)
+            || (step && self.setting_numbers.contains(&n))
+            || own.is_some_and(|own| own.contains(&literal_occurrence(chars, start, end)));
+        let named = in_a_name(chars, start, end)
+            && shown_name(&name_around(chars, start, end), &self.allowed_names);
+        !(shown || named)
+    }
+
+    /// `text` describing a step (`step_prose_refused`, with `own` for a step's own title and rationale) with each
+    /// standalone number the rule refuses written as `NUMBER_MASK`, and how many, as the summary's are
+    /// (`mask_refused_numbers`). A number inside a name stays, so the rule still refuses it unless the call shows the
+    /// name. Masked, a number the model typed never reaches the record, and the turn goes on (a methods
+    /// check's reason stating a paper's chromosome number cost a lab test run its turn).
+    pub(super) fn mask_step_numbers(
+        &self,
+        text: &str,
+        own: Option<&HashSet<String>>,
+    ) -> (String, usize) {
+        let chars: Vec<char> = text.chars().collect();
+        let (mut out, mut masked, mut last) = (String::new(), 0, 0);
+        for (start, end) in number_spans(&chars) {
+            if in_a_name(&chars, start, end) || !self.number_refused(&chars, start, end, true, own)
+            {
+                continue;
+            }
+            out.extend(&chars[last..start]);
+            out.push_str(NUMBER_MASK);
+            masked += 1;
+            last = end;
+        }
+        out.extend(&chars[last..]);
+        (out, masked)
     }
 
     /// This index with the plain names the source material of `context` writes (`allowed_names`), for checking the reply
@@ -292,7 +329,7 @@ impl ResultIndex {
     pub fn with_names_from(&self, context: &Value) -> ResultIndex {
         fn collect(value: &Value, names: &mut HashSet<String>) {
             match value {
-                Value::String(text) => names.extend(names_with_numbers(text)),
+                Value::String(text) => names.extend(shown_name_keys(text)),
                 Value::Array(items) => items.iter().for_each(|v| collect(v, names)),
                 Value::Object(fields) => fields.values().for_each(|v| collect(v, names)),
                 _ => {}

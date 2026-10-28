@@ -125,15 +125,65 @@ pub(super) fn plain_name(token: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'/'))
 }
 
-/// Every plain name holding a number in `text` (`in_a_name`, `name_around`, `plain_name`).
-pub(super) fn names_with_numbers(text: &str) -> Vec<String> {
+/// Whether the call shows the name a number stands in (`name_around`): the whole token is a plain name its sources write,
+/// or, in a token of ASCII letters, digits and visible separators (`visible_separator`) where exactly one segment between
+/// the separators holds a digit, that segment is; names compare without regard to ASCII case. So `FMO3` stands where
+/// the sources write `Fmo3`, and so do `Fmo3-dependent`, `Fmo3−/−` and `anti-Fmo3`. Two digit-bearing names joined into
+/// one token (`A7/B3`) still read as one name nothing showed, a segment that starts with a digit (`1e-9`, `Fmo3.5`) is
+/// never a name, a token with an invisible character, another script's letter or a digit outside ASCII never splits,
+/// and every digit stays one the sources wrote. `allowed` holds `shown_name_keys`
+/// of the sources.
+pub(super) fn shown_name(name: &str, allowed: &HashSet<String>) -> bool {
+    if plain_name(name) && allowed.contains(&name.to_ascii_lowercase()) {
+        return true;
+    }
+    digit_segments(name).is_some_and(|segments| {
+        matches!(segments.as_slice(), [one] if plain_name(one) && allowed.contains(&one.to_ascii_lowercase()))
+    })
+}
+
+/// A separator a reader sees between two parts of a name: an ASCII hyphen, slash, period or underscore, or a visible
+/// Unicode hyphen, dash or minus sign. Invisible joiners and the soft hyphen are not among them.
+fn visible_separator(c: char) -> bool {
+    matches!(
+        c,
+        '-' | '/' | '.' | '_' | '\u{2010}'
+            ..='\u{2015}' | '\u{2212}' | '\u{FE58}' | '\u{FE63}' | '\u{FF0D}'
+    )
+}
+
+/// The segments of `name` between visible separators that hold a digit, when `name` holds nothing but ASCII letters,
+/// digits and visible separators; `None` otherwise.
+fn digit_segments(name: &str) -> Option<Vec<&str>> {
+    name.chars()
+        .all(|c| c.is_ascii_alphanumeric() || visible_separator(c))
+        .then(|| {
+            name.split(visible_separator)
+                .filter(|s| s.bytes().any(|b| b.is_ascii_digit()))
+                .collect()
+        })
+}
+
+/// The keys under which `text`'s names holding a number are shown (`shown_name`): each such token that is a plain
+/// name, and each of its digit-bearing segments that is one, in ASCII lower case.
+pub(super) fn shown_name_keys(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
-    number_spans(&chars)
-        .into_iter()
-        .filter(|&(start, end)| in_a_name(&chars, start, end))
-        .map(|(start, end)| name_around(&chars, start, end))
-        .filter(|name| plain_name(name))
-        .collect()
+    let mut keys = Vec::new();
+    for (start, end) in number_spans(&chars) {
+        if !in_a_name(&chars, start, end) {
+            continue;
+        }
+        let name = name_around(&chars, start, end);
+        if plain_name(&name) {
+            keys.push(name.to_ascii_lowercase());
+        }
+        for segment in digit_segments(&name).unwrap_or_default() {
+            if segment != name && plain_name(segment) {
+                keys.push(segment.to_ascii_lowercase());
+            }
+        }
+    }
+    keys
 }
 
 /// A hyphen in any of its Unicode forms (IL-6 written with a nonbreaking hyphen, an en dash or a minus sign), a soft
