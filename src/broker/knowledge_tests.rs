@@ -263,6 +263,42 @@ fn a_retrieval_generation_name_is_checked_where_the_config_is_read() {
     );
     assert!(write(json!({"retrieval_generation": "V2 bad"})).is_err());
     assert!(write(json!({"retrieval_generation": ""})).is_err());
+    // A lab's own generation replaces the coordinator's for that lab only; `null` keeps that lab on search v1.
+    let two_labs = |extra: Value| {
+        let mut extra = extra;
+        extra["labs"] = json!(["example-lab", "other-lab"]);
+        write(extra)
+    };
+    let service =
+        two_labs(json!({"lab_retrieval_generations": {"example-lab": "v2-nemotron-bm25-graph-1"}}))
+            .unwrap()
+            .unwrap();
+    assert_eq!(
+        (
+            service.generation_for("example-lab"),
+            service.generation_for("other-lab")
+        ),
+        (Some("v2-nemotron-bm25-graph-1"), None)
+    );
+    let service = two_labs(json!({"retrieval_generation": "v2-nemotron-bm25-graph-1",
+        "lab_retrieval_generations": {"other-lab": null}}))
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        (
+            service.generation_for("example-lab"),
+            service.generation_for("other-lab")
+        ),
+        (Some("v2-nemotron-bm25-graph-1"), None)
+    );
+    // A lab the file does not serve, or a bad name, refuses the whole file.
+    assert!(
+        two_labs(json!({"lab_retrieval_generations": {"third-lab": "v2-nemotron-bm25-graph-1"}}))
+            .is_err()
+    );
+    assert!(two_labs(json!({"lab_retrieval_generations": {"example-lab": "V2 bad"}})).is_err());
+    assert!(two_labs(json!({"lab_retrieval_generations": {"example-lab": ""}})).is_err());
+    assert!(two_labs(json!({"lab_retrieval_generations": ["example-lab"]})).is_err());
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -372,6 +408,35 @@ async fn a_configured_generation_retrieves_sections_under_the_runs_delegation() 
     assert!(
         none.lock().unwrap().is_empty(),
         "nothing is retrieved without the delegation"
+    );
+
+    // A lab held on search v1 by its own entry takes the v1 route (refused by this fake) and never retrieves.
+    use std::os::unix::fs::PermissionsExt;
+    let held_dir = dir.join("held");
+    std::fs::create_dir(&held_dir).unwrap();
+    let held_seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let url = fake_retrieval(204, json!({}), held_seen.clone()).await;
+    let token = held_dir.join("token");
+    std::fs::write(&token, "knowledge-token\n").unwrap();
+    std::fs::set_permissions(&token, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let config = held_dir.join("search.json");
+    std::fs::write(
+        &config,
+        json!({"schema": SCHEMA, "service_url": url, "token_file": token, "labs": ["pilot-lab"],
+        "retrieval_generation": "v2-nemotron-bm25-graph-1", "lab_retrieval_generations": {"pilot-lab": null}})
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let held = load_optional(Some(&config)).unwrap().unwrap();
+    assert!(
+        held.search_sections(run, "pilot-lab", "a question")
+            .await
+            .is_err()
+    );
+    assert!(
+        held_seen.lock().unwrap().is_empty(),
+        "a lab held on v1 never retrieves"
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }

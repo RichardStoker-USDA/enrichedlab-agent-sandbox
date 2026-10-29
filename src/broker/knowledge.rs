@@ -9,7 +9,7 @@ use reqwest::{Client, StatusCode, Url, redirect::Policy};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs::File,
     io::Read,
     path::{Path, PathBuf},
@@ -76,6 +76,11 @@ struct KnowledgeFile {
     /// whole text as passages, by BM25, the GPU embedder and the relations. Absent keeps search v1.
     #[serde(default)]
     retrieval_generation: Option<String>,
+    /// A lab's own retrieval generation, in place of `retrieval_generation` for that lab: a generation's name, or `null`
+    /// for search v1. One lab can then measure a generation on its own questions while the others keep theirs (the
+    /// autonomy suite refused a coordinator-wide switch on October 29). Each key is one of `labs`.
+    #[serde(default)]
+    lab_retrieval_generations: BTreeMap<String, Option<String>>,
 }
 
 fn generation_name(name: &str) -> bool {
@@ -133,6 +138,7 @@ pub struct KnowledgeService {
     token_file: PathBuf,
     labs: BTreeSet<String>,
     generation: Option<String>,
+    lab_generations: BTreeMap<String, Option<String>>,
 }
 
 impl std::fmt::Debug for KnowledgeService {
@@ -191,7 +197,13 @@ pub fn load_optional(path: Option<&Path>) -> Result<Option<KnowledgeService>> {
             && file
                 .retrieval_generation
                 .as_deref()
-                .is_none_or(generation_name),
+                .is_none_or(generation_name)
+            && file
+                .lab_retrieval_generations
+                .iter()
+                .all(|(lab, generation)| {
+                    file.labs.contains(lab) && generation.as_deref().is_none_or(generation_name)
+                }),
         "knowledge_config_invalid"
     );
     let client = Client::builder()
@@ -206,6 +218,7 @@ pub fn load_optional(path: Option<&Path>) -> Result<Option<KnowledgeService>> {
         token_file: file.token_file,
         labs: file.labs.into_iter().collect(),
         generation: file.retrieval_generation,
+        lab_generations: file.lab_retrieval_generations,
     }))
 }
 
@@ -481,9 +494,18 @@ impl KnowledgeService {
         text: &str,
     ) -> Result<Found, KnowledgeError> {
         self.delegate(run, lab).await?;
-        match &self.generation {
+        match self.generation_for(lab) {
             Some(generation) => self.retrieve(run, text, generation).await,
             None => self.find(run, text, &LIBRARY_KINDS, LIBRARY_LIMIT).await,
+        }
+    }
+
+    /// The retrieval generation `lab`'s library sections are ranked with: the lab's own entry when it has one, otherwise
+    /// the coordinator's; `None` is search v1.
+    pub fn generation_for(&self, lab: &str) -> Option<&str> {
+        match self.lab_generations.get(lab) {
+            Some(own) => own.as_deref(),
+            None => self.generation.as_deref(),
         }
     }
 
