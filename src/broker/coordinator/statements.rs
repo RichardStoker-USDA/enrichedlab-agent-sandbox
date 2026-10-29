@@ -370,105 +370,94 @@ const IDENTIFIER_LABELS: &[(&str, &[&str])] = &[
 /// Most numbers one identifier label may reach through a list (`chromosomes 3, 5 and 12`).
 const IDENTIFIER_LIST_MAX: usize = 8;
 
-/// Spelled units and quantity words that make the number before them a quantity (`chromosome 12 percent`), compared in
-/// lower case; written units are `UNITS`.
-const SPELLED_UNITS: &[&str] = &[
+/// Quantity words and unit stems a spelled unit is made of, compared in lower case: a stem alone or after a prefix,
+/// singular or plural (`percent`, `grams`, `kilobases`, `centimorgans`, `days`).
+const QUANTITY_WORDS: &[&str] = &[
     "percent",
     "percentage",
     "per",
     "fold",
     "times",
-    "degree",
-    "degrees",
-    "gram",
-    "grams",
-    "milligram",
-    "milligrams",
-    "microgram",
-    "micrograms",
-    "kilogram",
-    "kilograms",
-    "liter",
-    "liters",
-    "litre",
-    "litres",
-    "milliliter",
-    "milliliters",
-    "mole",
-    "moles",
+    "copy",
+    "copies",
     "unit",
     "units",
-    "base",
-    "bases",
-    "kilobase",
-    "kilobases",
-    "megabase",
-    "megabases",
-    "centimorgan",
-    "centimorgans",
-    "second",
-    "seconds",
-    "minute",
-    "minutes",
-    "hour",
-    "hours",
-    "day",
-    "days",
-    "week",
-    "weeks",
-    "month",
-    "months",
-    "year",
-    "years",
+];
+const UNIT_PREFIXES: &[&str] = &[
+    "", "kilo", "mega", "giga", "centi", "milli", "micro", "nano", "pico", "femto",
+];
+const UNIT_STEMS: &[&str] = &[
+    "gram", "liter", "litre", "mole", "molar", "meter", "metre", "dalton", "base", "morgan",
+    "second", "calorie", "joule", "minute", "hour", "day", "week", "month", "year", "degree",
 ];
 
-/// A mark that may close an identifier before whitespace or the text's end, alone or in a run (`(Table 5).`,
-/// `"Fig. 6",`).
-fn closes(c: char) -> bool {
-    matches!(
-        c,
-        '.' | ',' | ';' | ':' | ')' | ']' | '!' | '?' | '"' | '\'' | '\u{2019}' | '\u{201D}'
-    )
+/// Whether a lower-case word is a spelled unit or quantity word (`QUANTITY_WORDS`, or a `UNIT_PREFIXES` prefix, a
+/// `UNIT_STEMS` stem and an optional `s`).
+fn spelled_unit(word: &str) -> bool {
+    let stem = word.strip_suffix('s').unwrap_or(word);
+    QUANTITY_WORDS.contains(&word)
+        || UNIT_PREFIXES.iter().any(|prefix| {
+            [word, stem].iter().any(|w| {
+                w.strip_prefix(prefix)
+                    .is_some_and(|rest| UNIT_STEMS.contains(&rest))
+            })
+        })
 }
 
-/// Whether the word after the whitespace at `end` makes the number before it a quantity: a token that starts with
-/// anything but a letter or an opening parenthesis (`12 %`, `12 \u{00B0}C`, `12 13`, `12 \u{00B1}`), a written unit
-/// in any case (`12 mg`, `12 MG`, `12 \u{00B5}g`, `12 kb`) or a spelled one (`12 percent`).
-fn quantity_follows(chars: &[char], end: usize) -> bool {
-    let mut i = end;
-    while i < chars.len() && chars[i].is_whitespace() {
-        i += 1;
-    }
-    let Some(&first) = chars.get(i) else {
-        return false;
+/// A mark that may close an identifier before whitespace or the text's end, alone or in a run (`(Table 5).`). Quotes
+/// are not among them: `12"` and `12'` write lengths.
+fn closes(c: char) -> bool {
+    matches!(c, '.' | ',' | ';' | ':' | ')' | ']' | '!' | '?')
+}
+
+/// Whether the text after an identifier's digits, from `at` (whitespace), lets it stand. An allow-list, so nothing
+/// unlisted can turn the identifier into a quantity: the end of the text; a plain word (ASCII letters, then closing
+/// marks) that is no written unit in its own or lower case (`UNITS`) and no spelled one (`spelled_unit`); a bracket
+/// that opens another reference (`(Fig. 2)`, `[Table 3]`); or a spaced `&` or en dash before the next number of a list.
+fn identifier_may_stand_before(chars: &[char], at: usize) -> bool {
+    let token_at = |from: usize| {
+        let mut i = from;
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        let mut j = i;
+        while j < chars.len() && !chars[j].is_whitespace() {
+            j += 1;
+        }
+        (chars[i..j].iter().collect::<String>(), j)
     };
-    if first == '(' {
-        return false;
-    }
-    if !first.is_alphabetic() {
+    let (token, after) = token_at(at);
+    if token.is_empty() {
         return true;
     }
-    let mut j = i;
-    while j < chars.len() && !chars[j].is_whitespace() {
-        j += 1;
+    if token == "&" || token == "\u{2013}" {
+        return token_at(after).0.starts_with(|c: char| c.is_ascii_digit());
     }
-    let token: String = chars[i..j].iter().collect();
-    let token = token.trim_end_matches(['.', ',', ';', ':', ')', '!', '?']);
-    let lower = token.to_lowercase();
-    unit_shaped(&format!("0{token}"))
-        || unit_shaped(&format!("0{lower}"))
-        || SPELLED_UNITS.contains(&lower.as_str())
+    if let Some(inner) = token.strip_prefix(['(', '[']) {
+        let word = inner
+            .strip_suffix('.')
+            .unwrap_or(inner)
+            .to_ascii_lowercase();
+        return IDENTIFIER_LABELS
+            .iter()
+            .any(|(_, words)| words.contains(&word.as_str()));
+    }
+    let word = token.trim_end_matches(closes);
+    let lower = word.to_ascii_lowercase();
+    !word.is_empty()
+        && word.bytes().all(|b| b.is_ascii_alphabetic())
+        && !unit_shaped(&format!("0{word}"))
+        && !unit_shaped(&format!("0{lower}"))
+        && !spelled_unit(&lower)
 }
 
 /// The key of the label that makes the number at `start..end` of `chars` an identifier (`chromosome` for the 12 of
 /// `chromosome 12`, `Chr. 12`, `chromosomes 3, 5 and 12` or `chromosomes 3\u{2013}12`), or `None`. The number is a
 /// whole number standing alone: whitespace before it unless a list sign joins it to the number before, and after it
-/// nothing but the end, closing marks (`closes`) before whitespace or the end, or whitespace before a word that is no
-/// unit (`quantity_follows`).
+/// only the end, closing marks (`closes`) before whitespace or the end, or what `identifier_may_stand_before` lists.
 /// The label is a whole word (after the text's start, whitespace, an opening bracket or a quote, so `not_table 9` or
 /// `sub-table 9` labels nothing), with an optional period, and whitespace between it and the first number. A
-/// measurement (`12 mg`, `12 %`, `12%`, `1.5`) is never labelled: a decimal is one number span here, a sign or letter
-/// after the digits fails the closing rule, and a unit after a space fails `quantity_follows`.
+/// measurement (`12 mg`, `12 (mg)`, `12 %`, `12%`, `12"`, `1.5`) is never labelled.
 pub(super) fn identifier_label(chars: &[char], start: usize, end: usize) -> Option<&'static str> {
     if !chars[start..end].iter().all(char::is_ascii_digit) {
         return None;
@@ -476,7 +465,7 @@ pub(super) fn identifier_label(chars: &[char], start: usize, end: usize) -> Opti
     match chars.get(end) {
         None => {}
         Some(c) if c.is_whitespace() => {
-            if quantity_follows(chars, end) {
+            if !identifier_may_stand_before(chars, end) {
                 return None;
             }
         }
@@ -486,6 +475,12 @@ pub(super) fn identifier_label(chars: &[char], start: usize, end: usize) -> Opti
                 j += 1;
             }
             if chars.get(j).is_some_and(|c| !c.is_whitespace()) {
+                return None;
+            }
+            // Brackets alone end no clause, so the word after them is held to the same list (`12) mg`).
+            if chars[end..j].iter().all(|c| matches!(c, ')' | ']'))
+                && !identifier_may_stand_before(chars, j)
+            {
                 return None;
             }
         }

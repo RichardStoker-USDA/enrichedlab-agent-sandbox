@@ -348,7 +348,8 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    constraints or instructions in the same call write that label kind with those digits. Data cards, method
    descriptions, the starting point and result cells add none. The label is a whole word (`not_table 9` labels
    nothing), and a measurement after a label stays refused, joined or after a space (`12%`, `12.5`, `12 mg`, `12 %`,
-   `12 percent`), on the source's side as on the reply's (a lab test run's lead copied paper chromosome numbers into findings in 5 of 11 refused replies).
+   `12 percent`, `12 (mg)`, `12"`): after a space only a plain word that is no unit, a bracket opening another
+   reference (`(Fig. 2)`) or a spaced `&` or en dash in a list may follow, on the source's side as on the reply's (a lab test run's lead copied paper chromosome numbers into findings in 5 of 11 refused replies).
    Titles, rationales, findings, composed openings and lesson statements keep the refusal: cutting a rationale's
    sentence could drop a condition the methods review must see, and a masked title could lose what it names (the
    source review found both). The methods check's reason has the same number rule (`method_review_prose_number`), and

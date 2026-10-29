@@ -551,6 +551,8 @@ fn identifiers_a_paper_writes_may_stand_after_their_label() {
         "As figure 2 shows, exon 4 of the gene.",
         "Table 1 lists it.",
         "chromosomes 3, 5 and 12",
+        "chromosomes 3 & 5",
+        "chromosomes 3 \u{2013} 5 hold it",
     ] {
         assert!(index.prose_refused(allowed).is_empty(), "{allowed}");
         assert!(index.step_prose_refused(allowed).is_empty(), "{allowed}");
@@ -642,7 +644,8 @@ fn a_unit_after_a_space_or_a_joined_label_makes_no_identifier() {
         "chromosome 12 (Fig. 2) holds it",
         "Table 9 lists it.",
         "as listed (Table 9).",
-        "\"Chromosome 12,\" it says",
+        "[chromosome 12] holds it",
+        "chromosome 12 [Table 9] holds it",
     ] {
         assert!(index.prose_refused(allowed).is_empty(), "{allowed}");
     }
@@ -657,6 +660,17 @@ fn a_unit_after_a_space_or_a_joined_label_makes_no_identifier() {
         ("chromosome 12 mg/kg", "12"),
         ("x_table 9 rose", "9"),
         ("sub-table 9 rose", "9"),
+        ("Chromosome 12 (mg)", "12"),
+        ("[Chromosome 12 mg]", "12"),
+        ("\"Chromosome 12 mg\"", "12"),
+        ("chromosome 12\" long", "12"),
+        ("chromosome 12' long", "12"),
+        ("chromosome 12) mg", "12"),
+        ("chromosome 12 kilodaltons", "12"),
+        ("chromosome 12 centimorgans", "12"),
+        ("chromosome 12 (see it)", "12"),
+        ("\"Chromosome 12,\" it says", "12"),
+        ("chromosome 12 \u{00E9}t\u{00E9}", "12"),
     ] {
         assert!(
             index.prose_refused(refused).contains(&number.to_owned()),
@@ -664,8 +678,12 @@ fn a_unit_after_a_space_or_a_joined_label_makes_no_identifier() {
         );
     }
     assert_eq!(index.prose_refused("chromosome 12 13"), ["12", "13"]);
-    let source = "chromosome 12 mg, chromosome 13 %, not_table 9, sub-table 4, (table 5), \"figure 6\", exon 7 days";
-    assert_eq!(shown_identifier_keys(source), ["table 5", "figure 6"]);
+    let source = "chromosome 12 mg, chromosome 13 %, not_table 9, sub-table 4, (table 5), \"figure 6\", exon 7 days, \
+                  chromosome 14 (mg), chromosomes 3 & 5";
+    assert_eq!(
+        shown_identifier_keys(source),
+        ["table 5", "chromosome 3", "chromosome 5"]
+    );
     let underscored = named("literature", passage("See not_table 9."));
     assert_eq!(
         underscored.prose_refused("Table 9 shows the result."),
