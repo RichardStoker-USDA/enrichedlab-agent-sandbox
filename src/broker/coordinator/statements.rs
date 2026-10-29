@@ -396,17 +396,14 @@ pub(super) fn identifier_label(chars: &[char], start: usize, end: usize) -> Opti
         }
         i
     };
-    // The start of a whole number ending at `i`, standing after whitespace, a list sign or the text's start.
+    // The start of the digits ending at `i`. The next pass reads what stands before them, so a number joined to a
+    // word (`Fmo3 and 5`) reaches no label.
     let number_before = |i: usize| {
         let mut k = i;
         while k > 0 && chars[k - 1].is_ascii_digit() {
             k -= 1;
         }
-        (k < i
-            && (k == 0
-                || chars[k - 1].is_whitespace()
-                || matches!(chars[k - 1], ',' | '&' | '\u{2013}')))
-        .then_some(k)
+        (k < i).then_some(k)
     };
     let mut i = start;
     for _ in 0..IDENTIFIER_LIST_MAX {

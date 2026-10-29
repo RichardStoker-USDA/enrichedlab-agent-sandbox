@@ -603,3 +603,27 @@ fn identifiers_come_from_the_papers_and_the_scientist_alone() {
     // A shown result's cell is not a source of identifiers, and an index as compiled holds none.
     assert_eq!(ResultIndex::default().prose_refused(text), ["12"]);
 }
+
+/// A source adds an identifier only where its number stands alone after the label and a space: `Chr12`, a number
+/// joined to a word after a closing mark (`7.Fmo3`) and a label inside another token (`x2table`) add none, and a list
+/// reaches no number joined to a word.
+#[test]
+fn a_source_adds_an_identifier_only_where_its_number_stands_after_the_label() {
+    let index = named(
+        "literature",
+        passage(
+            "Chr12 holds it; chromosome 7.Fmo3 and x2table 9, chromosomes Fmo3 and 5, and chr3 and 6 too.",
+        ),
+    );
+    assert_eq!(index.prose_refused("It is on chromosome 12."), ["12"]);
+    assert_eq!(index.prose_refused("It is on chromosome 7."), ["7"]);
+    assert_eq!(index.prose_refused("See table 9."), ["9"]);
+    assert_eq!(index.prose_refused("It is on chromosome 5."), ["5"]);
+    assert_eq!(index.prose_refused("It is on chromosome 6."), ["6"]);
+    assert_eq!(
+        shown_identifier_keys(
+            "Chr12, chromosome 7.Fmo3, x2table 9, chromosomes Fmo3 and 5, chr3 and 6, chromosome 4."
+        ),
+        ["chromosome 4"]
+    );
+}
