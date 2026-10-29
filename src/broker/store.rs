@@ -151,6 +151,7 @@ const MIGRATION_078: &str =
 const MIGRATION_079: &str = include_str!("../../migrations/postgres/079_evidence_custody.sql");
 const MIGRATION_080: &str = include_str!("../../migrations/postgres/080_tool_groups.sql");
 const MIGRATION_081: &str = include_str!("../../migrations/postgres/081_evidence_live_capture.sql");
+const MIGRATION_082: &str = include_str!("../../migrations/postgres/082_card_freshness.sql");
 
 #[derive(Clone)]
 pub struct Store {
@@ -1670,6 +1671,10 @@ pub async fn migrate(args: MigrationArgs) -> Result<()> {
         .batch_execute(MIGRATION_081)
         .await
         .context("failed to apply PostgreSQL migration 081")?;
+    client
+        .batch_execute(MIGRATION_082)
+        .await
+        .context("failed to apply PostgreSQL migration 082")?;
     Ok(())
 }
 

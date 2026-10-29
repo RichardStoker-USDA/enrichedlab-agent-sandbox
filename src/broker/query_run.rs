@@ -220,7 +220,115 @@ pub async fn execute(
         receipt.row_count.unwrap_or(0).max(0) as u64,
         u64::from(!passed),
     );
+    // The task is finished; a live source whose card is behind the version this query read gets its card re-measured.
+    if let Some(version) = receipt.source_version.as_ref().filter(|_| passed) {
+        refresh_card(&store, config, &query.source, version, &shutdown).await;
+    }
     Ok(())
+}
+
+/// Re-measure a live source's card once for a version a completed query read (migration 082): the database decides
+/// whether one is due and hands out the source, the newest card's spec and the reader; the card command measures as
+/// that reader; the database checks and registers the card or records why not. A failure here never changes the query's
+/// result and leaves the previous card in use. Logs carry the source key, state and fixed code only.
+async fn refresh_card(
+    store: &Store,
+    config: &WorkerConfig,
+    source: &str,
+    version: &Value,
+    shutdown: &CancellationToken,
+) {
+    let worker = config.worker_id.as_str();
+    let plan = match store.begin_card_refresh(source, version, worker).await {
+        Ok(Some(plan)) => plan,
+        Ok(None) => return,
+        Err(_) => {
+            tracing::warn!(source, event = "card_refresh", state = "not_started");
+            return;
+        }
+    };
+    let Some(digest) = plan["version_sha256"].as_str() else {
+        return;
+    };
+    let measured = tokio::select! {
+        measured = measure_card(config, &plan) => measured,
+        () = shutdown.cancelled() => Err("card_refresh_cancelled".to_owned()),
+    };
+    let (card, code) = match measured {
+        Ok(card) => (Some(card), None),
+        Err(code) => (None, Some(code)),
+    };
+    match store
+        .finish_card_refresh(source, digest, worker, card.as_ref(), code.as_deref())
+        .await
+    {
+        Ok(done) => tracing::info!(
+            source,
+            event = "card_refresh",
+            state = done["state"].as_str().unwrap_or("unknown"),
+            code = done["code"].as_str().unwrap_or("")
+        ),
+        Err(_) => tracing::warn!(source, event = "card_refresh", state = "not_finished"),
+    }
+}
+
+/// The card, which states the version row it was measured at, or a fixed code: `declaration_drift` when the reader can
+/// no longer read a declared relation or column as declared, the card command's own refusal code, or
+/// `card_refresh_failed`.
+async fn measure_card(config: &WorkerConfig, plan: &Value) -> Result<Value, String> {
+    let fixed = |code: &str| code.to_owned();
+    let source: super::source_card::CardSource =
+        serde_json::from_value(plan["source"].clone()).map_err(|_| fixed("card_source_invalid"))?;
+    let spec: super::source_card::CardSpec =
+        serde_json::from_value(plan["spec"].clone()).map_err(|_| fixed("card_spec_invalid"))?;
+    let connection = config
+        .query_connection(plan["connection_ref"].as_str().unwrap_or_default())
+        .map_err(|_| fixed("query_connection_unavailable"))?;
+    let mut client = connect(&connection)
+        .await
+        .map_err(|_| fixed("card_source_unavailable"))?;
+    super::source_card::build_live(&mut client, &source, &spec)
+        .await
+        .map(|(card, _)| card)
+        .map_err(|error| card_failure_code(&error))
+}
+
+/// The fixed code for a failed card measurement. A missing relation, column or function, a lost grant or a type that no
+/// longer matches the declaration is drift for an operator to review, never repaired here.
+fn card_failure_code(error: &anyhow::Error) -> String {
+    let state = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<tokio_postgres::Error>())
+        .and_then(tokio_postgres::Error::code);
+    if let Some(state) = state {
+        return if [
+            SqlState::UNDEFINED_TABLE,
+            SqlState::UNDEFINED_COLUMN,
+            SqlState::UNDEFINED_FUNCTION,
+            SqlState::INSUFFICIENT_PRIVILEGE,
+            SqlState::DATATYPE_MISMATCH,
+            SqlState::INVALID_SCHEMA_NAME,
+        ]
+        .contains(state)
+        {
+            "declaration_drift".to_owned()
+        } else if *state == SqlState::QUERY_CANCELED {
+            "card_timeout".to_owned()
+        } else {
+            "card_refresh_failed".to_owned()
+        };
+    }
+    let message = error.to_string();
+    let fixed = message.len() <= 80
+        && !message.is_empty()
+        && message
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
+    if fixed {
+        message
+    } else {
+        "card_refresh_failed".to_owned()
+    }
 }
 
 async fn run(
@@ -631,3 +739,28 @@ impl PrivateMode for std::fs::OpenOptions {
 #[cfg(test)]
 #[path = "query_run_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod card_refresh_tests {
+    use super::card_failure_code;
+
+    #[test]
+    fn a_card_failure_is_a_fixed_code() {
+        assert_eq!(
+            card_failure_code(&anyhow::anyhow!("card_spec_source_mismatch")),
+            "card_spec_source_mismatch"
+        );
+        assert_eq!(
+            card_failure_code(&anyhow::anyhow!("relation \"samples\" does not exist")),
+            "card_refresh_failed"
+        );
+        assert_eq!(
+            card_failure_code(&anyhow::anyhow!("")),
+            "card_refresh_failed"
+        );
+        assert_eq!(
+            card_failure_code(&anyhow::anyhow!("x".repeat(81))),
+            "card_refresh_failed"
+        );
+    }
+}

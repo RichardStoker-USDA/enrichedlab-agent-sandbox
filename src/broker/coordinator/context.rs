@@ -16,6 +16,11 @@ pub(super) const PRIOR_NAME_CHARS: usize = 240;
 /// the commas between passages and records.
 pub(super) const CONTEXT_KEYS_RESERVE: usize = 256;
 
+/// Shown beside a schema card measured at an earlier version of the lab's data than the newest query read (migration
+/// 082), with both version rows as the databases stated them.
+pub(super) const CARD_BEHIND_NOTE: &str = "This card was measured at an earlier version of the lab's data: its counts \
+may be low and newer values may be missing. Query the tables for current counts and values.";
+
 /// The broker tasks the found records describe, in the service's ranking, for the read of their admitted queries
 /// (migration 042). The database decides which of them the run may learn from.
 pub fn past_research_tasks(past: &Value) -> Vec<Uuid> {
@@ -1260,16 +1265,28 @@ pub(super) fn compile_context_with_sections(
         for (key, title, stored) in cards {
             let card = &stored["card"];
             let comma = usize::from(!shown.is_empty());
-            let (view, record) = source_card::view_recorded_within(
+            // A card measured at an earlier version of the lab's data says so beside the card, in room kept for it.
+            let behind = stored
+                .get("behind")
+                .filter(|b| b.is_object())
+                .map(|versions| json!({"note": CARD_BEHIND_NOTE, "versions": versions}));
+            let note_room = behind
+                .as_ref()
+                .map_or(0, |b| size(b) + r#","card_behind_data":"#.len());
+            let (view, mut record) = source_card::view_recorded_within(
                 card,
                 stored["sha256"].as_str(),
                 title,
                 question,
                 &context,
-                room.saturating_sub(comma),
+                room.saturating_sub(comma + note_room),
                 shown_relations.get(key),
             );
-            if let Some(v) = view {
+            if let Some(mut v) = view {
+                if let Some(b) = behind {
+                    v["card_behind_data"] = b;
+                    record["card_behind_data"] = json!(true);
+                }
                 room = room.saturating_sub(size(&v) + comma);
                 shown.push(v);
             }

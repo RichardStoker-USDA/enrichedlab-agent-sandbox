@@ -55,11 +55,27 @@ pub struct QuerySource {
     pub card: Option<Value>,
     #[serde(default)]
     pub card_sha256: Option<String>,
+    /// The version row of the lab's data the card was measured at, and the one the source's newest completed query
+    /// read (migration 082); absent for a pinned source or before either is recorded.
+    #[serde(default)]
+    pub card_source_version: Option<Value>,
+    #[serde(default)]
+    pub source_version: Option<Value>,
     #[serde(default)]
     pub reviewed_tools: Vec<super::super::reviewed_query::Tool>,
 }
 
 impl QuerySource {
+    /// When the card was measured at another version of the lab's data than the newest completed query read: both
+    /// version rows, as the databases stated them. `None` while either is unknown or they match.
+    pub(super) fn card_behind(&self) -> Option<Value> {
+        let (card, data) = (
+            self.card_source_version.as_ref()?,
+            self.source_version.as_ref()?,
+        );
+        (card != data).then(|| json!({"card_measured_at": card, "data_now_at": data}))
+    }
+
     pub(super) fn relation_names(&self) -> BTreeSet<String> {
         self.relations
             .as_array()
@@ -349,6 +365,9 @@ pub fn with_query_sources(profiles: &Value, sources: &HashMap<String, QuerySourc
             }
             if let Some(card) = source.card.as_ref().filter(|c| c.is_object()) {
                 method["query_card"] = json!({"card": card, "sha256": source.card_sha256});
+                if let Some(behind) = source.card_behind() {
+                    method["query_card"]["behind"] = behind;
+                }
             }
         }
     }
@@ -386,4 +405,46 @@ pub(super) fn settings_text<'de, D: Deserializer<'de>>(
             .collect()
     })
     .transpose()
+}
+
+#[cfg(test)]
+mod card_version_tests {
+    use super::*;
+
+    fn source(card: Option<Value>, data: Option<Value>) -> QuerySource {
+        serde_json::from_value(json!({"profile": "lab", "source": "lab-db", "title": "Lab", "description": "Lab data",
+            "release": "live", "schema": "lab", "relations": [{"name": "samples"}], "functions": ["count"],
+            "row_cap": 100, "card": {"schema": "enrichedlab.sql-source-card.v1"}, "card_sha256": "sha256:00",
+            "card_source_version": card, "source_version": data}))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_card_is_behind_only_when_both_versions_are_known_and_differ() {
+        let (old, new) = (
+            json!({"newest_import_id": 4}),
+            json!({"newest_import_id": 5}),
+        );
+        assert!(source(None, None).card_behind().is_none());
+        assert!(source(Some(old.clone()), None).card_behind().is_none());
+        assert!(source(None, Some(new.clone())).card_behind().is_none());
+        assert!(
+            source(Some(new.clone()), Some(new.clone()))
+                .card_behind()
+                .is_none()
+        );
+        assert_eq!(
+            source(Some(old.clone()), Some(new.clone())).card_behind(),
+            Some(json!({"card_measured_at": old, "data_now_at": new}))
+        );
+        let sources = HashMap::from([("lab".to_owned(), source(Some(old), Some(new)))]);
+        let methods = with_query_sources(&json!([{"key": "lab"}]), &sources);
+        assert!(methods[0]["query_card"]["behind"].is_object());
+        let current = HashMap::from([("lab".to_owned(), source(None, Some(json!({}))))]);
+        assert!(
+            with_query_sources(&json!([{"key": "lab"}]), &current)[0]["query_card"]
+                .get("behind")
+                .is_none()
+        );
+    }
 }

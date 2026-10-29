@@ -179,6 +179,54 @@ impl Store {
         Ok(())
     }
 
+    /// Start re-measuring a live source's card for a version a completed query of that source read (migration 082):
+    /// the source as the card command takes it, the newest card's spec, the version's digest and the source's reader.
+    /// `None` when nothing is to be done or another refresh of the source runs.
+    pub async fn begin_card_refresh(
+        &self,
+        source: &str,
+        version: &Value,
+        worker: &str,
+    ) -> StoreResult<Option<Value>> {
+        let c = self.pool.get().await.map_err(pool_error)?;
+        let row = c
+            .query_one(
+                "SELECT enrichedlab_agent.broker_begin_sql_source_card_refresh($1,$2,$3,$4)",
+                &[&self.tenant, &source, version, &worker],
+            )
+            .await
+            .map_err(database_error)?;
+        Ok(row.get::<_, Option<Value>>(0))
+    }
+
+    /// Finish a running refresh with the measured card (which states the version row it read), or with the code that
+    /// says why there is none. Returns the refresh's state (`registered`, `refused` or `failed`) and its code or card digest.
+    pub async fn finish_card_refresh(
+        &self,
+        source: &str,
+        version_sha256: &str,
+        worker: &str,
+        card: Option<&Value>,
+        code: Option<&str>,
+    ) -> StoreResult<Value> {
+        let c = self.pool.get().await.map_err(pool_error)?;
+        let row = c
+            .query_one(
+                "SELECT enrichedlab_agent.broker_finish_sql_source_card_refresh($1,$2,$3,$4,$5,$6)",
+                &[
+                    &self.tenant,
+                    &source,
+                    &version_sha256,
+                    &worker,
+                    &card,
+                    &code,
+                ],
+            )
+            .await
+            .map_err(database_error)?;
+        Ok(row.get(0))
+    }
+
     /// A task's query with its source and receipts, for anyone who may read the task; null when it ran no query.
     pub async fn task_query_detail(&self, actor: Uuid, task: Uuid) -> StoreResult<Value> {
         let c = self.pool.get().await.map_err(pool_error)?;

@@ -325,6 +325,28 @@ Measured on the FoodData Central card and the suite's six goals, every answer-ke
 to 3,000 bytes of room. A query can still read any entry; the card only saves the lookup query and the shortened name
 that returns no rows.
 
+### A card follows its data (migration 082)
+
+A card names what it was measured from: `spec`, the spec it was measured with, and, for a live lab source,
+`measured_at`, the version row the source's database stated in the card's own transaction. Registration keeps both in
+columns and refuses a live source's card without them (`sql_source_card_version_required`,
+`sql_source_card_spec_required`); a pinned source's card carries no `measured_at`. The lead's view shows neither.
+
+The run's sources carry the newest card's version and the version the source's newest completed query read. When both
+are known and differ, the lead sees `card_behind_data` beside the card: a fixed note that counts may be low and newer
+values missing, with both version rows as the databases stated them. No count is changed.
+
+After a completed live query, the worker asks `broker_begin_sql_source_card_refresh` whether the card is due. The
+database starts one refresh per source and version, only for a version a completed receipt of that source read, only
+when the newest card has a spec and another version, and never while another refresh of the source runs (a running
+refresh older than 15 minutes is closed as `abandoned`). The worker measures the card as the source's own reader with
+the newest card's spec, and `broker_finish_sql_source_card_refresh` registers it only when it passes the registration's
+checks, states the version the refresh started for and carries the same spec; otherwise the refresh ends `refused`
+(`version_moved`, `card_spec_changed`, `card_invalid`, `declaration_drift`) or `failed`, and the previous card stays in
+use. A relation, column, function or grant the reader can no longer use is `declaration_drift`: the declaration changes
+only through a reviewed `lab-source` step. Every refresh is a row of `broker_sql_source_card_refreshes`, and the worker
+logs `event=card_refresh` with the source key, state and code only.
+
 ## Checks
 
 - `cargo test --locked source_card` covers the card's view, its matching, join casts and name checks; the coordinator's

@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio_postgres::error::SqlState;
@@ -91,7 +91,7 @@ pub struct CardSnapshot {
 }
 
 /// What the operator declares about a source; `build` checks each declaration against the data.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CardSpec {
     pub source: String,
@@ -106,14 +106,14 @@ pub struct CardSpec {
     pub lookups: Vec<LookupSpec>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct JoinSpec {
     pub from: String,
     pub to: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LookupSpec {
     pub relation: String,
@@ -851,6 +851,14 @@ pub async fn build_within(
         }).collect::<Vec<_>>(),
         "joins": join_out, "values": value_out, "lookups": lookup_out,
     });
+    // The card names what it was measured from, so the worker can measure it again for a new version of a live source's
+    // data (migration 082): the spec, and a live source's version row read in the same transaction. The lead's view
+    // shows neither.
+    let mut card = card;
+    card["spec"] = serde_json::to_value(spec)?;
+    if let Some(version) = &version {
+        card["measured_at"] = version.clone();
+    }
     if serde_json::to_vec(&card)?.len() > CARD_BYTES_MAX {
         bail!("card_too_large")
     }

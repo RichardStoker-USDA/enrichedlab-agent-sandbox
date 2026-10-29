@@ -1878,6 +1878,7 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
         "large-version",
         "receipt-retry",
         "cancelled",
+        "new-version",
     ]
     .iter()
     .map(|key| {
@@ -1908,7 +1909,7 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
                 expected_revision: 1,
                 allowed_profiles: vec!["lab-sql".into()],
                 max_turns: 4,
-                max_parallel: 7,
+                max_parallel: 8,
             },
         )
         .await
@@ -1959,6 +1960,7 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
             "large-version",
             "receipt-retry",
             "cancelled",
+            "new-version",
         ]
         .iter()
         .map(|key| {
@@ -2004,7 +2006,7 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
             )
         })
         .collect();
-    assert_eq!(key_of.len(), 7);
+    assert_eq!(key_of.len(), 8);
     let version_view =
         |rows: &str| format!("CREATE OR REPLACE VIEW lab_qual.vw_database_version AS {rows}");
     let one_row = version_view("SELECT '0021'::text AS schema_version, 7 AS newest_import_id");
@@ -2029,7 +2031,7 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
         }
     };
     // Each claimed task meets the version relation its case needs, whatever order the worker claims them in.
-    for _ in 0..7 {
+    for _ in 0..8 {
         let claimed = worker
             .claim_task("query-worker", 120)
             .await
@@ -2185,6 +2187,72 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
                         .join(claimed.id.to_string())
                         .exists()
                 );
+            }
+            "new-version" => {
+                // An import moves the lab's version row; the query completes at the new version and the worker measures
+                // the card again once for it, with the newest card's spec, as the source's reader (migration 082).
+                let new = json!({"schema_version": "0022", "newest_import_id": 8});
+                owner
+                    .batch_execute(&version_view(
+                        "SELECT '0022'::text AS schema_version, 8 AS newest_import_id",
+                    ))
+                    .await
+                    .unwrap();
+                query_run::execute(
+                    worker.clone(),
+                    &config,
+                    claimed.clone(),
+                    CancellationToken::new(),
+                )
+                .await
+                .unwrap();
+                let (status, _, receipt, version) = outcome(claimed.id).await;
+                assert_eq!(
+                    (status.as_str(), receipt.as_str(), version),
+                    ("completed", "completed", Some(new.clone()))
+                );
+                let refresh = owner
+                    .query_one(
+                        "SELECT state, coalesce(code, ''), card_sha256 FROM enrichedlab_agent.broker_sql_source_card_refreshes
+                         WHERE source_key = 'lab-weights' AND source_version = $1",
+                        &[&new],
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    (refresh.get::<_, String>(0), refresh.get::<_, String>(1)),
+                    ("registered".to_owned(), String::new())
+                );
+                let card = owner
+                    .query_one(
+                        "SELECT card_sha256, source_version, card->'measured_at', spec = card->'spec'
+                         FROM enrichedlab_agent.broker_sql_source_cards WHERE source_key = 'lab-weights'
+                         ORDER BY created_at DESC, card_sha256 LIMIT 1",
+                        &[],
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(card.get::<_, String>(0), refresh.get::<_, String>(2));
+                assert_eq!(card.get::<_, Value>(1), new);
+                assert_eq!(card.get::<_, Value>(2), new);
+                assert!(card.get::<_, bool>(3));
+                // Once per version: the same version starts nothing again, and a version no completed query read is
+                // refused.
+                let begin = |version: Value| {
+                    let owner = &owner;
+                    async move {
+                        owner
+                            .query_one(
+                                "SELECT enrichedlab_agent.broker_begin_sql_source_card_refresh('research-site', 'lab-weights', $1, 'other-worker')",
+                                &[&version],
+                            )
+                            .await
+                            .map(|row| row.get::<_, Option<Value>>(0))
+                    }
+                };
+                assert_eq!(begin(new.clone()).await.unwrap(), None);
+                assert!(begin(json!({"schema_version": "0099"})).await.is_err());
+                owner.batch_execute(&one_row).await.unwrap();
             }
             "two-versions" => {
                 owner

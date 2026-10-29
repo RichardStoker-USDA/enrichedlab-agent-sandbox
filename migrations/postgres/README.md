@@ -191,6 +191,13 @@ the runtime grant script (the API's readiness waits for its grant), then seed a 
 `tool_group_grants`; an older broker's seed removes profile grants only a tool group held. Run
 `scripts/qualify_remote_broker.sh tool-groups`.
 
+Migration 082 lets a lab source's schema card follow its data (`docs/reference_sql.md`, "A card follows its data"):
+cards keep `measured_at` and `spec`, a live source's card needs both, the run's sources carry the card's and the newest
+query's versions, and the worker re-measures a card once per new version through `broker_begin_sql_source_card_refresh`
+and `broker_finish_sql_source_card_refresh` (worker grants in `grant_broker_runtime.psql`). A card registered before
+082 has neither field, so the operator registers each live source's card once more with the new `source-card` before
+refreshes start. Run `scripts/qualify_remote_broker.sh reference-sql`.
+
 Migration 081 records the broker's rows in the research record through an outbox. An ordinary trigger on each
 append-guarded table, and an update trigger on the three that permit one update (a tool group grant's revocation, a
 dataset's intake task, a reviewed query's retirement), writes each change to `evidence.capture_log` with its writing

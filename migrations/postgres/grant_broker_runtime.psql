@@ -384,6 +384,10 @@ GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_query(text,uuid,text,int
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_query_receipt(text,uuid,text,integer,bigint,text,text,integer,jsonb,text,text,timestamptz,timestamptz) TO :"worker_role";
 -- Live lab sources (migration 053): the receipt carries the version the lab's database stated.
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_query_receipt(text,uuid,text,integer,bigint,text,text,integer,jsonb,text,text,timestamptz,timestamptz,jsonb) TO :"worker_role";
+-- Migration 082: the worker re-measures a live source's card once per new version; the database decides when and checks
+-- what it registers.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_begin_sql_source_card_refresh(text,text,jsonb,text) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_finish_sql_source_card_refresh(text,text,text,text,jsonb,text) TO :"worker_role";
 -- Figure versions (migration 040): the API reads the render catalog, requests versions and reads them;
 -- the worker keeps the catalog, reads the request of its lease and records one receipt per attempt.
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_render_catalog(text,uuid) TO :"api_role";
