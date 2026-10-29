@@ -8,12 +8,12 @@
     "check": "svelte-check --tsconfig ./jsconfig.json"
   },
   "dependencies": {
-    "@xyflow/svelte": "1.6.5",
-    "svelte": "5.57.0"
+    "@xyflow/svelte": "1.7.0",
+    "svelte": "5.57.2"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "7.3.0",
-    "svelte-check": "4.7.6",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "svelte-check": "4.7.7",
     "terser": "^5.51.2",
     "typescript": "6.0.3",
     "vite": "8.3.5"
