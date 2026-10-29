@@ -296,9 +296,12 @@ impl ResultIndex {
                 operand.is_ascii() && self.allowed_names.contains(&operand.to_ascii_lowercase());
             return !(verbatim || shown_name(&operand, &self.allowed_names));
         }
+        // A point before the digits (`.5`) writes another value than the digits alone, so only a step literal written
+        // that way admits it.
+        let pointed = start > 0 && chars[start - 1] == '.';
         let n: String = chars[start..end].iter().collect();
-        !(self.allowed_numbers.contains(&n)
-            || (step && self.setting_numbers.contains(&n))
+        !((!pointed
+            && (self.allowed_numbers.contains(&n) || (step && self.setting_numbers.contains(&n))))
             || own.is_some_and(|own| own.contains(&literal_occurrence(chars, start, end))))
     }
 

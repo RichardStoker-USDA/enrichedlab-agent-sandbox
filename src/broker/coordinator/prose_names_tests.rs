@@ -335,3 +335,47 @@ fn comparisons_and_hidden_characters_never_compose_a_value() {
         ("Fmo3-1 at n=(a number) and 37\u{00B0}C", 1)
     );
 }
+
+#[test]
+fn signs_radixes_groupings_and_number_pairs_never_compose_a_value() {
+    let mut index = named(
+        "literature",
+        passage("Below 1e-9 in liver, days 10-20, and Fmo3 by strain."),
+    );
+    for n in ["0", "1", "5", "9", "10", "20", "234"] {
+        index.allowed_numbers.insert(n.to_string());
+    }
+    // A shown 1e-9 admits itself, never a value a sign or a point makes of it.
+    assert!(index.prose_refused("Below 1e-9 and -Fmo3 rose.").is_empty());
+    assert_eq!(index.prose_refused("It was -1e-9."), ["1", "9"]);
+    assert_eq!(index.prose_refused("It was .1e-9."), ["1", "9"]);
+    assert_eq!(index.prose_refused("It was .5 here."), ["5"]);
+    // A hexadecimal literal is not a quantity with a unit, in any script's letters.
+    assert_eq!(index.prose_refused("Set 0xFF here."), ["0"]);
+    assert_eq!(
+        index.prose_refused("Set 0\u{FF58}\u{FF26}\u{FF26} here."),
+        ["0"]
+    );
+    // Two numbers in one operand stand only as a source writes them.
+    assert!(index.prose_refused("Over days 10-20 it rose.").is_empty());
+    for text in [
+        "p=10^-9 here.",
+        "It was 10/20.",
+        "It was 10*9.",
+        "Days 20-10.",
+    ] {
+        assert_eq!(index.prose_refused(text).len(), 2, "{text}");
+        let (step, count) = index.mask_step_numbers(text, None);
+        assert_eq!(count, 2, "{text}");
+        assert!(index.step_prose_refused(&step).is_empty(), "{step:?}");
+    }
+    // A space outside ASCII between digits groups them into one number; between a number and a unit it separates.
+    for space in ['\u{202F}', '\u{2009}', '\u{00A0}', '\u{2007}'] {
+        let text = format!("It was 1{space}234 here.");
+        assert_eq!(index.prose_refused(&text), ["1", "234"], "{text:?}");
+        let (summary, count) = mask_refused_numbers(&text, &index);
+        assert_eq!(count, 2, "{text:?}");
+        assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
+    }
+    assert!(index.prose_refused("It was 5\u{00A0}mg and 5.").is_empty());
+}

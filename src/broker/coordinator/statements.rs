@@ -54,16 +54,35 @@ pub(super) fn in_a_name(chars: &[char], start: usize, end: usize) -> bool {
 /// The token around `start..end` exactly as written: every character up to whitespace or a separator prose puts between
 /// words. `operand_around` cuts the same token at comparisons and trims its ends.
 pub(super) fn raw_token(chars: &[char], start: usize, end: usize) -> String {
-    let stop = separates_words;
+    let (from, to) = run_bounds(chars, start, end, separates_words);
+    chars[from..to].iter().collect()
+}
+
+/// The run around `start..end` up to a character `stop` names. A space outside ASCII between two digits never ends it:
+/// typesetting groups thousands with a narrow or thin space (`1\u{202F}234`), so the digits read as one number.
+fn run_bounds(
+    chars: &[char],
+    start: usize,
+    end: usize,
+    stop: impl Fn(char) -> bool,
+) -> (usize, usize) {
+    let groups_digits = |i: usize| {
+        !chars[i].is_ascii()
+            && chars[i].is_whitespace()
+            && i > 0
+            && chars[i - 1].is_ascii_digit()
+            && chars.get(i + 1).is_some_and(|c| c.is_ascii_digit())
+    };
+    let stops = |i: usize| stop(chars[i]) && !groups_digits(i);
     let mut from = start;
-    while from > 0 && !stop(chars[from - 1]) {
+    while from > 0 && !stops(from - 1) {
         from -= 1;
     }
     let mut to = end;
-    while to < chars.len() && !stop(chars[to]) {
+    while to < chars.len() && !stops(to) {
         to += 1;
     }
-    chars[from..to].iter().collect()
+    (from, to)
 }
 
 /// A separator prose puts between words: whitespace, a comma, semicolon, bracket, quote, `!`, `?` or an ellipsis.
@@ -99,25 +118,22 @@ fn compares(c: char) -> bool {
     )
 }
 
-/// The operand a number stands in: its token (`raw_token`) cut at comparisons (`compares`), with `.`, `:`, `-`, `_` and
-/// `/` trimmed from its ends. In `p=1e-9` the 1 and the 9 stand in `1e-9`, and in `<Gene3>` the 3 stands in `Gene3`.
-/// Every other character stays, so two names joined by a slash, a colon, an invisible character, a combining mark or a
-/// letter from another script read as one operand that must itself be shown: `Fmo3`, `IL-6`, `C57BL/6J`.
+/// The operand a number stands in: its token (`raw_token`) cut at comparisons (`compares`). `.`, `:`, `-`, `_` and `/`
+/// are trimmed from its end, and from its start only before a letter (`-Fmo3`), since a sign or a point before a digit
+/// makes another value (`-1e-9`, `.1e-9`). In `p=1e-9` the 1 and the 9 stand in `1e-9`, and in `<Gene3>` the 3 stands
+/// in `Gene3`. Every other character stays, so two names joined by a slash, a colon, an invisible character, a
+/// combining mark or a letter from another script read as one operand that must itself be shown: `Fmo3`, `IL-6`,
+/// `C57BL/6J`.
 pub(super) fn operand_around(chars: &[char], start: usize, end: usize) -> String {
-    let stop = |c: char| separates_words(c) || compares(c);
-    let mut from = start;
-    while from > 0 && !stop(chars[from - 1]) {
-        from -= 1;
+    let (from, to) = run_bounds(chars, start, end, |c| separates_words(c) || compares(c));
+    let run: String = chars[from..to].iter().collect();
+    let run = run.trim_end_matches(['.', ':', '-', '_', '/']);
+    let lettered = run.trim_start_matches(['.', ':', '-', '_', '/']);
+    if lettered.starts_with(char::is_alphabetic) {
+        lettered.to_owned()
+    } else {
+        run.to_owned()
     }
-    let mut to = end;
-    while to < chars.len() && !stop(chars[to]) {
-        to += 1;
-    }
-    chars[from..to]
-        .iter()
-        .collect::<String>()
-        .trim_matches(['.', ':', '-', '_', '/'])
-        .to_owned()
 }
 
 /// Whether a token holds a character that hides or changes how the digits around it read: a control character, an
@@ -150,10 +166,13 @@ pub(super) fn obscures_numbers(token: &str) -> bool {
 }
 
 /// Whether a refused number may be written as `NUMBER_MASK`: it is not inside a name (`in_a_name`) and its operand
-/// (`operand_around`) need not be shown whole (`needs_whole_token`). Masking the `1` of `Fmo3-1` would leave a shown
-/// `Fmo3` standing for a name nothing showed; the `12` of `n=12` and the `37` of `37°C` mask cleanly.
+/// (`operand_around`) holds no letter or is a quantity with a unit (`unit_shaped`). Masking the `1` of `Fmo3-1` would
+/// leave a shown `Fmo3` standing for a name nothing showed; the `12` of `n=12`, the `37` of `37°C` and both numbers of
+/// `10^-9` mask cleanly.
 pub(super) fn may_mask(chars: &[char], start: usize, end: usize) -> bool {
-    !in_a_name(chars, start, end) && !needs_whole_token(&operand_around(chars, start, end))
+    let operand = operand_around(chars, start, end);
+    !in_a_name(chars, start, end)
+        && (!operand.chars().any(char::is_alphabetic) || unit_shaped(&operand))
 }
 
 /// How a step literal occurs in prose: the raw token with at most one sentence-final `.` or `:` after its last digit
@@ -168,25 +187,45 @@ pub(super) fn literal_occurrence(chars: &[char], start: usize, end: usize) -> St
     }
 }
 
-/// Whether an operand (`operand_around`) holding a letter and a digit stands only where a source writes it whole:
-/// everything but a quantity with a unit, which is digits with at most one point followed by letters and the unit marks
-/// `°`, `/`, `%` and `‰` (`7.1mg`, `6J`, `37°C`, `5mg/kg`), and which keeps the rule for numbers. So `1e-9` composed
-/// from an allowed 1 and 9, `Gene3%`, `<Gene3>` and `A7/B3` are refused unless a source writes them whole.
+/// Whether an operand (`operand_around`) stands only where a source writes it whole: one holding two or more numbers
+/// (`10^-9`, `10/20`, `1\u{202F}234`), and one holding a number and a letter unless it is a quantity with a unit
+/// (`unit_shaped`). So `1e-9` composed from an allowed 1 and 9, `Gene3%`, `<Gene3>`, `A7/B3` and `0xFF` are refused
+/// unless a source writes them whole.
 pub(super) fn needs_whole_token(token: &str) -> bool {
-    if !token.chars().any(char::is_alphabetic) || !token.chars().any(|c| c.is_ascii_digit()) {
-        return false;
+    let chars: Vec<char> = token.chars().collect();
+    match number_spans(&chars).len() {
+        0 => false,
+        1 => chars.iter().any(|c| c.is_alphabetic()) && !unit_shaped(token),
+        _ => true,
     }
+}
+
+/// A quantity with a unit: digits with at most one point, then a unit of ASCII letters, the letters `µ`, `μ`, `Ω` and
+/// `Å`, and the marks `°`, `/`, `%` and `‰` (`7.1mg`, `6J`, `37°C`, `5µg`, `5mg/kg`). A zero before `x` is a hexadecimal
+/// literal (`0xFF`), not a unit.
+pub(super) fn unit_shaped(token: &str) -> bool {
     let split = token
         .find(|c: char| !(c.is_ascii_digit() || c == '.'))
         .unwrap_or(token.len());
     let (number, unit) = token.split_at(split);
-    let unit_shaped = number.starts_with(|c: char| c.is_ascii_digit())
+    number.starts_with(|c: char| c.is_ascii_digit())
         && number.matches('.').count() <= 1
+        && !(number.trim_start_matches('0').is_empty() && unit.starts_with(['x', 'X']))
         && unit.chars().any(char::is_alphabetic)
-        && unit
-            .chars()
-            .all(|c| c.is_alphabetic() || matches!(c, '\u{00B0}' | '/' | '%' | '\u{2030}'));
-    !unit_shaped
+        && unit.chars().all(|c| {
+            c.is_ascii_alphabetic()
+                || matches!(
+                    c,
+                    '\u{00B5}'
+                        | '\u{03BC}'
+                        | '\u{03A9}'
+                        | '\u{00C5}'
+                        | '\u{00B0}'
+                        | '/'
+                        | '%'
+                        | '\u{2030}'
+                )
+        })
 }
 
 /// A name a number may stand in when the call shows it: ASCII letters and digits with inner hyphens, periods,
