@@ -581,6 +581,10 @@ pub fn isolation(config: &RuntimeConfig, sandbox: &str) -> Result<IsolationRepor
     let mut excluded_private = None;
     if record.runtime.driver == RuntimeAdapter::Docker {
         let docker = runtime::inspect_sandbox(&config.docker_bin, sandbox)?;
+        checks.insert(
+            "docker_namespaces_private".into(),
+            docker.namespaces_private(),
+        );
         let alias = runtime::sandbox_host_alias_ip(&config.openshell_bin, &record)?;
         let (alias_bind, alias_route_valid) = if cfg!(target_os = "macos") {
             (

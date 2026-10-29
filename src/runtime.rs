@@ -18,6 +18,29 @@ pub struct DockerSandbox {
     pub ip: Ipv4Addr,
     pub gateway: Ipv4Addr,
     pub network: String,
+    /// The container's cgroup namespace mode as Docker reports it (`private` or `host`).
+    pub cgroupns_mode: String,
+    /// The container's IPC namespace mode as Docker reports it (`private`, `shareable`, `none`, `host` or
+    /// `container:<id>`).
+    pub ipc_mode: String,
+}
+
+impl DockerSandbox {
+    /// Whether the container has its own cgroup and IPC namespaces. The sandbox policies let a workload read
+    /// `/sys/fs/cgroup` and write `/dev/shm`; under a host cgroup namespace the first shows the daemon's whole hierarchy
+    /// with its services and sibling containers, and under a host or borrowed IPC namespace the second is shared with
+    /// them.
+    pub fn namespaces_private(&self) -> bool {
+        self.cgroupns_mode == "private"
+            && matches!(self.ipc_mode.as_str(), "private" | "shareable" | "none")
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct DockerContainerInspect {
+    networks: BTreeMap<String, DockerNetworkAttachment>,
+    cgroupns: String,
+    ipc: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,17 +89,20 @@ pub fn inspect_sandbox(docker_bin: &Path, sandbox: &str) -> Result<DockerSandbox
             ids.len()
         );
     }
-    let networks = run_capture(
+    let inspected = run_capture(
         docker_bin,
         &[
             "inspect",
             "--format",
-            "{{json .NetworkSettings.Networks}}",
+            r#"{"networks":{{json .NetworkSettings.Networks}},"cgroupns":{{json .HostConfig.CgroupnsMode}},"ipc":{{json .HostConfig.IpcMode}}}"#,
             ids[0],
         ],
     )?;
-    let attachments: BTreeMap<String, DockerNetworkAttachment> =
-        serde_json::from_str(networks.trim())?;
+    let DockerContainerInspect {
+        networks: attachments,
+        cgroupns: cgroupns_mode,
+        ipc: ipc_mode,
+    } = serde_json::from_str(inspected.trim())?;
     if attachments.len() != 1 {
         bail!("sandbox {sandbox} must have exactly one Docker network");
     }
@@ -95,7 +121,23 @@ pub fn inspect_sandbox(docker_bin: &Path, sandbox: &str) -> Result<DockerSandbox
             .parse()
             .context("invalid Docker gateway IPv4 address")?,
         network,
+        cgroupns_mode,
+        ipc_mode,
     })
+}
+
+/// Refuse a Docker sandbox whose cgroup or IPC namespace is not its own (`DockerSandbox::namespaces_private`).
+pub fn require_private_namespaces(docker_bin: &Path, sandbox: &str) -> Result<()> {
+    let observed = inspect_sandbox(docker_bin, sandbox)?;
+    if !observed.namespaces_private() {
+        bail!(
+            "sandbox {sandbox} shares a namespace with its host (cgroup namespace {:?}, IPC {:?}); the policy lets it \
+             read /sys/fs/cgroup and write /dev/shm only inside its own",
+            observed.cgroupns_mode,
+            observed.ipc_mode
+        );
+    }
+    Ok(())
 }
 
 pub fn host_bind_ip(docker_bin: &Path, network: &str) -> Result<Ipv4Addr> {
@@ -212,7 +254,34 @@ fn run_capture(bin: &Path, args: &[&str]) -> Result<String> {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use super::validate_bind_ip;
+    use super::{DockerSandbox, validate_bind_ip};
+
+    #[test]
+    fn only_a_container_in_its_own_namespaces_is_private() {
+        let sandbox = |cgroupns: &str, ipc: &str| DockerSandbox {
+            container_id: "c".into(),
+            ip: Ipv4Addr::new(172, 17, 0, 2),
+            gateway: Ipv4Addr::new(172, 17, 0, 1),
+            network: "n".into(),
+            cgroupns_mode: cgroupns.into(),
+            ipc_mode: ipc.into(),
+        };
+        for ipc in ["private", "shareable", "none"] {
+            assert!(sandbox("private", ipc).namespaces_private(), "{ipc}");
+        }
+        for (cgroupns, ipc) in [
+            ("host", "private"),
+            ("", "private"),
+            ("private", "host"),
+            ("private", "container:abc"),
+            ("private", ""),
+        ] {
+            assert!(
+                !sandbox(cgroupns, ipc).namespaces_private(),
+                "{cgroupns} {ipc}"
+            );
+        }
+    }
 
     #[test]
     fn wildcard_bind_is_rejected() {

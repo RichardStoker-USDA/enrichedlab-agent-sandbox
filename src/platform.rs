@@ -369,6 +369,12 @@ pub struct RuntimeProof {
     pub sandbox_phase: Option<String>,
     pub docker_container_id: Option<String>,
     pub docker_network: Option<String>,
+    /// Docker's cgroup and IPC namespace modes for the container (`runtime::DockerSandbox`); absent in proofs written
+    /// before they were recorded.
+    #[serde(default)]
+    pub docker_cgroupns_mode: Option<String>,
+    #[serde(default)]
+    pub docker_ipc_mode: Option<String>,
     pub kubernetes: Option<KubernetesRuntimeProof>,
     pub result: String,
     pub observed_at_unix: u64,
@@ -524,10 +530,16 @@ pub fn observe(config: &RuntimeConfig, record: &SandboxRecord) -> Result<Runtime
         .map(str::to_string);
     let mut docker_container_id = None;
     let mut docker_network = None;
+    let mut docker_namespaces = None;
     let mut limitations = Vec::new();
     if profile.driver == RuntimeAdapter::Docker {
         match runtime::inspect_sandbox(&config.docker_bin, &record.name) {
             Ok(observed) => {
+                docker_namespaces = Some((
+                    observed.namespaces_private(),
+                    observed.cgroupns_mode.clone(),
+                    observed.ipc_mode.clone(),
+                ));
                 docker_container_id = Some(observed.container_id);
                 docker_network = Some(observed.network);
             }
@@ -555,10 +567,15 @@ pub fn observe(config: &RuntimeConfig, record: &SandboxRecord) -> Result<Runtime
         );
     }
     let driver_passed = gateway.observed_driver.as_deref() == Some(profile.driver.as_str());
+    // A container sharing its host's cgroup or IPC namespace fails: the policies grant `/sys/fs/cgroup` and `/dev/shm`
+    // on the premise that both are the sandbox's own.
     let result = if !driver_passed
         || kubernetes
             .as_ref()
             .is_some_and(|proof| !proof.api_binding_passed)
+        || docker_namespaces
+            .as_ref()
+            .is_some_and(|(private, _, _)| !private)
     {
         "failed"
     } else if profile.driver == RuntimeAdapter::Kubernetes && kubernetes.is_none() {
@@ -580,6 +597,10 @@ pub fn observe(config: &RuntimeConfig, record: &SandboxRecord) -> Result<Runtime
         sandbox_phase,
         docker_container_id,
         docker_network,
+        docker_cgroupns_mode: docker_namespaces
+            .as_ref()
+            .map(|(_, cgroupns, _)| cgroupns.clone()),
+        docker_ipc_mode: docker_namespaces.map(|(_, _, ipc)| ipc),
         kubernetes,
         result: result.into(),
         observed_at_unix: unix_now()?,
@@ -961,6 +982,17 @@ fn find_kubernetes_sandbox_and_pod(
     Ok((sandbox, matching[0].clone()))
 }
 
+/// Whether a Pod joins any of its node's network, process or IPC namespaces. The runtime binding holds only for a Pod in
+/// its own: the policies grant `/dev/shm` on that premise, and a field set to anything but `false` counts as joined.
+fn pod_uses_host_namespaces(pod: &Value) -> bool {
+    ["/spec/hostNetwork", "/spec/hostPID", "/spec/hostIPC"]
+        .iter()
+        .any(|field| {
+            pod.pointer(field)
+                .is_some_and(|value| *value != Value::Bool(false))
+        })
+}
+
 fn observe_kubernetes(
     observer: &KubernetesObserver,
     record: &SandboxRecord,
@@ -1075,7 +1107,8 @@ fn observe_kubernetes(
     let requested_runtime_class = record.runtime.runtime_class_name.clone();
     let api_binding_passed = requested_runtime_class == observed_runtime_class
         && observed_runtime_class.is_some()
-        && runtime_handler.is_some();
+        && runtime_handler.is_some()
+        && !pod_uses_host_namespaces(pod);
     Ok(KubernetesRuntimeProof {
         namespace: observer.namespace.clone(),
         sandbox_resource: json!({
@@ -1341,8 +1374,27 @@ mod tests {
     use super::{
         GatewayProfile, KubernetesObserver, KubernetesPeerIdentity, ObserverTransport,
         RuntimeAdapter, WorkspaceTransport, build_kubernetes_peer_policy_objects, driver_config,
-        pod_owned_by_sandbox,
+        pod_owned_by_sandbox, pod_uses_host_namespaces,
     };
+
+    #[test]
+    fn a_pod_in_any_host_namespace_fails_the_binding() {
+        use serde_json::json;
+        assert!(!pod_uses_host_namespaces(&json!({"spec": {}})));
+        assert!(!pod_uses_host_namespaces(
+            &json!({"spec": {"hostNetwork": false, "hostPID": false, "hostIPC": false}})
+        ));
+        for field in ["hostNetwork", "hostPID", "hostIPC"] {
+            assert!(
+                pod_uses_host_namespaces(&json!({"spec": {field: true}})),
+                "{field}"
+            );
+            assert!(
+                pod_uses_host_namespaces(&json!({"spec": {field: "false"}})),
+                "{field}"
+            );
+        }
+    }
     use crate::workspace::MountRecord;
 
     #[test]

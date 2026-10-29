@@ -183,6 +183,20 @@ pub(crate) fn create_one(
         control_decisions,
         created_at_unix: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
     };
+    if record.runtime.driver == platform::RuntimeAdapter::Docker
+        && let Err(error) =
+            crate::runtime::require_private_namespaces(&config.docker_bin, &record.name)
+    {
+        let _ = fs::remove_file(&record.policy_path);
+        return match openshell::delete_and_verify(&config.openshell_bin, &record) {
+            Ok(()) => {
+                Err(error).context("sandbox was deleted because its namespaces are not private")
+            }
+            Err(cleanup_error) => Err(error).context(format!(
+                "sandbox namespaces are not private and verified cleanup failed: {cleanup_error:#}"
+            )),
+        };
+    }
     if record.runtime.workspace_transport == platform::WorkspaceTransport::Sync
         && let Err(error) = workspace_sync::initialize(config, &record)
     {

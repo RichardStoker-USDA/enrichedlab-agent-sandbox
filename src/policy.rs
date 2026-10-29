@@ -182,20 +182,53 @@ mod tests {
     #[test]
     fn every_profile_lets_runtimes_read_limits_and_share_memory() {
         // DuckDB, the JVM, Go and Node size themselves from the cgroup files, and Python multiprocessing needs
-        // POSIX semaphores in /dev/shm; without them DuckDB aborts and process pools fall back or fail.
+        // POSIX semaphores in /dev/shm; without them DuckDB aborts and process pools fall back or fail. The controller
+        // grants both only in a sandbox's own cgroup and IPC namespaces (runtime::require_private_namespaces).
         for profile in ["development", "data-science", "offline"] {
             let policy = render(profile, LandlockMode::BestEffort, &[], &[]).unwrap();
-            let read_only = policy
-                .lines()
-                .find(|line| line.trim_start().starts_with("read_only:"))
-                .unwrap();
-            let read_write = policy
-                .lines()
-                .find(|line| line.trim_start().starts_with("read_write:"))
-                .unwrap();
-            assert!(read_only.contains("/sys/fs/cgroup"), "{profile}");
-            assert!(!read_write.contains("/sys"), "{profile}");
-            assert!(read_write.contains("/dev/shm"), "{profile}");
+            let parsed: serde_yaml_ng::Value = serde_yaml_ng::from_str(&policy).unwrap();
+            let entries = |key: &str| -> Vec<String> {
+                parsed["filesystem_policy"][key]
+                    .as_sequence()
+                    .unwrap()
+                    .iter()
+                    .map(|entry| entry.as_str().unwrap().to_owned())
+                    .collect()
+            };
+            let (read_only, read_write) = (entries("read_only"), entries("read_write"));
+            assert_eq!(
+                read_only
+                    .iter()
+                    .filter(|e| e.as_str() == "/sys/fs/cgroup")
+                    .count(),
+                1,
+                "{profile}"
+            );
+            assert_eq!(
+                read_write
+                    .iter()
+                    .filter(|e| e.as_str() == "/dev/shm")
+                    .count(),
+                1,
+                "{profile}"
+            );
+            for entry in read_only.iter().chain(&read_write) {
+                assert!(
+                    !entry.starts_with("/sys/") || entry == "/sys/fs/cgroup",
+                    "{profile}: {entry}"
+                );
+                assert!(
+                    !entry.starts_with("/dev/")
+                        || ["/dev/urandom", "/dev/null", "/dev/shm"].contains(&entry.as_str()),
+                    "{profile}: {entry}"
+                );
+            }
+            for entry in &read_write {
+                assert!(
+                    entry != "/sys" && !entry.starts_with("/sys/"),
+                    "{profile}: {entry}"
+                );
+            }
         }
     }
 
