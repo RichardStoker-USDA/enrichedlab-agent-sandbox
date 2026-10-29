@@ -3617,6 +3617,44 @@ async fn a_methods_finding_may_rest_on_a_read_part_it_was_shown() {
     );
 }
 
+// Every findings fault of a methods reply is fixed words, a position and a count, so the deferred turn's log line may
+// carry them: no word or number the reply wrote reaches a name. Other refusals keep their names out of logs.
+#[test]
+fn a_methods_check_findings_fault_names_hold_no_reply_text() {
+    use super::{CodeRefused, ResultIndex, check_method_review_with_parts, names_loggable};
+    let proposal: super::Proposal = serde_json::from_value(serde_json::json!({"action": "delegate",
+            "summary": "s", "actions": [{"action_key": "q-1", "title": "Vitamin C by food",
+                "profile": "reference-sql-fdc", "objective": "o", "rationale": "r", "sql": "SELECT 1"}]}))
+        .unwrap();
+    let marker = "Zeaxanthin";
+    let reply = serde_json::json!({"decision": "revise", "reason": "The step reads the wrong rows.", "findings": [
+        {"about": format!("{marker} 4713"), "problem": format!("{marker}_4713"),
+         "detail": format!("{marker} 4713 ").repeat(40), "refs": [format!("result://{marker}/4713")]},
+        {"about": "step q-1", "problem": "wrong_rows", "detail": ""}]});
+    let error = check_method_review_with_parts(
+        &reply,
+        &proposal,
+        &ResultIndex::default(),
+        &Default::default(),
+    )
+    .err()
+    .unwrap();
+    let refused = error.downcast_ref::<CodeRefused>().unwrap();
+    assert_eq!(refused.code, "method_review_findings_invalid");
+    assert_eq!(refused.names.len(), 5, "{:?}", refused.names);
+    for name in &refused.names {
+        assert!(!name.contains(marker) && !name.contains("4713"), "{name}");
+    }
+    assert!(names_loggable(refused.code));
+    for code in [
+        "proposal_prose_number",
+        "method_review_prose_number",
+        "proposal_finding_unbound",
+    ] {
+        assert!(!names_loggable(code), "{code}");
+    }
+}
+
 // A methods reply that breaks its findings or number rules is asked once more in the same
 // turn with each fault named; a reply that is no review at all, a second refusal and a retry with no room end the
 // turn as before.

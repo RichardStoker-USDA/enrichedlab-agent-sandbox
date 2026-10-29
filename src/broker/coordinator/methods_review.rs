@@ -145,7 +145,8 @@ pub fn check_method_review_with_parts(
         ));
     }
     // Each fault is measured, so the call asked again can correct it rather than guess (details and
-    // refs were 13 of 15 named faults in three days).
+    // refs were 13 of 15 named faults in three days). Every fault is fixed words, positions and counts, so a deferred
+    // turn's log line carries them (`names_loggable`); add no model text or research number to one.
     for (i, f) in method.findings.iter().enumerate().take(REVIEW_FINDINGS_MAX) {
         let n = i + 1;
         if !review_about(&f.about, proposal) {
