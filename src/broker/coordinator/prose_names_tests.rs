@@ -671,15 +671,15 @@ fn a_unit_after_a_space_or_a_joined_label_makes_no_identifier() {
         ("chromosome 12 (see it)", "12"),
         ("\"Chromosome 12,\" it says", "12"),
         ("chromosome 12 \u{00E9}t\u{00E9}", "12"),
+        ("chromosome 12 & mg", "12"),
+        ("chromosome 12 \u{2013} kb", "12"),
     ] {
-        assert!(
-            index.prose_refused(refused).contains(&number.to_owned()),
-            "{refused}"
-        );
+        let found = index.prose_refused(refused);
+        assert!(found.contains(&number.to_owned()), "{refused}: {found:?}");
     }
     assert_eq!(index.prose_refused("chromosome 12 13"), ["12", "13"]);
     let source = "chromosome 12 mg, chromosome 13 %, not_table 9, sub-table 4, (table 5), \"figure 6\", exon 7 days, \
-                  chromosome 14 (mg), chromosomes 3 & 5";
+                  chromosome 14 (mg), chromosomes 3 & 5, chromosome 15 & mg, chromosome 16 \u{2013} kb";
     assert_eq!(
         shown_identifier_keys(source),
         ["table 5", "chromosome 3", "chromosome 5"]
