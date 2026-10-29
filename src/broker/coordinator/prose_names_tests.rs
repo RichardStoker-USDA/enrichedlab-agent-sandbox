@@ -433,7 +433,14 @@ fn signs_radixes_groupings_and_number_pairs_never_compose_a_value() {
         assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
     }
     // Any run of spaces between digits groups them too; a comma, a word or a quoted number before a word separates.
-    for text in ["Days 1 234 here.", "Days 1\n234 here."] {
+    for text in [
+        "Days 1 234 here.",
+        "Days 1\n234 here.",
+        "Days 1 \u{200B} 234 here.",
+        "Days 1 \u{200D} 234 here.",
+        "Days 1 \u{034F} 234 here.",
+        "Days 1 \u{FE0F} 234 here.",
+    ] {
         assert_eq!(index.prose_refused(text), ["1", "234"], "{text:?}");
         let (summary, count) = mask_refused_numbers(text, &index);
         assert_eq!(count, 2, "{text:?}");

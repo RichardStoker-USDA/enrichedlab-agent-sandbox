@@ -77,10 +77,11 @@ fn run_bounds(
     (from, to)
 }
 
-/// Whether `chars[i]` lies in a run of spaces and quote marks between two digits. Such a run groups the digits into one
-/// number however many characters it has and whichever they are: thousands are grouped with a space (`1 234`), a narrow
-/// or thin space (`1\u{202F}234`) and in some locales an apostrophe (`1'234`, `1\u{2019}234`). A comma, a semicolon, a
-/// bracket or a word between two numbers separates them.
+/// Whether `chars[i]` lies in a run of spaces, quote marks and hidden characters (`hides_digits`) between two digits.
+/// Such a run groups the digits into one number however many characters it has and whichever they are: thousands are
+/// grouped with a space (`1 234`), a narrow or thin space (`1\u{202F}234`) and in some locales an apostrophe (`1'234`,
+/// `1\u{2019}234`), and a hidden character between spaces (`1 \u{200B} 234`) shows as their grouping. A comma, a
+/// semicolon, a bracket or a word between two numbers separates them.
 fn groups_digits(chars: &[char], i: usize) -> bool {
     let quote = |c: char| {
         matches!(
@@ -88,7 +89,7 @@ fn groups_digits(chars: &[char], i: usize) -> bool {
             '\'' | '"' | '`' | '\u{2018}' | '\u{2019}' | '\u{201C}' | '\u{201D}'
         )
     };
-    let in_run = |c: char| c.is_whitespace() || quote(c);
+    let in_run = |c: char| c.is_whitespace() || quote(c) || hides_digits(c);
     if !in_run(chars[i]) {
         return false;
     }
@@ -171,28 +172,31 @@ pub(super) fn directs_text(c: char) -> bool {
 /// combining mark, or any other non-ASCII character that is neither a letter nor a symbol written with numbers (`°`,
 /// `±`, `×`, a comparison, a Unicode hyphen or minus). Every number in such a token is refused: `1\u{200B}9` reads as 19.
 pub(super) fn obscures_numbers(token: &str) -> bool {
-    token.chars().any(|c| {
-        c.is_control()
-            || matches!(
+    token.chars().any(hides_digits)
+}
+
+/// One character `obscures_numbers` refuses a token for.
+fn hides_digits(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{115F}' | '\u{1160}' | '\u{17B4}' | '\u{17B5}' | '\u{3164}' | '\u{FFA0}'
+        )
+        || (!c.is_ascii()
+            && !c.is_alphabetic()
+            && !visible_separator(c)
+            && !compares(c)
+            && !matches!(
                 c,
-                '\u{115F}' | '\u{1160}' | '\u{17B4}' | '\u{17B5}' | '\u{3164}' | '\u{FFA0}'
-            )
-            || (!c.is_ascii()
-                && !c.is_alphabetic()
-                && !visible_separator(c)
-                && !compares(c)
-                && !matches!(
-                    c,
-                    '\u{00B0}'
-                        | '\u{00B1}'
-                        | '\u{00B7}'
-                        | '\u{00D7}'
-                        | '\u{2030}'
-                        | '\u{2032}'
-                        | '\u{2033}'
-                        | '\u{2192}'
-                ))
-    })
+                '\u{00B0}'
+                    | '\u{00B1}'
+                    | '\u{00B7}'
+                    | '\u{00D7}'
+                    | '\u{2030}'
+                    | '\u{2032}'
+                    | '\u{2033}'
+                    | '\u{2192}'
+            ))
 }
 
 /// Whether a refused number may be written as `NUMBER_MASK`. In an operand (`operand_around`) that starts with a digit
