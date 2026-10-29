@@ -20,8 +20,8 @@ pub(super) const NUMBER_MASK: &str = "(a number)";
 pub(super) const SUMMARY_MAX: usize = 2048;
 
 /// The text with each number the prose rule refuses written as `NUMBER_MASK`, read with the same tokens as `numbers`,
-/// and how many it replaced. A number inside a name or a token that must be shown whole stays (`may_mask`), so the
-/// prose rule still refuses it.
+/// and its direction controls dropped (`without_directions`), with how many it replaced or dropped. A number inside a
+/// name or a token that must be shown whole stays (`may_mask`), so the prose rule still refuses it.
 pub(super) fn mask_refused_numbers(text: &str, index: &ResultIndex) -> (String, usize) {
     let chars: Vec<char> = text.chars().collect();
     let (mut out, mut masked, mut last) = (String::new(), 0, 0);
@@ -35,7 +35,21 @@ pub(super) fn mask_refused_numbers(text: &str, index: &ResultIndex) -> (String, 
         last = end;
     }
     out.extend(&chars[last..]);
-    (out, masked)
+    let (out, dropped) = without_directions(out);
+    (out, masked + dropped)
+}
+
+/// `text` without its direction controls (`directs_text`), and how many it dropped. Both masking paths drop them: no
+/// number, and no bound value a document inserts later, may display in an order they set.
+pub(super) fn without_directions(text: String) -> (String, usize) {
+    let dropped = text.chars().filter(|&c| directs_text(c)).count();
+    if dropped == 0 {
+        return (text, 0);
+    }
+    (
+        text.chars().filter(|&c| !directs_text(c)).collect(),
+        dropped,
+    )
 }
 
 /// Whether the number at `start..end` belongs to a name such as B12, HbA1c, IL-6 or omega-3: a letter touches it, or

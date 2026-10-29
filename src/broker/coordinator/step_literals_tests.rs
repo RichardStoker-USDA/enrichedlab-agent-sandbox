@@ -117,7 +117,10 @@ fn a_steps_literal_stands_only_as_a_whole_token() {
     let p = |rationale: &str| refused(&proposal(vec![action("q-1", Some(sql), rationale)], "s"));
     assert!(p("Keep a above 1 (and b below 9), codes 7 and 3: 10.").is_empty());
     for (text, want) in [
-        ("Keep p below 1\u{200e}e\u{200e}-9.", vec!["1", "9"]),
+        (
+            "Keep p below 1\u{200e}e\u{200e}-9.",
+            vec!["1", "9", "U+200E"],
+        ),
         ("Keep p below 10^-9.", vec!["10", "9"]),
         ("Compare A_7/B_3.", vec!["7", "3"]),
         ("Compare A/7 rows.", vec!["7"]),

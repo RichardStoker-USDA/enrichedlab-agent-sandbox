@@ -144,9 +144,14 @@ fn a_quantity_or_an_invisible_join_is_never_a_name() {
         "A7\u{200b}B3",
         "A7\u{2060}B3",
     ] {
+        // A direction mark is named as well (`directs_text`).
+        let mut want = vec!["7", "3"];
+        if joined.contains('\u{200e}') {
+            want.push("U+200E");
+        }
         assert_eq!(
             index.prose_refused(&format!("{joined} rose.")),
-            ["7", "3"],
+            want,
             "{joined:?}"
         );
     }
@@ -246,7 +251,7 @@ fn numbers_allowed_on_their_own_never_admit_a_name_piece_by_piece() {
     assert_eq!(index.prose_refused("Fmo3-1 rose."), ["3", "1"]);
     assert_eq!(
         index.step_prose_refused("Pair Gene3 with A7\u{200e}B3"),
-        ["3", "7", "3"]
+        ["3", "7", "3", "U+200E"]
     );
     index.allowed_numbers.insert("9".to_string());
     assert_eq!(index.prose_refused("p was 1e-9."), ["1", "9"]);
@@ -311,17 +316,21 @@ fn comparisons_and_hidden_characters_never_compose_a_value() {
         assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
     }
     // A hidden character beside one allowed number still changes how it reads: a right-to-left override shows 37 as 73.
-    for text in [
-        "It was \u{202E}37 here.",
-        "It was \u{2067}37\u{2069} here.",
-        "It was 37\u{FE0F} here.",
+    // Masking writes the number as a mask and drops each direction control, counting both.
+    for (text, want) in [
+        ("It was \u{202E}37 here.", vec!["37", "U+202E"]),
+        (
+            "It was \u{2067}37\u{2069} here.",
+            vec!["37", "U+2067", "U+2069"],
+        ),
+        ("It was 37\u{FE0F} here.", vec!["37"]),
     ] {
-        assert_eq!(index.prose_refused(text), ["37"], "{text:?}");
+        assert_eq!(index.prose_refused(text), want, "{text:?}");
         let (step, count) = index.mask_step_numbers(text, None);
-        assert_eq!(count, 1, "{text:?}");
+        assert_eq!(count, want.len(), "{text:?}");
         assert!(index.step_prose_refused(&step).is_empty(), "{step:?}");
         let (summary, count) = mask_refused_numbers(text, &index);
-        assert_eq!(count, 1, "{text:?}");
+        assert_eq!(count, want.len(), "{text:?}");
         assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
     }
     // A filler that counts as a letter joins the digits into one operand starting with a digit: both numbers mask.
@@ -451,6 +460,16 @@ fn signs_radixes_groupings_and_number_pairs_never_compose_a_value() {
             .prose_refused("Days 1, 234, 1 or 234 and '5' days.")
             .is_empty()
     );
+    // A direction control is refused as itself, with no digit near it: a finding's bound value would be inserted
+    // later where a placeholder stood.
+    assert_eq!(
+        index.prose_refused("Mean \u{202E} \u{202C} rose."),
+        ["U+202E", "U+202C"]
+    );
+    assert_eq!(
+        index.step_prose_refused("Rank \u{2067}them\u{2069}."),
+        ["U+2067", "U+2069"]
+    );
     // A direction control anywhere in the text refuses every number in it, whatever spaces separate them: an override
     // displays an allowed 37 as 73 across a space.
     for text in [
@@ -461,7 +480,10 @@ fn signs_radixes_groupings_and_number_pairs_never_compose_a_value() {
     ] {
         let refused = index.prose_refused(text);
         assert!(
-            !refused.is_empty() && refused.iter().all(|n| text.contains(n.as_str())),
+            refused.iter().any(|n| n.starts_with("U+"))
+                && refused
+                    .iter()
+                    .any(|n| !n.starts_with("U+") && text.contains(n.as_str())),
             "{text:?}"
         );
         let (step, count) = index.mask_step_numbers(text, None);

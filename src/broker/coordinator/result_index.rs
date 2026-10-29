@@ -265,11 +265,18 @@ impl ResultIndex {
             .iter()
             .filter(|c| c.is_numeric() && !c.is_ascii_digit())
             .map(|c| c.to_string());
+        // A direction control is refused as itself, digits or not: a value inserted later in its place (a finding's
+        // bound cell in a document) would display in the order it sets.
+        let directions = chars
+            .iter()
+            .filter(|&&c| directs_text(c))
+            .map(|&c| format!("U+{:04X}", u32::from(c)));
         number_spans(&chars)
             .into_iter()
             .filter(|&(start, end)| self.number_refused(&chars, start, end, step, own))
             .map(|(start, end)| chars[start..end].iter().collect())
             .chain(other_numerals)
+            .chain(directions)
             .collect()
     }
 
@@ -332,7 +339,8 @@ impl ResultIndex {
             last = end;
         }
         out.extend(&chars[last..]);
-        (out, masked)
+        let (out, dropped) = without_directions(out);
+        (out, masked + dropped)
     }
 
     /// This index with the plain names the source material of `context` writes (`allowed_names`), for checking the reply

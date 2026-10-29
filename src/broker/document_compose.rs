@@ -97,7 +97,7 @@ fn record_invalid() -> Refusal {
 
 /// Text as these files can hold it. XML 1.0 holds no C0 control but tab, line feed and carriage return and no U+FFFE or
 /// U+FFFF, and Office shows C1 controls as boxes or drops them; here each control but tab and line feed becomes a space
-/// and each of those two U+FFFD, so nothing is dropped or joined unseen. Returns whether anything changed, so the
+/// and each of those two, and each direction control, U+FFFD, so nothing is dropped, joined or reordered unseen. Returns whether anything changed, so the
 /// document can say so.
 pub(super) fn plain(text: &str) -> (String, bool) {
     let mut changed = false;
@@ -109,7 +109,14 @@ pub(super) fn plain(text: &str) -> (String, bool) {
                 changed = true;
                 ' '
             }
-            '\u{fffe}' | '\u{ffff}' => {
+            // A direction control could display an inserted value in another order; it shows as U+FFFD instead.
+            '\u{fffe}'
+            | '\u{ffff}'
+            | '\u{061c}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}' => {
                 changed = true;
                 '\u{fffd}'
             }

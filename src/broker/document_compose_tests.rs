@@ -772,3 +772,18 @@ fn a_csv_copy_past_its_bound_is_left_to_the_result_package() {
             .is_none()
     );
 }
+
+#[test]
+fn document_text_never_carries_a_direction_control() {
+    // A bound value written between direction controls would display reversed; each control shows as U+FFFD.
+    let (text, changed) = plain("Mean \u{202E}12.5\u{202C}, then \u{2067}7\u{2069} and \u{200F}9.");
+    assert!(changed);
+    assert_eq!(
+        text,
+        "Mean \u{fffd}12.5\u{fffd}, then \u{fffd}7\u{fffd} and \u{fffd}9."
+    );
+    assert_eq!(
+        plain("Mean 12.5 and 7."),
+        ("Mean 12.5 and 7.".to_string(), false)
+    );
+}
