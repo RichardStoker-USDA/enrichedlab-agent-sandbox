@@ -627,3 +627,48 @@ fn a_source_adds_an_identifier_only_where_its_number_stands_after_the_label() {
         ["chromosome 4"]
     );
 }
+
+/// An identifier never becomes a quantity: a unit, a percent sign or another number after a space ends it, on the side
+/// of the source and of the reply; and a label joined to another word by an underscore or hyphen labels nothing (both
+/// reviewers of broker r35, round 1).
+#[test]
+fn a_unit_after_a_space_or_a_joined_label_makes_no_identifier() {
+    let index = named(
+        "literature",
+        passage("The peak on chromosome 12 (Fig. 2) and Table 9."),
+    );
+    for allowed in [
+        "Chromosome 12 was recovered.",
+        "chromosome 12 (Fig. 2) holds it",
+        "Table 9 lists it.",
+        "as listed (Table 9).",
+        "\"Chromosome 12,\" it says",
+    ] {
+        assert!(index.prose_refused(allowed).is_empty(), "{allowed}");
+    }
+    for (refused, number) in [
+        ("Chromosome 12 mg was recovered.", "12"),
+        ("Chromosome 12 % was retained.", "12"),
+        ("chromosome 12 percent", "12"),
+        ("chromosome 12 MG", "12"),
+        ("chromosome 12 \u{00B5}g", "12"),
+        ("chromosome 12 \u{00B0}C", "12"),
+        ("chromosome 12 kb.", "12"),
+        ("chromosome 12 mg/kg", "12"),
+        ("x_table 9 rose", "9"),
+        ("sub-table 9 rose", "9"),
+    ] {
+        assert!(
+            index.prose_refused(refused).contains(&number.to_owned()),
+            "{refused}"
+        );
+    }
+    assert_eq!(index.prose_refused("chromosome 12 13"), ["12", "13"]);
+    let source = "chromosome 12 mg, chromosome 13 %, not_table 9, sub-table 4, (table 5), \"figure 6\", exon 7 days";
+    assert_eq!(shown_identifier_keys(source), ["table 5", "figure 6"]);
+    let underscored = named("literature", passage("See not_table 9."));
+    assert_eq!(
+        underscored.prose_refused("Table 9 shows the result."),
+        ["9"]
+    );
+}

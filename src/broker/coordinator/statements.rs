@@ -370,21 +370,122 @@ const IDENTIFIER_LABELS: &[(&str, &[&str])] = &[
 /// Most numbers one identifier label may reach through a list (`chromosomes 3, 5 and 12`).
 const IDENTIFIER_LIST_MAX: usize = 8;
 
+/// Spelled units and quantity words that make the number before them a quantity (`chromosome 12 percent`), compared in
+/// lower case; written units are `UNITS`.
+const SPELLED_UNITS: &[&str] = &[
+    "percent",
+    "percentage",
+    "per",
+    "fold",
+    "times",
+    "degree",
+    "degrees",
+    "gram",
+    "grams",
+    "milligram",
+    "milligrams",
+    "microgram",
+    "micrograms",
+    "kilogram",
+    "kilograms",
+    "liter",
+    "liters",
+    "litre",
+    "litres",
+    "milliliter",
+    "milliliters",
+    "mole",
+    "moles",
+    "unit",
+    "units",
+    "base",
+    "bases",
+    "kilobase",
+    "kilobases",
+    "megabase",
+    "megabases",
+    "centimorgan",
+    "centimorgans",
+    "second",
+    "seconds",
+    "minute",
+    "minutes",
+    "hour",
+    "hours",
+    "day",
+    "days",
+    "week",
+    "weeks",
+    "month",
+    "months",
+    "year",
+    "years",
+];
+
+/// A mark that may close an identifier before whitespace or the text's end, alone or in a run (`(Table 5).`,
+/// `"Fig. 6",`).
+fn closes(c: char) -> bool {
+    matches!(
+        c,
+        '.' | ',' | ';' | ':' | ')' | ']' | '!' | '?' | '"' | '\'' | '\u{2019}' | '\u{201D}'
+    )
+}
+
+/// Whether the word after the whitespace at `end` makes the number before it a quantity: a token that starts with
+/// anything but a letter or an opening parenthesis (`12 %`, `12 \u{00B0}C`, `12 13`, `12 \u{00B1}`), a written unit
+/// in any case (`12 mg`, `12 MG`, `12 \u{00B5}g`, `12 kb`) or a spelled one (`12 percent`).
+fn quantity_follows(chars: &[char], end: usize) -> bool {
+    let mut i = end;
+    while i < chars.len() && chars[i].is_whitespace() {
+        i += 1;
+    }
+    let Some(&first) = chars.get(i) else {
+        return false;
+    };
+    if first == '(' {
+        return false;
+    }
+    if !first.is_alphabetic() {
+        return true;
+    }
+    let mut j = i;
+    while j < chars.len() && !chars[j].is_whitespace() {
+        j += 1;
+    }
+    let token: String = chars[i..j].iter().collect();
+    let token = token.trim_end_matches(['.', ',', ';', ':', ')', '!', '?']);
+    let lower = token.to_lowercase();
+    unit_shaped(&format!("0{token}"))
+        || unit_shaped(&format!("0{lower}"))
+        || SPELLED_UNITS.contains(&lower.as_str())
+}
+
 /// The key of the label that makes the number at `start..end` of `chars` an identifier (`chromosome` for the 12 of
 /// `chromosome 12`, `Chr. 12`, `chromosomes 3, 5 and 12` or `chromosomes 3\u{2013}12`), or `None`. The number is a
 /// whole number standing alone: whitespace before it unless a list sign joins it to the number before, and after it
-/// nothing but the end, whitespace or one closing punctuation mark. The label is a whole word, with an optional period,
-/// and whitespace between it and the first number. A measurement (`12 mg`, `12%`, `1.5`) is never labelled: a
-/// decimal is one number span here, and a sign or letter after the digits fails the closing rule.
+/// nothing but the end, closing marks (`closes`) before whitespace or the end, or whitespace before a word that is no
+/// unit (`quantity_follows`).
+/// The label is a whole word (after the text's start, whitespace, an opening bracket or a quote, so `not_table 9` or
+/// `sub-table 9` labels nothing), with an optional period, and whitespace between it and the first number. A
+/// measurement (`12 mg`, `12 %`, `12%`, `1.5`) is never labelled: a decimal is one number span here, a sign or letter
+/// after the digits fails the closing rule, and a unit after a space fails `quantity_follows`.
 pub(super) fn identifier_label(chars: &[char], start: usize, end: usize) -> Option<&'static str> {
     if !chars[start..end].iter().all(char::is_ascii_digit) {
         return None;
     }
     match chars.get(end) {
         None => {}
-        Some(c) if c.is_whitespace() => {}
-        Some('.' | ',' | ';' | ':' | ')' | '!' | '?') => {
-            if chars.get(end + 1).is_some_and(|c| !c.is_whitespace()) {
+        Some(c) if c.is_whitespace() => {
+            if quantity_follows(chars, end) {
+                return None;
+            }
+        }
+        Some(&c) if closes(c) => {
+            let mut j = end;
+            while chars.get(j).copied().is_some_and(closes) {
+                j += 1;
+            }
+            if chars.get(j).is_some_and(|c| !c.is_whitespace()) {
                 return None;
             }
         }
@@ -423,7 +524,14 @@ pub(super) fn identifier_label(chars: &[char], start: usize, end: usize) -> Opti
         while k > 0 && chars[k - 1].is_ascii_alphabetic() {
             k -= 1;
         }
-        if k == word_end || (k > 0 && chars[k - 1].is_alphanumeric()) {
+        if k == word_end
+            || (k > 0
+                && !chars[k - 1].is_whitespace()
+                && !matches!(
+                    chars[k - 1],
+                    '(' | '[' | '{' | '"' | '\'' | '\u{2018}' | '\u{201C}'
+                ))
+        {
             return None;
         }
         let word: String = chars[k..word_end]
