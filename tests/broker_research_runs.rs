@@ -4690,7 +4690,10 @@ fn a_gene_a_shown_passage_names_may_stand_in_the_summary() {
     assert!(compiled.value["literature"].is_array() && compiled.value["lab_notes"].is_array());
     let named = compiled.index.with_names_from(&compiled.value);
     assert!(named.prose_allowed("Fmo3 and Cyp7a1 lie under the peak."));
-    assert!(!named.prose_allowed("It lies on chromosome 17."));
+    assert!(!named.prose_allowed("It lies near 17."));
+    // The passage's identifier stands after a label of its kind (`chromosome 17`), as the passage writes it.
+    assert!(named.prose_allowed("It lies on chromosome 17."));
+    assert!(!named.prose_allowed("It lies on chromosome 18."));
     assert!(!named.prose_allowed("Abcg58 holds the marker."));
     assert!(!compiled.index.prose_allowed("Fmo3 lies under the peak."));
     // The kept context rebuilds the same index, and the same names.
