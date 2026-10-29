@@ -40,7 +40,7 @@ tokio = { version = "1.53", features = ["fs", "io-util", "macros", "net", "proce
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "json", "env-filter", "std"] }
 uuid = { version = "1.27", features = ["v7"] }
-zip = { version = "8.6", default-features = false, features = ["deflate"] }
+zip = { version = "9.0", default-features = false, features = ["deflate"] }
 yara-x = { version = "1.21.0", default-features = false, features = ["constant-folding", "exact-atoms", "fast-regexp", "elf-module", "hash-module", "macho-module", "math-module", "pe-module", "string-module", "zip-module"] }
 
 [dev-dependencies]
