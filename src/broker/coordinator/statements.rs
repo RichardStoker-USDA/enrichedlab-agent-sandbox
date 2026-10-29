@@ -77,10 +77,10 @@ fn run_bounds(
     (from, to)
 }
 
-/// Whether `chars[i]` lies in a run of spaces and quote marks between two digits that holds a quote mark or a space
-/// outside ASCII. Such a run groups the digits into one number however many characters it has: typesetting groups
-/// thousands with narrow or thin spaces (`1\u{202F}234`) and some locales with an apostrophe (`1'234`, `1\u{2019}234`).
-/// A plain ASCII space alone separates two numbers, as does a comma followed by a space.
+/// Whether `chars[i]` lies in a run of spaces and quote marks between two digits. Such a run groups the digits into one
+/// number however many characters it has and whichever they are: thousands are grouped with a space (`1 234`), a narrow
+/// or thin space (`1\u{202F}234`) and in some locales an apostrophe (`1'234`, `1\u{2019}234`). A comma, a semicolon, a
+/// bracket or a word between two numbers separates them.
 fn groups_digits(chars: &[char], i: usize) -> bool {
     let quote = |c: char| {
         matches!(
@@ -103,7 +103,6 @@ fn groups_digits(chars: &[char], i: usize) -> bool {
     from > 0
         && chars[from - 1].is_ascii_digit()
         && chars.get(to).is_some_and(|c| c.is_ascii_digit())
-        && chars[from..to].iter().any(|&c| quote(c) || !c.is_ascii())
 }
 
 /// A separator prose puts between words: whitespace, a comma, semicolon, bracket, quote, `!`, `?` or an ellipsis.
@@ -155,6 +154,16 @@ pub(super) fn operand_around(chars: &[char], start: usize, end: usize) -> String
     } else {
         run.to_owned()
     }
+}
+
+/// Whether a character sets the direction text is displayed in: an embedding, override or isolate, its closing mark,
+/// or a directional mark. Its scope crosses spaces and tokens (`\u{202E} 37 \u{202C}` displays as 73), so a text holding
+/// one has every number refused (`number_refused`).
+pub(super) fn directs_text(c: char) -> bool {
+    matches!(
+        c,
+        '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+    )
 }
 
 /// Whether a token holds a character that hides or changes how the digits around it read: a control character, an

@@ -355,8 +355,9 @@ fn a_step_may_state_its_own_sql_literals_through_the_lead_check() {
             "Keep nutrients 1003 and 1004 above (a number) grams.",
         ),
         (
+            // A direction mark anywhere refuses every number in the text, the step's own literals included.
             "Keep nutrient 1003\u{200e}1004 above 25.",
-            "Keep nutrient (a number)\u{200e}(a number) above 25.",
+            "Keep nutrient (a number)\u{200e}(a number) above (a number).",
         ),
         (
             "Keep nutrients 1003 and 1004 above .25 grams.",

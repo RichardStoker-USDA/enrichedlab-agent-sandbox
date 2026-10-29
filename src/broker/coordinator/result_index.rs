@@ -284,10 +284,13 @@ impl ResultIndex {
         step: bool,
         own: Option<&HashSet<String>>,
     ) -> bool {
-        // A token with a hidden or digit-changing character never stands (`1\u{200B}9`), and a number in an operand that
+        // A text that sets its display direction and a token with a hidden or digit-changing character never stand
+        // (`\u{202E} 37 \u{202C}`, `1\u{200B}9`), and a number in an operand that
         // must be shown whole stands only where the call shows it whole: no number allowed on its own, no step setting
         // and no literal of the step's SQL can admit `A7/B3`, `Fmo3-1`, `Gene3%` or `p=1e-9` piece by piece.
-        if obscures_numbers(&raw_token(chars, start, end)) {
+        if chars.iter().copied().any(directs_text)
+            || obscures_numbers(&raw_token(chars, start, end))
+        {
             return true;
         }
         let operand = operand_around(chars, start, end);

@@ -432,10 +432,36 @@ fn signs_radixes_groupings_and_number_pairs_never_compose_a_value() {
         assert_eq!(count, 2, "{text:?}");
         assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
     }
-    // An ASCII space, or a comma and a space, separates two numbers; a quoted number before a word stays alone.
+    // Any run of spaces between digits groups them too; a comma, a word or a quoted number before a word separates.
+    for text in ["Days 1 234 here.", "Days 1\n234 here."] {
+        assert_eq!(index.prose_refused(text), ["1", "234"], "{text:?}");
+        let (summary, count) = mask_refused_numbers(text, &index);
+        assert_eq!(count, 2, "{text:?}");
+        assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
+    }
     assert!(
         index
-            .prose_refused("Days 1 234, then 1, 234 and '5' days.")
+            .prose_refused("Days 1, 234, 1 or 234 and '5' days.")
             .is_empty()
     );
+    // A direction control anywhere in the text refuses every number in it, whatever spaces separate them: an override
+    // displays an allowed 37 as 73 across a space.
+    for text in [
+        "Value: \u{202E} 37 \u{202C} here.",
+        "Value: \u{2067} 37 \u{2069} here.",
+        "About 5 rose, then \u{202E} 9 \u{202C}.",
+        "It was 37 here.\u{200F}",
+    ] {
+        let refused = index.prose_refused(text);
+        assert!(
+            !refused.is_empty() && refused.iter().all(|n| text.contains(n.as_str())),
+            "{text:?}"
+        );
+        let (step, count) = index.mask_step_numbers(text, None);
+        assert_eq!(count, refused.len(), "{text:?}");
+        assert!(index.step_prose_refused(&step).is_empty(), "{step:?}");
+        let (summary, count) = mask_refused_numbers(text, &index);
+        assert_eq!(count, refused.len(), "{text:?}");
+        assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
+    }
 }
