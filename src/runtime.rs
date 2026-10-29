@@ -10,7 +10,7 @@ use anyhow::{Context, Result, bail};
 use ipnet::Ipv4Net;
 use serde::Deserialize;
 
-use crate::{openshell, state::SandboxRecord};
+use crate::{config::RuntimeConfig, openshell, platform::RuntimeAdapter, state::SandboxRecord};
 
 #[derive(Clone, Debug)]
 pub struct DockerSandbox {
@@ -124,6 +124,23 @@ pub fn inspect_sandbox(docker_bin: &Path, sandbox: &str) -> Result<DockerSandbox
         cgroupns_mode,
         ipc_mode,
     })
+}
+
+/// The gate every path that creates a sandbox (create, recreation and each rollback) passes before the sandbox is
+/// saved or used: a Docker sandbox whose namespaces are not private, or cannot be inspected, is deleted.
+pub fn admit_created(config: &RuntimeConfig, record: &SandboxRecord) -> Result<()> {
+    if record.runtime.driver != RuntimeAdapter::Docker {
+        return Ok(());
+    }
+    let Err(error) = require_private_namespaces(&config.docker_bin, &record.name) else {
+        return Ok(());
+    };
+    match openshell::delete_and_verify(&config.openshell_bin, record) {
+        Ok(()) => Err(error).context("sandbox was deleted because its namespaces are not private"),
+        Err(cleanup_error) => Err(error).context(format!(
+            "sandbox namespaces are not private and verified cleanup failed: {cleanup_error:#}"
+        )),
+    }
 }
 
 /// Refuse a Docker sandbox whose cgroup or IPC namespace is not its own (`DockerSandbox::namespaces_private`).

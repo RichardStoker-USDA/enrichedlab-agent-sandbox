@@ -707,7 +707,8 @@ fn apply_mount(config: &RuntimeConfig, sandbox: &str, request: &MountRequest) ->
         &record.policy_path,
         record.policy_advisor_enabled,
         record.ocsf_json_enabled,
-    );
+    )
+    .and_then(|()| crate::runtime::admit_created(config, &record));
     if let Err(error) = recreated {
         let rollback_profile = platform::profile_for_record(config, &previous)?;
         let rollback_driver = platform::driver_config(
@@ -728,7 +729,8 @@ fn apply_mount(config: &RuntimeConfig, sandbox: &str, request: &MountRequest) ->
             &previous.policy_path,
             previous.policy_advisor_enabled,
             previous.ocsf_json_enabled,
-        );
+        )
+        .and_then(|()| crate::runtime::admit_created(config, &previous));
         if let Err(rollback_error) = rollback {
             bail!("mount recreation failed ({error}); rollback also failed ({rollback_error})");
         }
@@ -759,7 +761,8 @@ fn apply_mount(config: &RuntimeConfig, sandbox: &str, request: &MountRequest) ->
             &previous.policy_path,
             previous.policy_advisor_enabled,
             previous.ocsf_json_enabled,
-        );
+        )
+        .and_then(|()| crate::runtime::admit_created(config, &previous));
         if let Err(rollback_error) = rollback {
             bail!(
                 "new sandbox was created but its record could not be saved ({error}); rollback also failed ({rollback_error})"

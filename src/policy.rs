@@ -143,6 +143,8 @@ fn append_policy(output: &mut String, name: &str, hosts: &[String], access: &str
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use crate::cli::LandlockMode;
 
     use super::{host_rule_name, render, validate_public_host};
@@ -212,24 +214,63 @@ mod tests {
                 1,
                 "{profile}"
             );
-            for entry in read_only.iter().chain(&read_write) {
-                assert!(
-                    !entry.starts_with("/sys/") || entry == "/sys/fs/cgroup",
-                    "{profile}: {entry}"
-                );
-                assert!(
-                    !entry.starts_with("/dev/")
-                        || ["/dev/urandom", "/dev/null", "/dev/shm"].contains(&entry.as_str()),
-                    "{profile}: {entry}"
-                );
-            }
-            for entry in &read_write {
-                assert!(
-                    entry != "/sys" && !entry.starts_with("/sys/"),
-                    "{profile}: {entry}"
-                );
+            assert_eq!(
+                grant_violations(&read_only, &read_write),
+                Vec::<String>::new(),
+                "{profile}"
+            );
+        }
+    }
+
+    /// Entries that grant more than the listed files under /sys and /dev. Landlock grants every path beneath an entry,
+    /// so an entry may not be /sys, /dev or a parent of them, and beneath them only the listed files are granted, each
+    /// in its one mode. Paths compare by whole components.
+    fn grant_violations(read_only: &[String], read_write: &[String]) -> Vec<String> {
+        let allowed = |entry: &str, read_write: bool| match entry {
+            "/sys/fs/cgroup" | "/dev/urandom" => !read_write,
+            "/dev/null" | "/dev/shm" => read_write,
+            _ => false,
+        };
+        let mut found = Vec::new();
+        for (entries, read_write) in [(read_only, false), (read_write, true)] {
+            for entry in entries {
+                let path = Path::new(entry);
+                for guarded in ["/sys", "/dev"] {
+                    if Path::new(guarded).starts_with(path)
+                        || (path.starts_with(guarded) && !allowed(entry, read_write))
+                    {
+                        found.push(format!(
+                            "{entry} ({})",
+                            if read_write { "rw" } else { "ro" }
+                        ));
+                        break;
+                    }
+                }
             }
         }
+        found
+    }
+
+    #[test]
+    fn a_grant_at_or_above_sys_or_dev_is_found() {
+        let list = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        let ok = list(&["/usr", "/sys/fs/cgroup", "/dev/urandom"]);
+        let ok_rw = list(&["/sandbox", "/tmp", "/dev/null", "/dev/shm"]);
+        assert!(grant_violations(&ok, &ok_rw).is_empty());
+        for bad in [
+            "/",
+            "/sys",
+            "/dev",
+            "/sys/fs",
+            "/sys/foo",
+            "/sys/fs/cgroup-other",
+            "/dev/shm-other",
+        ] {
+            assert_eq!(grant_violations(&list(&[bad]), &[]).len(), 1, "ro {bad}");
+            assert_eq!(grant_violations(&[], &list(&[bad])).len(), 1, "rw {bad}");
+        }
+        assert_eq!(grant_violations(&[], &list(&["/sys/fs/cgroup"])).len(), 1);
+        assert_eq!(grant_violations(&list(&["/dev/shm"]), &[]).len(), 1);
     }
 
     #[test]

@@ -516,6 +516,26 @@ pub fn observe_gateway(
     })
 }
 
+/// A runtime proof's result from what was observed. A wrong driver, a failed Kubernetes binding or a Docker container
+/// sharing its host's cgroup or IPC namespace fails (the policies grant `/sys/fs/cgroup` and `/dev/shm` on the premise
+/// that both are the sandbox's own); an unobserved binding or unread Docker namespaces is partial, never passed.
+fn proof_result(
+    driver: RuntimeAdapter,
+    driver_passed: bool,
+    kubernetes_binding: Option<bool>,
+    docker_private: Option<bool>,
+) -> &'static str {
+    if !driver_passed || kubernetes_binding == Some(false) || docker_private == Some(false) {
+        "failed"
+    } else if (driver == RuntimeAdapter::Kubernetes && kubernetes_binding.is_none())
+        || (driver == RuntimeAdapter::Docker && docker_private.is_none())
+    {
+        "partial"
+    } else {
+        "passed"
+    }
+}
+
 pub fn observe(config: &RuntimeConfig, record: &SandboxRecord) -> Result<RuntimeProof> {
     let profile = profile_for_record(config, record)?;
     let gateway = observe_gateway(config, &record.runtime.gateway_profile, &profile)?;
@@ -567,22 +587,12 @@ pub fn observe(config: &RuntimeConfig, record: &SandboxRecord) -> Result<Runtime
         );
     }
     let driver_passed = gateway.observed_driver.as_deref() == Some(profile.driver.as_str());
-    // A container sharing its host's cgroup or IPC namespace fails: the policies grant `/sys/fs/cgroup` and `/dev/shm`
-    // on the premise that both are the sandbox's own.
-    let result = if !driver_passed
-        || kubernetes
-            .as_ref()
-            .is_some_and(|proof| !proof.api_binding_passed)
-        || docker_namespaces
-            .as_ref()
-            .is_some_and(|(private, _, _)| !private)
-    {
-        "failed"
-    } else if profile.driver == RuntimeAdapter::Kubernetes && kubernetes.is_none() {
-        "partial"
-    } else {
-        "passed"
-    };
+    let result = proof_result(
+        profile.driver,
+        driver_passed,
+        kubernetes.as_ref().map(|proof| proof.api_binding_passed),
+        docker_namespaces.as_ref().map(|(private, _, _)| *private),
+    );
     let proof = RuntimeProof {
         schema_version: 1,
         sandbox: record.name.clone(),
@@ -1374,8 +1384,21 @@ mod tests {
     use super::{
         GatewayProfile, KubernetesObserver, KubernetesPeerIdentity, ObserverTransport,
         RuntimeAdapter, WorkspaceTransport, build_kubernetes_peer_policy_objects, driver_config,
-        pod_owned_by_sandbox, pod_uses_host_namespaces,
+        pod_owned_by_sandbox, pod_uses_host_namespaces, proof_result,
     };
+
+    #[test]
+    fn a_proof_passes_only_on_what_was_observed() {
+        use RuntimeAdapter::{Docker, Kubernetes, Vm};
+        assert_eq!(proof_result(Docker, true, None, Some(true)), "passed");
+        assert_eq!(proof_result(Docker, true, None, Some(false)), "failed");
+        assert_eq!(proof_result(Docker, true, None, None), "partial");
+        assert_eq!(proof_result(Docker, false, None, Some(true)), "failed");
+        assert_eq!(proof_result(Kubernetes, true, Some(true), None), "passed");
+        assert_eq!(proof_result(Kubernetes, true, Some(false), None), "failed");
+        assert_eq!(proof_result(Kubernetes, true, None, None), "partial");
+        assert_eq!(proof_result(Vm, true, None, None), "passed");
+    }
 
     #[test]
     fn a_pod_in_any_host_namespace_fails_the_binding() {
