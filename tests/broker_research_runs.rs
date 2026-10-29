@@ -2551,12 +2551,17 @@ fn unsourced_numbers_in_the_summary_are_masked_and_counted() {
         "A second look checks the order.",
         "Compare the supplements",
         None,
-        "Orange juice gave .{a} here.",
+        "Orange juice gave .{a} and {a}h here.",
     );
     assert!(
         refusal(&p.validate_prose(&compiled.index).unwrap_err())
             .names
             .contains(&"findings.statement: .{}".to_string())
+    );
+    assert!(
+        refusal(&p.validate_prose(&compiled.index).unwrap_err())
+            .names
+            .contains(&"findings.statement: {}h".to_string())
     );
     // A summary the mask would take past its 2,048-byte limit stays whole and is refused.
     let long = format!("{} 7.", "word ".repeat(408));

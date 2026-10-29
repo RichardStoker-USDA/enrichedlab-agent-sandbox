@@ -501,9 +501,9 @@ fn a_bound_value_stands_only_alone() {
     let marker = format!("Fmo{PLACEHOLDER_VALUE} and Fmo3 by strain.");
     let index = named("literature", passage(&marker));
     let refused = |s: &str| index.placements_refused(&with_placeholder_values(s));
-    // Alone, beside a listed unit, a percent sign, a bracket or sentence punctuation, a bound value stands.
+    // Alone, before a unit or a percent sign after a space, in brackets or before sentence punctuation, it stands.
     for s in [
-        "Mean {a} mg, then {b}% ({c}).",
+        "Mean {a} mg, then {b} % ({c}).",
         "From {a} to {b}, and {c}: {d}.",
     ] {
         assert!(refused(s).is_empty(), "{s}");
@@ -520,6 +520,9 @@ fn a_bound_value_stands_only_alone() {
         ("It was Fmo{a}.", "Fmo{}"),
         ("It was {a}-{b}.", "{}-{}"),
         ("Mean .{a} here.", ".{}"),
+        ("It was {a}%.", "{}%"),
+        ("It was {a}h.", "{}h"),
+        ("It was {a}mg.", "{}mg"),
         ("Mean -{a} here.", "-{}"),
     ] {
         let got = refused(s);
