@@ -1,0 +1,66 @@
+{
+  "key": "fdc-food-nutrients-2025-12",
+  "version": 1,
+  "source": "fdc-foundation-2025-12",
+  "title": "Nutrient profile of one Foundation Food (December 2025)",
+  "purpose": "List every nutrient this FoodData Central release reports for one Foundation Food: the nutrient's id, number, name and unit, the amount per 100 g of the food, and the analytical data points with their minimum, maximum and median where published. Rows follow the release's nutrient rank. Each food and nutrient pair has one amount in this release.",
+  "parameters": [
+    {
+      "name": "fdc_id",
+      "description": "FoodData Central id of a Foundation Food in this release",
+      "type": "integer",
+      "required": true,
+      "minimum": 1,
+      "maximum": 2147483647
+    }
+  ],
+  "output_columns": [
+    {
+      "name": "nutrient_id",
+      "type": "integer",
+      "description": "Nutrient id in this release"
+    },
+    {
+      "name": "nutrient_nbr",
+      "type": "text",
+      "description": "Nutrient number as published"
+    },
+    {
+      "name": "nutrient",
+      "type": "text",
+      "description": "Nutrient name"
+    },
+    {
+      "name": "unit",
+      "type": "text",
+      "description": "Unit of the amount"
+    },
+    {
+      "name": "amount",
+      "type": "numeric",
+      "description": "Amount per 100 g of the food, as published"
+    },
+    {
+      "name": "data_points",
+      "type": "integer",
+      "description": "Number of analytical data points behind the amount"
+    },
+    {
+      "name": "min_amount",
+      "type": "numeric",
+      "description": "Lowest analytical value, where published"
+    },
+    {
+      "name": "max_amount",
+      "type": "numeric",
+      "description": "Highest analytical value, where published"
+    },
+    {
+      "name": "median_amount",
+      "type": "numeric",
+      "description": "Median analytical value, where published"
+    }
+  ],
+  "row_cap": 500,
+  "state": "enabled"
+}

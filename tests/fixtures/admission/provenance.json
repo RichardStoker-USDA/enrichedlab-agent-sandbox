@@ -1,0 +1,18 @@
+{
+  "kind": "synthetic-copy-seal-render-admit",
+  "generatedAt": "2026-09-09T10:48:45Z",
+  "custodySourceBase": "0205c132a474e64bab4fcb9a0fef9528d745f15d",
+  "custodySourceSha256": "19f353e4402ea8ebf39a0711b15b4b5b8b8373205f7e4d2132ec7f2d4eefb8ff",
+  "rendererRevision": "9811f0c94aea507d236267efbb65304867b59d98",
+  "rendererPath": "agent-sandbox/tools/render_sandbox.rb",
+  "tenantFixture": "agent-sandbox/tests/fixtures/tenant.json",
+  "profileFixture": "agent-sandbox/tests/fixtures/profile.json",
+  "rendererAt": "2026-09-09T10:48:45Z",
+  "profileDigest": "sha256:5e3e69e728eb02af2c963ae17f999f8801f40028bcba5097e8f8c0e11badf2dc",
+  "canonicalSandboxDigest": "sha256:31fb8c104665bd0f42d67d891df7f1a4e8d606adbf6e2b5c945888d6928ec333",
+  "completeStagingDigest": "sha256:864a705f9cb9961f939f76796bfe8e5f6fe86ea9ebc6125391dec357cb66deb2",
+  "inputManifestDigest": "sha256:beae683f4c3cd4066d4931ebeb3b676f14031bd8f8c750dca30d427e8bb7df9b",
+  "payloadDigest": "sha256:19f30bffbabb6eab83f5b633c7e8f858a2cdfb94b385e1252f0bc91733012f7f",
+  "runtimeExecution": false,
+  "notes": "Produced by the actual Rust copy-and-seal CLI and canonical Ruby renderer; the sealed payload is the read-only input subpath. No Kubernetes or scientific workload was executed."
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "enrichedlab://agent-state/coordination/v1",
+  "title": "Multi-agent coordination state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["role", "owned_paths", "dependencies", "shared_artifact_refs", "messages"],
+  "properties": {
+    "role": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "owned_paths": {"type": "array", "maxItems": 1024, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+    "dependencies": {"type": "object", "maxProperties": 1000},
+    "shared_artifact_refs": {"type": "object", "maxProperties": 10000, "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+    "messages": {"type": "object", "maxProperties": 1000}
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "enrichedlab-agent-sandbox-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./jsconfig.json"
+  },
+  "dependencies": {
+    "@xyflow/svelte": "1.6.5",
+    "svelte": "5.57.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "svelte-check": "4.7.6",
+    "terser": "^5.51.2",
+    "typescript": "6.0.3",
+    "vite": "8.3.5"
+  }
+}

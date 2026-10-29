@@ -1,0 +1,16 @@
+# cargo-audit exceptions, each with the reason it does not apply. Review them whenever a dependency named here changes.
+[advisories]
+ignore = [
+  # RUSTSEC-2023-0071, rsa (Marvin attack): a timing side channel in RSA private-key operations, with no fixed release.
+  # The broker only verifies RS256 signatures with public keys (jsonwebtoken's rust_crypto backend); private-key
+  # signing happens only in tests, where rsa is a dev-dependency that makes test keys.
+  "RUSTSEC-2023-0071",
+  # RUSTSEC-2026-0387, crypto-bigint 0.5 (timing variability in constant-time operations): reached only through
+  # jsonwebtoken's p256/p384 code for ES256/ES384. The broker refuses every algorithm but RS256 before it verifies, and
+  # verification uses public values only. The fix is in crypto-bigint 0.7.6; drop this once jsonwebtoken moves to the
+  # RustCrypto 0.14 curves (11.1.0 still requires p256 0.13).
+  "RUSTSEC-2026-0387",
+  # RUSTSEC-2024-0449, unsafe-libyaml is unmaintained (not a vulnerability): serde_yaml_ng's parser, which reads the
+  # repository's own policy, kind and evidence YAML. Replace serde_yaml_ng with a maintained YAML crate and drop this.
+  "RUSTSEC-2024-0449",
+]

@@ -1,0 +1,82 @@
+\set ON_ERROR_STOP on
+
+-- Run as the owner that applied 001_provenance.sql. The runtime role must
+-- already exist. Pass its name with: psql --set=runtime_role=ROLE -f ...
+\if :{?runtime_role}
+\else
+  \warn 'runtime_role is required'
+  \quit 3
+\endif
+
+ALTER ROLE :"runtime_role"
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  NOINHERIT
+  NOREPLICATION
+  NOBYPASSRLS;
+
+GRANT CONNECT ON DATABASE :DBNAME TO :"runtime_role";
+GRANT USAGE ON SCHEMA enrichedlab_agent TO :"runtime_role";
+GRANT SELECT, INSERT
+  ON enrichedlab_agent.provenance_runs,
+     enrichedlab_agent.evidence_leases
+  TO :"runtime_role";
+REVOKE UPDATE
+  ON enrichedlab_agent.provenance_runs,
+     enrichedlab_agent.evidence_leases
+  FROM :"runtime_role";
+GRANT UPDATE (subject, updated_at)
+  ON enrichedlab_agent.provenance_runs
+  TO :"runtime_role";
+GRANT UPDATE (use_count, last_used_at)
+  ON enrichedlab_agent.evidence_leases
+  TO :"runtime_role";
+GRANT SELECT, INSERT
+  ON enrichedlab_agent.provenance_events
+  TO :"runtime_role";
+
+REVOKE CREATE ON SCHEMA public FROM :"runtime_role";
+REVOKE CREATE ON SCHEMA enrichedlab_agent FROM :"runtime_role";
+
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_database
+  WHERE datname = current_database()
+    AND datdba = to_regrole(:'runtime_role')::oid
+) AS runtime_owns_database \gset
+\if :runtime_owns_database
+  \warn 'runtime role must not own the database'
+  \quit 4
+\endif
+
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_namespace
+  WHERE nspname = 'enrichedlab_agent'
+    AND nspowner = to_regrole(:'runtime_role')::oid
+) AS runtime_owns_schema \gset
+\if :runtime_owns_schema
+  \warn 'runtime role must not own the provenance schema'
+  \quit 5
+\endif
+
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_class AS relation
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'enrichedlab_agent'
+    AND relation.relowner = to_regrole(:'runtime_role')::oid
+) AS runtime_owns_relation \gset
+\if :runtime_owns_relation
+  \warn 'runtime role must not own provenance relations'
+  \quit 6
+\endif
+
+SELECT has_schema_privilege(:'runtime_role', 'public', 'CREATE')
+    OR has_schema_privilege(:'runtime_role', 'enrichedlab_agent', 'CREATE')
+  AS runtime_can_create_schema_objects \gset
+\if :runtime_can_create_schema_objects
+  \warn 'runtime role still has schema CREATE through another grant or role membership'
+  \quit 7
+\endif

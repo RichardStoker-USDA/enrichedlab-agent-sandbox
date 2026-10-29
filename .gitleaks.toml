@@ -1,0 +1,11 @@
+# gitleaks: the default rules, plus one narrow allowlist. Reviewed FoodData Central tools carry their release in their
+# key (fdc-, the tool name, then the release year and month), which the generic API key rule's entropy check flags. A
+# tool's key is its name, written by scripts/generate_fdc_release_tools.py or generate_fdc_data_type_tools.py, never a
+# credential.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "FoodData Central per-release reviewed tool keys (Foundation, SR Legacy, FNDDS, Branded)"
+regexTarget = "line"
+regexes = ['''^\s*"key": "fdc-(sr-|fndds-|branded-)?(find-foods|food-nutrients|rank-foods-by-nutrient)-20[0-9]{2}-(0[1-9]|1[0-2])",?$''']

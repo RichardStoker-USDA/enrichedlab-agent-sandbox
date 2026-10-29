@@ -1,0 +1,100 @@
+{
+ "2019-04": {
+  "reader": "fdc_foundation_2019_04_reader",
+  "fdc-find-foods": "\"milk\" returned 6 matches, empty text returned 92 of the 92 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 119 rows with 119 distinct nutrients, 119 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2019-12": {
+  "reader": "fdc_foundation_2019_12_reader",
+  "fdc-find-foods": "\"milk\" returned 11 matches, empty text returned 100 of the 150 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 119 rows with 119 distinct nutrients, 119 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2020-04": {
+  "reader": "fdc_foundation_2020_04_reader",
+  "fdc-find-foods": "\"milk\" returned 11 matches, empty text returned 100 of the 163 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 119 rows with 119 distinct nutrients, 119 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2020-10": {
+  "reader": "fdc_foundation_2020_10_reader",
+  "fdc-find-foods": "\"milk\" returned 6 matches, empty text returned 100 of the 128 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 119 rows with 119 distinct nutrients, 119 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2021-04": {
+  "reader": "fdc_foundation_2021_04_reader",
+  "fdc-find-foods": "\"milk\" returned 8 matches, empty text returned 100 of the 140 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 119 rows with 119 distinct nutrients, 119 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2021-10": {
+  "reader": "fdc_foundation_2021_10_reader",
+  "fdc-find-foods": "\"milk\" returned 8 matches, empty text returned 100 of the 159 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 119 rows with 119 distinct nutrients, 119 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2022-04": {
+  "reader": "fdc_foundation_2022_04_reader",
+  "fdc-find-foods": "\"milk\" returned 15 matches, empty text returned 100 of the 184 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 119 rows with 119 distinct nutrients, 119 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2022-10": {
+  "reader": "fdc_foundation_2022_10_reader",
+  "fdc-find-foods": "\"milk\" returned 15 matches, empty text returned 100 of the 210 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 119 rows with 119 distinct nutrients, 119 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2023-04": {
+  "reader": "fdc_foundation_2023_04_reader",
+  "fdc-find-foods": "\"milk\" returned 15 matches, empty text returned 100 of the 236 Foundation Foods, each with an empty food_category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 121 rows with 121 distinct nutrients, 121 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2023-10": {
+  "reader": "fdc_foundation_2023_10_reader",
+  "fdc-find-foods": "\"milk\" returned 15 matches, empty text returned 100 of the 265 Foundation Foods, each with an empty food_category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 121 rows with 121 distinct nutrients, 121 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2024-04": {
+  "reader": "fdc_foundation_2024_04_reader",
+  "fdc-find-foods": "\"milk\" returned 15 matches, empty text returned 100 of the 287 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 121 rows with 121 distinct nutrients, 121 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2024-10": {
+  "reader": "fdc_foundation_2024_10_reader",
+  "fdc-find-foods": "\"milk\" returned 15 matches, empty text returned 100 of the 316 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 121 rows with 121 distinct nutrients, 121 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2025-04": {
+  "reader": "fdc_foundation_2025_04_reader",
+  "fdc-find-foods": "\"milk\" returned 15 matches, empty text returned 100 of the 340 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 121 rows with 121 distinct nutrients, 121 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ },
+ "2025-12": {
+  "reader": "fdc_foundation_2025_12_reader",
+  "fdc-find-foods": "\"milk\" returned 15 matches, empty text returned 100 of the 365 Foundation Foods, each with its category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-food-nutrients": "the first Foundation Food returned 121 rows with 121 distinct nutrients, 121 with an amount; an id that is not a Foundation Food returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-rank-foods-by-nutrient": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "duplicate_pairs": 0
+ }
+}

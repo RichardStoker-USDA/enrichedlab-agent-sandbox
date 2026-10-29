@@ -1,0 +1,57 @@
+{
+  "schema": "enrichedlab.hpc-sites.v1",
+  "checked": "2026-10-04",
+  "globus": "https://www.globus.org/",
+  "globus_organization": "SCINet - ARS/USDA",
+  "upload_limit_gb": 1,
+  "home_quota_gb": 30,
+  "short_term_days": 90,
+  "sites": [
+    {
+      "key": "atlas",
+      "name": "Atlas",
+      "open_ondemand": "https://atlas-ood.hpc.msstate.edu/",
+      "globus_collection": "SCINet-Atlas",
+      "account_required": true
+    },
+    {
+      "key": "ceres",
+      "name": "Ceres",
+      "open_ondemand": "https://ceres-ondemand.scinet.usda.gov/",
+      "globus_collection": "SCINet-Ceres",
+      "account_required": false
+    }
+  ],
+  "sources": [
+    {
+      "title": "SCINet: Open OnDemand",
+      "url": "https://scinet.usda.gov/guides/use/open-ondemand",
+      "updated": "2025-01-29"
+    },
+    {
+      "title": "SCINet: SLURM Resource Manager",
+      "url": "https://scinet.usda.gov/guides/use/slurm",
+      "updated": "2025-10-10"
+    },
+    {
+      "title": "SCINet: Differences between Ceres and Atlas",
+      "url": "https://scinet.usda.gov/guides/resources/CeresAtlasDifferences",
+      "updated": "2025-03-31"
+    },
+    {
+      "title": "SCINet: Singularity/Apptainer Containers",
+      "url": "https://scinet.usda.gov/guides/software/singularity",
+      "updated": "2024-08-29"
+    },
+    {
+      "title": "SCINet: Storage Locations",
+      "url": "https://scinet.usda.gov/guides/data/storage",
+      "updated": "2026-01-21"
+    },
+    {
+      "title": "SCINet: Globus Data Transfer",
+      "url": "https://scinet.usda.gov/guides/data/transfer/globus",
+      "updated": "2026-01-21"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+interface:
+  display_name: "EnrichedLab qualification"
+  short_description: "Test the source and installed runtime"

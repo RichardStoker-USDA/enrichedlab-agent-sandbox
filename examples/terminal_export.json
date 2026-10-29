@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "sandbox.enrichedlab.org/terminal-export/v1",
+  "taskId": "00000000-0000-0000-0000-000000000000",
+  "principalId": "00000000-0000-0000-0000-000000000000",
+  "groupKey": "research",
+  "profileKey": "reference",
+  "attempt": 2,
+  "leaseGeneration": 7,
+  "workerId": "worker-example",
+  "namespace": "sandbox-example-001",
+  "sandboxName": "run-20260909-0001",
+  "sandboxUid": "00000000-0000-0000-0000-000000000000",
+  "sandboxGeneration": 3,
+  "podName": "run-20260909-0001",
+  "podUid": "example-pod-uid",
+  "runtimeClassName": "kata-clh",
+  "artifactPvcName": "artifacts-run-20260909-0001",
+  "exitCode": 0,
+  "finishedAt": "2026-09-09T00:00:01Z",
+  "files": [
+    {
+      "relativePath": "outputs/result.txt",
+      "visibility": "researcher",
+      "role": "result",
+      "label": "Original output",
+      "mediaType": "text/plain",
+      "sizeBytes": 21,
+      "sha256": "9c96db7a0e677cb2a90ac9319d5385a511bc7142861e1331d95d214407071a52"
+    }
+  ]
+}

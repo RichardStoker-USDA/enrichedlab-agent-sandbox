@@ -1,0 +1,3 @@
+interface:
+  display_name: "EnrichedLab agent state"
+  short_description: "Run scoped state and provenance workflows"

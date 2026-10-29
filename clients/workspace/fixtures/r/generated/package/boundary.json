@@ -1,0 +1,20 @@
+{
+  "schema": "enrichedlab.template-boundary-probe.v1",
+  "enforced": true,
+  "isolated": true,
+  "checks": {
+    "external_tcp_1_1_1_1_443": "refused",
+    "cluster_api_10_43_0_1_443": "refused",
+    "dns_example_org": "unresolved",
+    "service_account_token": "absent",
+    "input_writable": false,
+    "root_writable": false,
+    "tmp_writable": false,
+    "home_writable": true
+  },
+  "limits": {
+    "cpus_visible": 16,
+    "cgroup_cpu_max": "max 100000",
+    "cgroup_memory_max": "max"
+  }
+}

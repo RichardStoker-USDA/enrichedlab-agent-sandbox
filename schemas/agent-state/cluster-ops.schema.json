@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "enrichedlab://agent-state/cluster-ops/v1",
+  "title": "Cluster operations state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["desired_state", "observed_refs", "proposals", "custody", "rollback", "verification"],
+  "properties": {
+    "desired_state": {"type": "object", "maxProperties": 1000},
+    "observed_refs": {"type": "object", "maxProperties": 10000, "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 1024}},
+    "proposals": {"type": "object", "maxProperties": 1000},
+    "custody": {"type": "object", "maxProperties": 1000},
+    "rollback": {"type": "object", "maxProperties": 1000},
+    "verification": {"type": "object", "maxProperties": 1000}
+  }
+}

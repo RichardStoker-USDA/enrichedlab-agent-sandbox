@@ -1,0 +1,90 @@
+{
+  "schema": "enrichedlab.template-run.v1",
+  "template_ref": "template://r-generated-analysis/v2",
+  "status": "succeeded",
+  "validation": "unvalidated",
+  "seed": 20260923,
+  "started_at": "2026-09-24T16:38:26Z",
+  "finished_at": "2026-09-24T16:38:28Z",
+  "r_version": "R version 4.6.1 (2026-06-24)",
+  "local_rerun": false,
+  "template_sha256": "sha256:56c24c583e9ef093fdbdfc75c58542bfd3cba1e06a5d5a43ee1c8c1736fa48a9",
+  "block_sha256": "sha256:f58670ad40f0d02386bcd489b30b0e1ef3c5cac1ca7ce91c370f72f3d81a7208",
+  "evaluation": "separate R process; only allowlisted names",
+  "allowlist": "sha256:869e5cadcf8ba4cc3a215b30e0164f045626de5779f9acbd03670fbd076402a1",
+  "dataset": {
+    "file": "input/data/measurements.csv",
+    "rows": 36,
+    "columns": [
+      "sample_id",
+      "condition",
+      "response"
+    ],
+    "sha256": "sha256:3543d06e8a69f7a0ed3492aed5752816abc70603b183e33f1a96b33633bbbd49"
+  },
+  "input_dependence": {
+    "checked": true,
+    "outcome": "passed",
+    "rows_removed": 3,
+    "noise": "1 percent of the standard deviation on continuous numeric columns",
+    "tables": [
+      {
+        "name": "anova",
+        "numeric_cells": 8,
+        "changed_cells": 7,
+        "unchanged_columns": [],
+        "outcome": "changed"
+      },
+      {
+        "name": "diet_comparisons",
+        "numeric_cells": 12,
+        "changed_cells": 12,
+        "unchanged_columns": [],
+        "outcome": "changed"
+      },
+      {
+        "name": "group_summary",
+        "numeric_cells": 9,
+        "changed_cells": 9,
+        "unchanged_columns": [],
+        "outcome": "changed"
+      }
+    ]
+  },
+  "tables": [
+    {
+      "name": "anova",
+      "file": "results/anova.csv",
+      "rows": 2,
+      "columns": 6
+    },
+    {
+      "name": "diet_comparisons",
+      "file": "results/diet_comparisons.csv",
+      "rows": 3,
+      "columns": 5
+    },
+    {
+      "name": "group_summary",
+      "file": "results/group_summary.csv",
+      "rows": 3,
+      "columns": 4
+    }
+  ],
+  "figures": [
+    {
+      "name": "response_by_diet",
+      "files": [
+        "figures/response_by_diet.pdf",
+        "figures/response_by_diet.svg"
+      ],
+      "error": null
+    }
+  ],
+  "notes": [
+    "One-way ANOVA of response on diet with the reference diet as baseline.",
+    "Tukey HSD compares every pair of diets."
+  ],
+  "warnings": 0,
+  "error": null
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "sandbox.enrichedlab.org/export-server/v1",
+  "bind": "0.0.0.0:8443",
+  "recordPath": "/identity/terminal.json",
+  "artifactsRoot": "/artifacts",
+  "credentialRoot": "/identity",
+  "writerUid": 65532,
+  "clientSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "maxFiles": 1000,
+  "maxBytes": 1073741824,
+  "maxSeconds": 900
+}

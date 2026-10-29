@@ -1,0 +1,16 @@
+# Text, code, logs and notes. A view may color code by file name; the kind only promises UTF-8 without NUL bytes.
+id: text.plain
+version: 1
+status: accepted
+owner: agents
+summary: UTF-8 text without NUL bytes, including code, logs and notes.
+media_types: [text/plain, text/markdown]
+validator: utf8-text
+access: whole
+limits: {bytes: 268435456}
+views:
+  - {view: text, gpu: [still], fallback: download}
+fixtures:
+  - {path: fixtures/text.plain/notes.txt, media_type: text/plain, expect: passed}
+  - {path: fixtures/text.plain/run.log, media_type: text/plain, expect: passed}
+  - {path: fixtures/text.plain/binary.txt, media_type: text/plain, expect: failed}

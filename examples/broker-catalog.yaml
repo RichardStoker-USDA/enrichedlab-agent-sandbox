@@ -1,0 +1,41 @@
+schema_version: 1
+tenant:
+  key: research-site
+  name: Research site
+
+groups:
+  - key: pilot-lab
+    name: Pilot lab
+    max_active_agents: 3
+    max_active_agents_per_principal: 2
+    max_queued_tasks: 20
+    retention_days: 30
+
+profiles:
+  - key: general-research
+    name: General research worker
+    description: Text-first research worker with the site-reviewed development tool policy.
+    harness: open-code
+    thinking: on
+    route: local-agent
+    controller_profile: development
+    gateway_profile: kubernetes-kata
+    image_ref: ghcr.io/nvidia/openshell-community/sandboxes/base@sha256:aeef1c63f00e2913ea002ccb3aaf925f338b5c5d70e63576f0d95c16a138044e
+    cpu_limit: "2"
+    memory_limit: 4Gi
+    state_profile: scientific-worker
+    role: Research assistant that uses assigned tools and retains intermediate work.
+    tool_bundle: research-base
+    max_run_seconds: 14400
+    max_task_attempts: 3
+    max_provider_attempts: 2
+
+grants:
+  - group: pilot-lab
+    profile: general-research
+
+# Replace this reserved example address before seeding a real site.
+invitations:
+  - email: researcher@example.invalid
+    group: pilot-lab
+    role: researcher

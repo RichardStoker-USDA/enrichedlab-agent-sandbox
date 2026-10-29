@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "request_id": "20e73925-7839-4096-9ac6-902a0c37ae9e",
+  "reason": "Register the finished report tool for later agents.",
+  "created_at": "2026-08-29T00:00:00Z",
+  "kind": "catalog-output",
+  "parameters": {
+    "name": "report-tool",
+    "artifact_kind": "web-tool",
+    "workspace_path": "output/report-tool",
+    "entrypoint": "bin/start"
+  }
+}

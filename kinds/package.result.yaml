@@ -1,0 +1,16 @@
+# A retained result package: tar+gzip whose members the broker lists and checks (src/broker/evidence_package.rs).
+# A package inside a package is not read; it stays a downloadable file.
+id: package.result
+version: 1
+status: accepted
+owner: agents
+summary: Tar and gzip result package whose members the broker can list and check.
+media_types: [application/gzip]
+validator: result-package
+access: whole
+limits: {bytes: 2147483648}
+views:
+  - {view: package, gpu: [still], fallback: download}
+fixtures:
+  - {path: fixtures/package.result/result.tar.gz, media_type: application/gzip, expect: passed}
+  - {path: fixtures/package.result/not-gzip.tar.gz, media_type: application/gzip, expect: failed}

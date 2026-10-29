@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-broker-direct-worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: direct-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: direct-worker
+    spec:
+      serviceAccountName: agent-broker-direct-worker
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: stage-direct-dispatch-catalog
+          image: registry.example.invalid/enrichedlab/agent-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          command: ["/bin/sh", "-eu", "-c"]
+          args:
+            - >-
+              install -d -m 0700 /private &&
+              install -m 0600 /projection/direct-dispatch.json /private/dispatch.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          volumeMounts:
+            - {name: direct-dispatch-projection, mountPath: /projection, readOnly: true}
+            - {name: direct-dispatch-private, mountPath: /private}
+      containers:
+        - name: worker
+          image: registry.example.invalid/enrichedlab/agent-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          args: ["worker"]
+          env:
+            - {name: HOME, value: /home/agent}
+            - {name: AGENT_SANDBOX_BROKER_TENANT, valueFrom: {configMapKeyRef: {name: agent-broker-site, key: tenant}}}
+            - {name: AGENT_SANDBOX_BROKER_DATABASE_DSN_FILE, value: /run/secrets/database/database.dsn}
+            - {name: AGENT_SANDBOX_BROKER_ARTIFACT_ROOT, value: /var/lib/enrichedlab/artifacts/data}
+            - {name: AGENT_SANDBOX_BROKER_CONTROLLER_ROOT, value: /var/lib/enrichedlab/controller/root}
+            - {name: AGENT_SANDBOX_BROKER_CONTROLLER_STATE, value: /var/lib/enrichedlab/controller/state}
+            - {name: AGENT_SANDBOX_BROKER_CONTROLLER_CONFIG, value: /var/lib/enrichedlab/controller/config}
+            - {name: AGENT_SANDBOX_CONTROLLER_BIN, value: /bin/false}
+            - {name: AGENT_SANDBOX_OPENSHELL_BIN, value: /bin/false}
+            - {name: AGENT_SANDBOX_DOCKER_BIN, value: /bin/false}
+            - {name: AGENT_SANDBOX_BROKER_DIRECT_DISPATCH_CATALOG, value: /run/agent-sandbox/direct/dispatch.json}
+            - {name: AGENT_SANDBOX_BROKER_DIRECT_DISPATCH_WRITER_UID, value: "65532"}
+            - {name: AGENT_SANDBOX_BROKER_MAX_PARALLEL, value: "1"}
+            - {name: AGENT_SANDBOX_BROKER_LEASE_SECONDS, value: "120"}
+            - {name: RUST_LOG, value: agent_sandbox_broker=info}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "4", memory: 4Gi}
+          volumeMounts:
+            - {name: controller, mountPath: /var/lib/enrichedlab/controller}
+            - {name: artifacts, mountPath: /var/lib/enrichedlab/artifacts}
+            - {name: worker-database, mountPath: /run/secrets/database, readOnly: true}
+            - {name: direct-dispatch-private, mountPath: /run/agent-sandbox/direct, readOnly: true}
+            - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/admissions, subPath: admissions, readOnly: true}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/terminal-records, subPath: terminal-records, readOnly: true}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/clients, subPath: clients, readOnly: true}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/input-notices, subPath: notices/input}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/output-notices, subPath: notices/output}
+            - {name: temporary, mountPath: /tmp}
+      volumes:
+        - name: controller
+          persistentVolumeClaim: {claimName: agent-broker-controller}
+        - name: artifacts
+          persistentVolumeClaim: {claimName: agent-broker-artifacts}
+        - name: worker-database
+          secret: {secretName: agent-broker-worker-database, defaultMode: 0440}
+        - name: direct-dispatch-projection
+          secret: {secretName: agent-broker-direct-dispatch, defaultMode: 0440}
+        - name: direct-dispatch-private
+          emptyDir: {sizeLimit: 1Mi}
+        - name: kube-api-access
+          projected:
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 3600}
+              - configMap: {name: kube-root-ca.crt, items: [{key: ca.crt, path: ca.crt}]}
+        - name: direct-control
+          persistentVolumeClaim: {claimName: agent-broker-direct-control}
+        - name: temporary
+          emptyDir: {sizeLimit: 1Gi}

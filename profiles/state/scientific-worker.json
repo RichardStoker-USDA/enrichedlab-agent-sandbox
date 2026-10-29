@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "name": "scientific-worker",
+  "audience": "agent",
+  "reasoning_retention": "structured",
+  "max_state_tokens": 12000,
+  "latest_event_count": 8,
+  "soft_reset_ratio": 0.65,
+  "hard_reset_ratio": 0.75,
+  "collections": [
+    {"name": "execution", "priority": 0, "max_bytes": 24000, "pointers": [""]},
+    {"name": "knowledge", "priority": 1, "max_bytes": 16000, "pointers": ["/facts", "/hypotheses", "/decisions", "/lessons", "/rejected"]},
+    {"name": "scientific", "priority": 2, "max_bytes": 8000, "pointers": ["/input_refs", "/method_refs", "/intermediate_refs", "/failed_attempts", "/claim_refs", "/validation_refs"]}
+  ]
+}

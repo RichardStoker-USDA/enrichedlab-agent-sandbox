@@ -1,0 +1,54 @@
+{
+  "key": "fdc-fndds-find-foods-2020-04",
+  "version": 1,
+  "source": "fdc-fndds-2020-04",
+  "title": "Find FNDDS survey foods by description (April 2020)",
+  "purpose": "Find FNDDS survey foods in this FoodData Central release whose description contains a phrase (case-insensitive; SQL wildcards % and _ keep their meaning), with each food's FDC id, food code, description, WWEIA category and publication date. An exact description match comes first, then shorter descriptions.",
+  "parameters": [
+    {
+      "name": "query",
+      "description": "Phrase to look for; empty text lists every FNDDS survey food",
+      "type": "text",
+      "required": true,
+      "max_length": 256
+    },
+    {
+      "name": "limit",
+      "description": "Maximum rows",
+      "type": "integer",
+      "required": false,
+      "minimum": 1,
+      "maximum": 100,
+      "default": 25
+    }
+  ],
+  "output_columns": [
+    {
+      "name": "fdc_id",
+      "type": "integer",
+      "description": "FoodData Central id of the food"
+    },
+    {
+      "name": "food_code",
+      "type": "integer",
+      "description": "FNDDS food code"
+    },
+    {
+      "name": "description",
+      "type": "text",
+      "description": "Food description as published"
+    },
+    {
+      "name": "wweia_category",
+      "type": "text",
+      "description": "WWEIA food category description as published"
+    },
+    {
+      "name": "publication_date",
+      "type": "date",
+      "description": "Publication date as published"
+    }
+  ],
+  "row_cap": 100,
+  "state": "enabled"
+}

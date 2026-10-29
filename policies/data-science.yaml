@@ -1,0 +1,44 @@
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only: [/usr, /lib, /proc, /dev/urandom, /etc, /var/log, /opt]
+  read_write: [/sandbox, /tmp, /dev/null]
+
+landlock:
+  compatibility: __LANDLOCK_MODE__
+
+network_policies:
+  package_registries:
+    name: package-registries
+    endpoints:
+      - { host: registry.npmjs.org, port: 443, protocol: rest, enforcement: enforce, access: read-only, allow_encoded_slash: true }
+      - { host: pypi.org, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: files.pythonhosted.org, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: prefix.dev, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: conda.anaconda.org, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: repo.anaconda.com, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: cran.r-project.org, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: cloud.r-project.org, port: 443, protocol: rest, enforcement: enforce, access: full }
+    binaries:
+      - { path: /usr/bin/npm }
+      - { path: /usr/bin/node }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/bin/R }
+      - { path: /sandbox/.local/bin/** }
+      - { path: /sandbox/.pixi/envs/**/bin/** }
+
+  research_web:
+    name: research-web
+    endpoints:
+      - { host: api.exa.ai, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: r.jina.ai, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: api.crossref.org, port: 443, protocol: rest, enforcement: enforce, access: read-only }
+      - { host: api.openalex.org, port: 443, protocol: rest, enforcement: enforce, access: read-only }
+    binaries:
+      - { path: /usr/bin/curl }
+      - { path: /usr/bin/python3 }
+      - { path: /sandbox/.local/opencode/node_modules/.bin/opencode }
+      - { path: /sandbox/.local/pi/node_modules/.bin/pi }
+
+  # __EXTRA_POLICIES__

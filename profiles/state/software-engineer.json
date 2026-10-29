@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "name": "software-engineer",
+  "audience": "agent",
+  "reasoning_retention": "structured",
+  "max_state_tokens": 16000,
+  "latest_event_count": 16,
+  "soft_reset_ratio": 0.60,
+  "hard_reset_ratio": 0.72,
+  "collections": [
+    {"name": "execution", "priority": 0, "max_bytes": 24000, "pointers": [""]},
+    {"name": "coordination", "priority": 1, "max_bytes": 12000, "pointers": [""]},
+    {"name": "knowledge", "priority": 2, "max_bytes": 12000, "pointers": ["/facts", "/hypotheses", "/decisions", "/lessons", "/rejected"]}
+  ]
+}

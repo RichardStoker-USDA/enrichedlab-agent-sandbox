@@ -1,0 +1,81 @@
+\set ON_ERROR_STOP on
+-- A separately created login. Never reuse the migration, API or task-worker role.
+\if :{?coordinator_role}
+\else
+  \warn 'coordinator_role is required'
+  \quit 2
+\endif
+\if :{?api_role}
+\else
+  \warn 'api_role is required'
+  \quit 2
+\endif
+\if :{?worker_role}
+\else
+  \warn 'worker_role is required'
+  \quit 2
+\endif
+SELECT :'coordinator_role' IN (:'api_role',:'worker_role',current_user)
+  OR has_function_privilege(:'coordinator_role','enrichedlab_agent.broker_custody_task(text,uuid,text,integer,bigint)','EXECUTE')
+  AS role_conflict \gset
+\if :role_conflict
+  \warn 'coordinator must differ from existing migration, API, worker and custody roles'
+  \quit 3
+\endif
+SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='enrichedlab_agent' AND c.relowner=to_regrole(:'coordinator_role')::oid)
+  OR EXISTS (SELECT 1 FROM pg_auth_members WHERE member=to_regrole(:'coordinator_role')::oid)
+  AS privileged \gset
+\if :privileged
+  \warn 'coordinator must not own relations or inherit another role'
+  \quit 3
+\endif
+ALTER ROLE :"coordinator_role" NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+ALTER ROLE :"coordinator_role" SET statement_timeout='30s';
+ALTER ROLE :"coordinator_role" SET lock_timeout='5s';
+ALTER ROLE :"coordinator_role" SET idle_in_transaction_session_timeout='30s';
+GRANT CONNECT ON DATABASE :DBNAME TO :"coordinator_role";
+GRANT USAGE ON SCHEMA enrichedlab_agent TO :"coordinator_role";
+REVOKE CREATE ON SCHEMA public,enrichedlab_agent FROM :"coordinator_role";
+REVOKE ALL ON ALL TABLES IN SCHEMA enrichedlab_agent FROM :"coordinator_role";
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA enrichedlab_agent FROM :"coordinator_role";
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA enrichedlab_agent FROM :"coordinator_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_schema_ready(integer) TO :"coordinator_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_claim_research_run(text,text,integer) TO :"coordinator_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_renew_research_run(text,uuid,text,bigint,integer) TO :"coordinator_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_yield_research_run(text,uuid,text,bigint,text) TO :"coordinator_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_commit_research_turn(text,uuid,text,bigint,bigint,jsonb,jsonb,jsonb,text) TO :"coordinator_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_reconcile_research_run(text,uuid,text,bigint,bigint,jsonb) TO :"coordinator_role";
+-- Migration 014: a deferral carries the coordinator's fixed rejection code.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_yield_research_run(text,uuid,text,bigint,text,text) TO :"coordinator_role";
+-- Migration 021: result digests and the project's newest findings for the run the coordinator holds.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_results(text,uuid,text,bigint) TO :"coordinator_role";
+-- Migration 027: the lab's shared notes relevant to the run the coordinator holds.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_lab_notes(text,uuid,text,bigint) TO :"coordinator_role";
+-- Migration 029: which searched documents are papers in the run's lab library, and whether its starter is a member.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_library(text,uuid,text,bigint,uuid[]) TO :"coordinator_role";
+-- Migration 032: keep the exact text a decision's models were given, under the run's lease.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_keep_contexts(text,uuid,text,bigint,bytea[]) TO :"coordinator_role";
+-- Migration 038: the query sources of the run the coordinator holds.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_sql_sources(text,uuid,text,bigint) TO :"coordinator_role";
+-- Migration 042: the admitted queries of earlier analyses the run's knowledge search found.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_prior_queries(text,uuid,text,bigint,uuid[]) TO :"coordinator_role";
+-- Migration 043: the admitted queries of the run's own project's analyses.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_own_queries(text,uuid,text,bigint,uuid[]) TO :"coordinator_role";
+-- Migration 044: a deferral that refused a readable lead reply names its kept context and reply.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_yield_research_run(text,uuid,text,bigint,text,text,text,text) TO :"coordinator_role";
+-- A refused reply's reasoning, kept with it (migration 061).
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_yield_research_run(text,uuid,text,bigint,text,text,text,text,text) TO :"coordinator_role";
+-- Migration 048: move finished steps of the run's project out of a full working plan into archive pages.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_archive_research_plan(text,uuid,text,bigint,bigint,text[]) TO :"coordinator_role";
+-- Migration 060: the run's template-analysis method and the newest analysis catalog.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_analysis_catalog(text,uuid,text,bigint) TO :"coordinator_role";
+
+-- Migration 070: checked literature reviews under the run lease.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_literature_review_for_run(text,uuid,text,bigint,text,jsonb) TO :"coordinator_role";
+
+-- Migration 074: what the supervisor counts and its pause, both under the run lease, and the run's orientation, read
+-- or kept once under the run lease.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_faults(text,uuid,text,bigint) TO :"coordinator_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_supervisor_pause_research_run(text,uuid,text,bigint,text) TO :"coordinator_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_orientation_for_run(text,uuid,text,bigint,jsonb) TO :"coordinator_role";

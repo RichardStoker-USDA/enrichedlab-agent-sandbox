@@ -1,0 +1,119 @@
+{
+ "schema": "enrichedlab.guard-policy.v1",
+ "version": "guard-policy-2026-10-12.1",
+ "use_cases": {
+  "library-paper": {
+   "types": [
+    "pdf"
+   ],
+   "max_bytes": 104857600,
+   "quota": {
+    "files_per_day": 200,
+    "bytes_per_day": 2147483648
+   },
+   "retention": {
+    "original_days": 30,
+    "record_days": 400,
+    "disarmed_minutes": 60
+   },
+   "thresholds": {
+    "hidden_text_chars": 200,
+    "trailing_bytes": 1024
+   },
+   "default_action": "quarantine",
+   "actions": {
+    "empty_file": "block",
+    "size_exceeded": "block",
+    "type_not_allowed": "block",
+    "type_mismatch": "quarantine",
+    "polyglot": "quarantine",
+    "trailing_data": "disarm",
+    "structure_invalid": "quarantine",
+    "encrypted_password": "quarantine",
+    "encrypted_owner_only": "disarm",
+    "active_javascript": "disarm",
+    "active_launch": "disarm",
+    "active_embedded_file": "disarm",
+    "active_open_action": "disarm",
+    "active_additional_actions": "disarm",
+    "active_xfa": "disarm",
+    "active_rich_media": "disarm",
+    "active_form_submit": "disarm",
+    "active_remote_goto": "disarm",
+    "hidden_layers": "annotate",
+    "hidden_text_invisible": "annotate",
+    "hidden_text_white": "annotate",
+    "hidden_text_tiny": "annotate",
+    "hidden_text_offpage": "annotate",
+    "analysis_truncated": "annotate",
+    "unicode_tags": "quarantine",
+    "unicode_bidi": "annotate",
+    "unicode_zero_width": "annotate",
+    "metadata_text": "allow",
+    "analysis_failed": "quarantine",
+    "image_too_large": "quarantine",
+    "embedded_archive": "quarantine",
+    "content_irregular": "disarm",
+    "render_failed": "quarantine",
+    "private_streams": "disarm",
+    "streams_unscanned": "quarantine",
+    "malware_signature": "block",
+    "yara_high": "quarantine",
+    "yara_medium": "quarantine",
+    "yara_low": "annotate",
+    "disarm_failed": "quarantine",
+    "disarm_residual": "quarantine",
+    "disarm_text_changed": "quarantine",
+    "disarm_text_unavailable": "quarantine",
+    "exception_applied": "annotate"
+   }
+  },
+  "lab-dataset": {
+   "types": [
+    "delimited",
+    "xlsx"
+   ],
+   "max_bytes": 33554432,
+   "quota": {
+    "files_per_day": 200,
+    "bytes_per_day": 2147483648
+   },
+   "retention": {
+    "original_days": 30,
+    "record_days": 400,
+    "disarmed_minutes": 1440
+   },
+   "thresholds": {
+    "hidden_text_chars": 200,
+    "trailing_bytes": 1024
+   },
+   "default_action": "quarantine",
+   "actions": {
+    "empty_file": "block",
+    "size_exceeded": "block",
+    "type_not_allowed": "block",
+    "type_mismatch": "quarantine",
+    "polyglot": "quarantine",
+    "structure_invalid": "quarantine",
+    "table_too_large": "block",
+    "active_macros": "disarm",
+    "active_controls": "disarm",
+    "embedded_objects": "disarm",
+    "external_links": "annotate",
+    "xml_entities": "quarantine",
+    "hidden_sheets": "annotate",
+    "formulas_without_values": "annotate",
+    "unicode_tags": "quarantine",
+    "unicode_bidi": "annotate",
+    "unicode_zero_width": "annotate",
+    "analysis_failed": "quarantine",
+    "malware_signature": "block",
+    "yara_high": "quarantine",
+    "yara_medium": "quarantine",
+    "yara_low": "annotate",
+    "disarm_failed": "quarantine",
+    "exception_applied": "annotate"
+   }
+  }
+ }
+}

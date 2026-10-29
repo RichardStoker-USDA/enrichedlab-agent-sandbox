@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "sandbox.enrichedlab.org/direct-dispatch/v1",
+  "kubernetes": {
+    "origin": "https://kubernetes.example.invalid",
+    "caPath": "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt",
+    "tokenPath": "/var/run/secrets/kubernetes.io/serviceaccount/token"
+  },
+  "admission": {
+    "root": "/var/lib/agent-sandbox-broker/admissions",
+    "writerUid": 65532
+  },
+  "bindings": [
+    {
+      "principalId": "00000000-0000-0000-0000-000000000000",
+      "principalHash": "00000000000000000000000000000000",
+      "groupKey": "example-group",
+      "profileKey": "example-profile",
+      "profileId": "example-kata",
+      "labRef": "lab://example/research",
+      "namespace": "sandbox-example-001",
+      "runtimeClassName": "kata-clh"
+    }
+  ],
+  "terminalExport": {
+    "recordRoot": "/var/lib/agent-sandbox-broker/terminal-exports",
+    "writerUid": 65532,
+    "mountedArtifactsRoot": "/mnt/agent-sandbox-outputs"
+  }
+}

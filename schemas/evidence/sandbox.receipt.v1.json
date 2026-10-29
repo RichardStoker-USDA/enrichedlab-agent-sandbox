@@ -1,0 +1,513 @@
+{
+ "properties": {
+  "ending": {
+   "nullable": true,
+   "properties": {
+    "deletion_timestamp": {
+     "max": 40,
+     "nullable": true,
+     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+     "type": "string"
+    },
+    "observation": {
+     "max": 32,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    },
+    "observed_at": {
+     "max": 40,
+     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "first_seen_at": {
+   "max": 40,
+   "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+   "type": "string"
+  },
+  "gateway": {
+   "max": 128,
+   "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+   "type": "string"
+  },
+  "images_omitted": {
+   "integer": true,
+   "type": "number"
+  },
+  "images_seen": {
+   "items": {
+    "max": 256,
+    "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+    "type": "string"
+   },
+   "max": 64,
+   "type": "array"
+  },
+  "last_seen_at": {
+   "max": 40,
+   "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+   "type": "string"
+  },
+  "not_recorded": {
+   "properties": {
+    "deleted_by": {
+     "enum": [
+      "the caller of the delete is in the gateway's audit log; Kubernetes shows only the gateway"
+     ]
+    },
+    "main_process_exit": {
+     "enum": [
+      "the gateway keeps the main process's exit status in its own store, which this service does not read"
+     ]
+    },
+    "ocsf_events": {
+     "enum": [
+      "the supervisor's OCSF events are counted elsewhere, not kept; join those counts by the supervisor Pod's name and UID"
+     ]
+    },
+    "output_checksums": {
+     "enum": [
+      "workspace contents are not read; outputs are recorded where they are collected"
+     ]
+    },
+    "policy": {
+     "enum": [
+      "the sandbox was created without a policy of its own; the gateway's default applied, which the committed sandbox does not carry"
+     ]
+    },
+    "policy_revisions": {
+     "enum": [
+      "a policy change's committed response does not name its sandbox, so changes after the start are not recorded"
+     ]
+    },
+    "prover_result": {
+     "enum": [
+      "the gateway's prover checks policy proposals and keeps its verdicts in its own store"
+     ]
+    },
+    "start": {
+     "enum": [
+      "the gateway's commit of this sandbox was not seen"
+     ]
+    }
+   },
+   "type": "object"
+  },
+  "pods": {
+   "items": {
+    "properties": {
+     "component": {
+      "max": 63,
+      "nullable": true,
+      "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+      "type": "string"
+     },
+     "containers": {
+      "items": {
+       "properties": {
+        "exit_code": {
+         "integer": true,
+         "nullable": true,
+         "type": "number"
+        },
+        "image": {
+         "max": 256,
+         "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+         "type": "string"
+        },
+        "image_id": {
+         "max": 256,
+         "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+         "type": "string"
+        },
+        "init": {
+         "type": "boolean"
+        },
+        "name": {
+         "max": 63,
+         "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+         "type": "string"
+        },
+        "reason": {
+         "max": 64,
+         "nullable": true,
+         "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+         "type": "string"
+        },
+        "restart_count": {
+         "integer": true,
+         "type": "number"
+        },
+        "state": {
+         "max": 32,
+         "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+         "type": "string"
+        }
+       },
+       "type": "object"
+      },
+      "max": 32,
+      "type": "array"
+     },
+     "containers_omitted": {
+      "integer": true,
+      "type": "number"
+     },
+     "created_at": {
+      "max": 40,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+      "type": "string"
+     },
+     "name": {
+      "max": 253,
+      "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+      "type": "string"
+     },
+     "node": {
+      "max": 253,
+      "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+      "type": "string"
+     },
+     "phase": {
+      "max": 32,
+      "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+      "type": "string"
+     },
+     "runtime_class_name": {
+      "max": 63,
+      "nullable": true,
+      "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+      "type": "string"
+     },
+     "uid": {
+      "max": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "max": 64,
+   "type": "array"
+  },
+  "pods_omitted": {
+   "integer": true,
+   "type": "number"
+  },
+  "sandbox": {
+   "properties": {
+    "created_at": {
+     "max": 40,
+     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+     "type": "string"
+    },
+    "deletion_timestamp": {
+     "max": 40,
+     "nullable": true,
+     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+     "type": "string"
+    },
+    "generation": {
+     "integer": true,
+     "type": "number"
+    },
+    "labels": {
+     "properties": {
+      "entries": {
+       "key_max": 317,
+       "keys": "^[A-Za-z0-9./_-]+$",
+       "max": 64,
+       "type": "object",
+       "values": {
+        "max": 63,
+        "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+        "type": "string"
+       }
+      },
+      "omitted": {
+       "integer": true,
+       "type": "number"
+      }
+     },
+     "type": "object"
+    },
+    "name": {
+     "max": 253,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    },
+    "namespace": {
+     "max": 63,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    },
+    "object_name": {
+     "max": 253,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    },
+    "pair": {
+     "max": 253,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    },
+    "sandbox_id": {
+     "max": 36,
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+     "type": "string"
+    },
+    "uid": {
+     "max": 36,
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+     "type": "string"
+    },
+    "workspace": {
+     "max": 63,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "sandbox_id": {
+   "max": 36,
+   "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+   "type": "string"
+  },
+  "schema": {
+   "max": 64,
+   "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+   "type": "string"
+  },
+  "start": {
+   "nullable": true,
+   "properties": {
+    "annotations": {
+     "properties": {
+      "entries": {
+       "key_max": 317,
+       "keys": "^[A-Za-z0-9./_-]+$",
+       "max": 64,
+       "type": "object",
+       "values": {
+        "max": 512,
+        "pattern": "^[A-Za-z0-9._:/@+=-]*…?$",
+        "type": "string"
+       }
+      },
+      "omitted": {
+       "integer": true,
+       "type": "number"
+      }
+     },
+     "type": "object"
+    },
+    "command_arguments": {
+     "integer": true,
+     "type": "number"
+    },
+    "created_time": {
+     "max": 40,
+     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+     "type": "string"
+    },
+    "environment_names": {
+     "items": {
+      "max": 128,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+      "type": "string"
+     },
+     "max": 256,
+     "type": "array"
+    },
+    "labels": {
+     "properties": {
+      "entries": {
+       "key_max": 317,
+       "keys": "^[A-Za-z0-9./_-]+$",
+       "max": 64,
+       "type": "object",
+       "values": {
+        "max": 63,
+        "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+        "type": "string"
+       }
+      },
+      "omitted": {
+       "integer": true,
+       "type": "number"
+      }
+     },
+     "type": "object"
+    },
+    "log_level": {
+     "max": 32,
+     "nullable": true,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    },
+    "name": {
+     "max": 253,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    },
+    "pods_unheld": {
+     "type": "boolean"
+    },
+    "policy_hash": {
+     "max": 64,
+     "nullable": true,
+     "pattern": "^[0-9a-f]{64}$",
+     "type": "string"
+    },
+    "principal": {
+     "properties": {
+      "entries": {
+       "key_max": 317,
+       "keys": "^[A-Za-z0-9./_-]+$",
+       "max": 64,
+       "type": "object",
+       "values": {
+        "max": 128,
+        "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+        "type": "string"
+       }
+      },
+      "omitted": {
+       "integer": true,
+       "type": "number"
+      }
+     },
+     "type": "object"
+    },
+    "program": {
+     "max": 256,
+     "nullable": true,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    },
+    "providers": {
+     "items": {
+      "max": 128,
+      "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+      "type": "string"
+     },
+     "max": 64,
+     "type": "array"
+    },
+    "recorded_at": {
+     "max": 40,
+     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+     "type": "string"
+    },
+    "sandbox_id": {
+     "max": 36,
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+     "type": "string"
+    },
+    "schema": {
+     "max": 64,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    },
+    "template": {
+     "properties": {
+      "annotations": {
+       "properties": {
+        "entries": {
+         "key_max": 317,
+         "keys": "^[A-Za-z0-9./_-]+$",
+         "max": 64,
+         "type": "object",
+         "values": {
+          "max": 512,
+          "pattern": "^[A-Za-z0-9._:/@+=-]*…?$",
+          "type": "string"
+         }
+        },
+        "omitted": {
+         "integer": true,
+         "type": "number"
+        }
+       },
+       "type": "object"
+      },
+      "environment_names": {
+       "items": {
+        "max": 128,
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+        "type": "string"
+       },
+       "max": 256,
+       "type": "array"
+      },
+      "image": {
+       "max": 256,
+       "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+       "type": "string"
+      },
+      "labels": {
+       "properties": {
+        "entries": {
+         "key_max": 317,
+         "keys": "^[A-Za-z0-9./_-]+$",
+         "max": 64,
+         "type": "object",
+         "values": {
+          "max": 63,
+          "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+          "type": "string"
+         }
+        },
+        "omitted": {
+         "integer": true,
+         "type": "number"
+        }
+       },
+       "type": "object"
+      },
+      "runtime_class_name": {
+       "max": 63,
+       "nullable": true,
+       "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+       "type": "string"
+      },
+      "user_namespaces": {
+       "nullable": true,
+       "type": "boolean"
+      }
+     },
+     "type": "object"
+    },
+    "workspace": {
+     "max": 63,
+     "pattern": "^[A-Za-z0-9._:/@+=-]*$",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "written_at": {
+   "max": 40,
+   "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$",
+   "type": "string"
+  }
+ },
+ "required": [
+  "schema",
+  "sandbox_id",
+  "sandbox",
+  "gateway",
+  "pods",
+  "pods_omitted",
+  "images_seen",
+  "images_omitted",
+  "first_seen_at",
+  "last_seen_at",
+  "not_recorded",
+  "written_at"
+ ],
+ "type": "object"
+}

@@ -1,0 +1,534 @@
+\set ON_ERROR_STOP on
+
+-- Run as the migration owner. API and worker login roles must already exist
+-- and be distinct. Optional director and custodian login roles receive only
+-- their lease-fenced functions; neither is a migration-owner substitute.
+\if :{?api_role}
+\else
+  \warn 'api_role is required'
+  \quit 3
+\endif
+\if :{?worker_role}
+\else
+  \warn 'worker_role is required'
+  \quit 4
+\endif
+SELECT :'api_role' = :'worker_role' AS roles_match \gset
+\if :roles_match
+  \warn 'api_role and worker_role must be different'
+  \quit 5
+\endif
+\if :{?director_role}
+SELECT :'director_role' IN (:'api_role', :'worker_role') AS director_role_matches \gset
+\if :director_role_matches
+  \warn 'director_role must differ from api_role and worker_role'
+  \quit 16
+\endif
+\endif
+
+\if :{?custodian_role}
+SELECT :'custodian_role' IN (:'api_role', :'worker_role') AS custodian_role_matches \gset
+\if :custodian_role_matches
+  \warn 'custodian_role must differ from api_role and worker_role'
+  \quit 11
+\endif
+\if :{?director_role}
+SELECT :'custodian_role' = :'director_role' AS custodian_matches_director \gset
+\if :custodian_matches_director
+  \warn 'custodian_role must differ from director_role'
+  \quit 11
+\endif
+\endif
+\endif
+
+-- Refuse a reused director login before ALTER/REVOKE could hide its prior authority.
+-- A correctly provisioned role may be passed again: the predicate admits only this
+-- script's schema USAGE and campaign-function grants.
+\if :{?director_role}
+SELECT NOT enrichedlab_agent.broker_campaign_director_role_safe(:'director_role'::name)
+  AS director_role_unsafe \gset
+\if :director_role_unsafe
+  \warn 'director role is not function-only'
+  \quit 17
+\endif
+\endif
+
+ALTER ROLE :"api_role"
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+ALTER ROLE :"worker_role"
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+\if :{?director_role}
+ALTER ROLE :"director_role"
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+\endif
+\if :{?custodian_role}
+ALTER ROLE :"custodian_role"
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+\endif
+ALTER ROLE :"api_role" SET statement_timeout = '30s';
+ALTER ROLE :"api_role" SET lock_timeout = '5s';
+ALTER ROLE :"api_role" SET idle_in_transaction_session_timeout = '30s';
+ALTER ROLE :"worker_role" SET statement_timeout = '30s';
+ALTER ROLE :"worker_role" SET lock_timeout = '5s';
+ALTER ROLE :"worker_role" SET idle_in_transaction_session_timeout = '30s';
+\if :{?director_role}
+ALTER ROLE :"director_role" SET statement_timeout = '30s';
+ALTER ROLE :"director_role" SET lock_timeout = '5s';
+ALTER ROLE :"director_role" SET idle_in_transaction_session_timeout = '30s';
+\endif
+\if :{?custodian_role}
+ALTER ROLE :"custodian_role" SET statement_timeout = '30s';
+ALTER ROLE :"custodian_role" SET lock_timeout = '5s';
+ALTER ROLE :"custodian_role" SET idle_in_transaction_session_timeout = '30s';
+\endif
+
+GRANT CONNECT ON DATABASE :DBNAME TO :"api_role", :"worker_role";
+GRANT USAGE ON SCHEMA enrichedlab_agent TO :"api_role", :"worker_role";
+\if :{?director_role}
+GRANT CONNECT ON DATABASE :DBNAME TO :"director_role";
+GRANT USAGE ON SCHEMA enrichedlab_agent TO :"director_role";
+\endif
+\if :{?custodian_role}
+GRANT CONNECT ON DATABASE :DBNAME TO :"custodian_role";
+GRANT USAGE ON SCHEMA enrichedlab_agent TO :"custodian_role";
+\endif
+REVOKE CREATE ON SCHEMA public FROM :"api_role", :"worker_role";
+REVOKE CREATE ON SCHEMA enrichedlab_agent FROM :"api_role", :"worker_role";
+REVOKE ALL ON ALL TABLES IN SCHEMA enrichedlab_agent FROM :"api_role", :"worker_role";
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA enrichedlab_agent FROM :"api_role", :"worker_role";
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA enrichedlab_agent FROM :"api_role", :"worker_role";
+\if :{?director_role}
+REVOKE CREATE ON SCHEMA public FROM :"director_role";
+REVOKE CREATE ON SCHEMA enrichedlab_agent FROM :"director_role";
+REVOKE ALL ON ALL TABLES IN SCHEMA enrichedlab_agent FROM :"director_role";
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA enrichedlab_agent FROM :"director_role";
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA enrichedlab_agent FROM :"director_role";
+\endif
+\if :{?custodian_role}
+REVOKE CREATE ON SCHEMA public FROM :"custodian_role";
+REVOKE CREATE ON SCHEMA enrichedlab_agent FROM :"custodian_role";
+REVOKE ALL ON ALL TABLES IN SCHEMA enrichedlab_agent FROM :"custodian_role";
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA enrichedlab_agent FROM :"custodian_role";
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA enrichedlab_agent FROM :"custodian_role";
+\endif
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_schema_ready(integer) TO :"api_role", :"worker_role";
+\if :{?director_role}
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_schema_ready(integer) TO :"director_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_campaign_director_ready() TO :"director_role";
+\endif
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_resolve_principal(text,text,text,text,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_resolve_principal(text,text,text,text,text,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_principal(text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_groups(text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_profiles(text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_submit_person_task(text,uuid,text,text,text,text,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_tasks(text,uuid,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_task(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_request_cancel(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_task_events(text,uuid,uuid,bigint,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_scientific_history_status(text,uuid,uuid,integer,bigint) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_scientific_history_events(text,uuid,uuid,integer,bigint,bigint,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_scientific_history_events_with_evidence(text,uuid,uuid,integer,bigint,bigint,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_scientific_history_evidence(text,uuid,uuid,integer,bigint,uuid,uuid,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_artifacts(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_artifact(text,uuid,uuid,uuid) TO :"api_role";
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_claim_task(text,text,integer) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_renew_task(text,uuid,text,bigint,integer) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_mark_task_running(text,uuid,text,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_cancel_requested(text,uuid,text,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_finish_task(text,uuid,text,bigint,boolean,text,text) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_register_artifact(text,uuid,text,bigint,text,text,text,text,text,bigint,text) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_runtime_event(text,uuid,text,bigint,text,jsonb) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_bind_scientific_history(text,uuid,text,integer,bigint,uuid,text,text,text,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_finalize_scientific_history(text,uuid,text,integer,bigint,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_scientific_history_evidence(text,uuid,text,integer,bigint,uuid,bigint,text,uuid,uuid,text,bigint,text) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_attempt_execution(text,uuid,text,bigint,text,text,text,text,text) TO :"worker_role";
+-- Migration 021: the worker records each result package's digest; the API serves it to the artifact's readers.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_artifact_digest(text,uuid,text,bigint,text,text,text,jsonb) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_artifact_digest(text,uuid,uuid,uuid) TO :"api_role";
+
+\if :{?custodian_role}
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_custody_task(text,uuid,text,integer,bigint) TO :"custodian_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_terminal_custody_task(text,uuid,text,integer,bigint) TO :"custodian_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_attempt_input(text,uuid,text,integer,bigint,text,text,text,bigint,text,jsonb) TO :"custodian_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_cancel_requested(text,uuid,text,bigint) TO :"custodian_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_renew_task(text,uuid,text,bigint,integer) TO :"custodian_role";
+\endif
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_bind_platform_tool_job(text,uuid,text,integer,bigint,uuid,uuid,text,text,text,text,timestamptz) TO :"worker_role";
+
+SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls
+  AS api_is_privileged
+FROM pg_roles WHERE rolname = :'api_role' \gset
+\if :api_is_privileged
+  \warn 'API role has forbidden cluster authority'
+  \quit 6
+\endif
+
+SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls
+  AS worker_is_privileged
+FROM pg_roles WHERE rolname = :'worker_role' \gset
+\if :worker_is_privileged
+  \warn 'worker role has forbidden cluster authority'
+  \quit 7
+\endif
+
+\if :{?director_role}
+SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls
+  AS director_is_privileged
+FROM pg_roles WHERE rolname = :'director_role' \gset
+\if :director_is_privileged
+  \warn 'director role has forbidden cluster authority'
+  \quit 17
+\endif
+\endif
+
+\if :{?custodian_role}
+SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls
+  AS custodian_is_privileged
+FROM pg_roles WHERE rolname = :'custodian_role' \gset
+\if :custodian_is_privileged
+  \warn 'custodian role has forbidden cluster authority'
+  \quit 12
+\endif
+\endif
+
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_class AS relation
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'enrichedlab_agent'
+    AND relation.relowner IN (to_regrole(:'api_role')::oid, to_regrole(:'worker_role')::oid)
+) AS runtime_owns_relation \gset
+\if :runtime_owns_relation
+  \warn 'runtime roles must not own broker relations'
+  \quit 8
+\endif
+
+\if :{?director_role}
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_class AS relation
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'enrichedlab_agent'
+    AND relation.relowner = to_regrole(:'director_role')::oid
+) AS director_owns_relation \gset
+\if :director_owns_relation
+  \warn 'director role must not own broker relations'
+  \quit 17
+\endif
+\endif
+
+\if :{?custodian_role}
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_class AS relation
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'enrichedlab_agent'
+    AND relation.relowner = to_regrole(:'custodian_role')::oid
+) AS custodian_owns_relation \gset
+\if :custodian_owns_relation
+  \warn 'custodian role must not own broker relations'
+  \quit 13
+\endif
+\endif
+
+SELECT NOT (
+  coalesce(rolconfig, ARRAY[]::text[]) @> ARRAY[
+    'statement_timeout=30s',
+    'lock_timeout=5s',
+    'idle_in_transaction_session_timeout=30s'
+  ]
+) AS api_timeouts_missing
+FROM pg_roles WHERE rolname = :'api_role' \gset
+\if :api_timeouts_missing
+  \warn 'API role is missing bounded database timeouts'
+  \quit 9
+\endif
+
+SELECT NOT (
+  coalesce(rolconfig, ARRAY[]::text[]) @> ARRAY[
+    'statement_timeout=30s',
+    'lock_timeout=5s',
+    'idle_in_transaction_session_timeout=30s'
+  ]
+) AS worker_timeouts_missing
+FROM pg_roles WHERE rolname = :'worker_role' \gset
+\if :worker_timeouts_missing
+  \warn 'worker role is missing bounded database timeouts'
+  \quit 10
+\endif
+
+\if :{?director_role}
+SELECT NOT (
+  coalesce(rolconfig, ARRAY[]::text[]) @> ARRAY[
+    'statement_timeout=30s',
+    'lock_timeout=5s',
+    'idle_in_transaction_session_timeout=30s'
+  ]
+) AS director_timeouts_missing
+FROM pg_roles WHERE rolname = :'director_role' \gset
+\if :director_timeouts_missing
+  \warn 'director role is missing bounded database timeouts'
+  \quit 18
+\endif
+\endif
+
+\if :{?custodian_role}
+SELECT NOT (
+  coalesce(rolconfig, ARRAY[]::text[]) @> ARRAY[
+    'statement_timeout=30s',
+    'lock_timeout=5s',
+    'idle_in_transaction_session_timeout=30s'
+  ]
+) AS custodian_timeouts_missing
+FROM pg_roles WHERE rolname = :'custodian_role' \gset
+\if :custodian_timeouts_missing
+  \warn 'custodian role is missing bounded database timeouts'
+  \quit 14
+\endif
+\endif
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_create_project(text,uuid,uuid,text,text,text) TO :"api_role";
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_project(text,uuid,uuid) TO :"api_role";
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_projects(text,uuid,integer) TO :"api_role";
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_grant_project(text,uuid,uuid,uuid,text[]) TO :"api_role";
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_inspect_project(text,uuid,uuid,text) TO :"api_role";
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_checkpoint_project(text,uuid,uuid,bigint,uuid,jsonb) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_plan_ledger(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_inbox(text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_inbox_acknowledge(text,uuid,text,text,text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_acknowledgements(text,uuid,uuid) TO :"api_role";
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_history(text,uuid,uuid,bigint,integer) TO :"api_role";
+-- Migration 054: the workspace's project read, last look, analyses pages and history read forward.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_read_project(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_look(text,uuid,uuid,bigint) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_analyses(text,uuid,uuid,text,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_history_after(text,uuid,uuid,bigint,integer) TO :"api_role";
+-- Result kinds (migration 055): the worker records what each artifact's bytes hold; the API reads it.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_artifacts_awaiting_kind(text,text,uuid[],integer) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_artifact_kind(text,text,uuid,text,text,text,text,integer,text,integer,text,text,text) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_artifact_kinds(text,uuid,uuid,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_artifact_kind(text,uuid,uuid,uuid,text) TO :"api_role";
+-- Live output (migration 056): the worker holding a lease records and closes; the API reads.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_task_output(text,uuid,text,bigint,integer,jsonb) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_close_task_output(text,uuid,text,bigint,integer,bigint,text,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_output_after(text,uuid,uuid,bigint,integer) TO :"api_role";
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_audit_page(text,uuid,uuid,integer) TO :"api_role";
+
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_submit_person_project_task(text,uuid,uuid,text,uuid,text,text,text,text,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_start_research_run(text,uuid,uuid,uuid,bigint,text[],integer,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_research_runs(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_turn_history(text,uuid,uuid,integer,integer) TO :"api_role";
+-- Migration 032: the exact text a decision's models were given, for project readers who are lab members.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_context(text,uuid,uuid,text) TO :"api_role";
+-- Migration 033: until when each analysis's working copy is kept, or when it was cleared.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_working_copies(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_pause_research_run(text,uuid,uuid) TO :"api_role";
+
+-- Migration 014: scientist review, collaborator management, administrator inspection
+-- and the project evidence package. Each function authorizes the caller itself.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_event_history(text,uuid,uuid,bigint,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_is_project_administrator(text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_admin_project_directory(text,uuid,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_end_project_inspection(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_members(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_package_snapshot(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_package_components(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_register_project_package(text,uuid,uuid,text,text,jsonb) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_project_export(text,uuid,uuid,jsonb) TO :"api_role";
+
+-- Migration 015: model-written code in a reviewed template. The API reads a block for
+-- a task or project its caller can read; the worker reads a digest-only reference and
+-- the custodian the exact bytes, each for its own current lease.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_generated_code(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_generated_code(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_lineage(text,uuid,uuid) TO :"api_role";
+-- A person's review of an analysis (migration 023).
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_task_review(text,uuid,uuid,text,text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_reviews(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_reviews(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_review_records(text,uuid,uuid) TO :"api_role";
+-- Lab memory (migration 027): each function authorizes the caller itself.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_share_lab_note(text,uuid,uuid,bigint,text,jsonb,text,integer,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_retire_lab_note(text,uuid,uuid,text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_renew_lab_note(text,uuid,uuid,integer,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_lab_notes(text,uuid,text) TO :"api_role";
+-- Lab library (migration 028): each function requires membership of the lab.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_library(text,uuid,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_library_paper(text,uuid,text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_library_find(text,uuid,text,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_library_record(text,uuid,text,uuid,text,bigint,text,jsonb,integer,text,integer,jsonb,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_library_remove(text,uuid,text,uuid,text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_library_accept(text,uuid,text,uuid,boolean,text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_library_label(text,uuid,text,uuid,text,text,text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_library_resolve(text,uuid,text,uuid[]) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_lineage_v2(text,uuid,uuid) TO :"api_role";
+-- Upstream task lineage (migration 065): one consistent read applies each
+-- reached task's ordinary reader rule and withholds every unreadable producer.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_lineage_v3(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_admitted_code(text,uuid,text,integer,bigint) TO :"worker_role";
+-- Guarded queries (migration 038): the API reads a task's query for its readers; the worker reads the
+-- query of its current lease and records one receipt per attempt.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_query_detail(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_query(text,uuid,text,integer,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_query_receipt(text,uuid,text,integer,bigint,text,text,integer,jsonb,text,text,timestamptz,timestamptz) TO :"worker_role";
+-- Live lab sources (migration 053): the receipt carries the version the lab's database stated.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_query_receipt(text,uuid,text,integer,bigint,text,text,integer,jsonb,text,text,timestamptz,timestamptz,jsonb) TO :"worker_role";
+-- Figure versions (migration 040): the API reads the render catalog, requests versions and reads them;
+-- the worker keeps the catalog, reads the request of its lease and records one receipt per attempt.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_render_catalog(text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_profile_choices(text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_profile_choices(text,uuid) TO :"api_role";
+-- Each lab's methods (migration 052): the workspace offers a lab only the methods granted to it.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_group_methods(text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_request_figure(text,uuid,uuid,uuid,text,text,jsonb,text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_figure_detail(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_figure_versions(text,uuid,uuid) TO :"api_role";
+-- Migration 057: figure previews and the manuscript mark.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_request_figure_preview(text,uuid,uuid,uuid,text,text,jsonb,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_take_figure_preview(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_abandon_figure_preview(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_mark_figure_manuscript(text,uuid,uuid,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_clear_figure_manuscript(text,uuid,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_claim_figure_preview(text,text) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_finish_figure_preview(text,text,uuid,text,bytea,jsonb) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_sweep_figure_previews(text) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_render_catalog(text,text,text,text,jsonb) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_figure(text,uuid,text,integer,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_figure_receipt(text,uuid,text,integer,bigint,text,text,text,text,text,jsonb,jsonb,text,timestamptz,timestamptz) TO :"worker_role";
+-- Template analyses (migration 058): the API reads the analysis catalog, requests analyses and reads
+-- them; the worker keeps the catalog, reads the request of its lease and records one receipt per attempt.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_analysis_catalog(text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_request_analysis(text,uuid,uuid,uuid,text,text,jsonb,text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_analysis_detail(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_analysis_versions(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_analysis_catalog(text,text,text,text,jsonb) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_analysis(text,uuid,text,integer,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_analysis_receipt(text,uuid,text,integer,bigint,text,text,text,jsonb,text,text,text,jsonb,jsonb,text,timestamptz,timestamptz) TO :"worker_role";
+-- Lab datasets (migration 059): the API checks an upload, records the guard's decision, starts an intake
+-- that waited for room, records a person's preparation and reads datasets; the worker reads the request of its lease and records one receipt per attempt.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_dataset_upload_check(text,uuid,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_dataset(text,uuid,uuid,uuid,text,text,bigint,text,uuid,text,jsonb,text,text,bigint) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_request_dataset_preparation(text,uuid,uuid,uuid,jsonb,text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_project_datasets(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_dataset_detail(text,uuid,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_start_dataset_intake(text,uuid,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_dataset(text,uuid,text,integer,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_dataset_receipt(text,uuid,text,integer,bigint,text,text,jsonb,jsonb,text,text,text,bigint,jsonb,text,text,integer,timestamptz,timestamptz) TO :"worker_role";
+-- The change feed (migration 061): the API reads each person's changes under that person's access rule,
+-- whether work runs in the projects they name, and prunes rows older than a day; `/me` reads each lab's dataset signal.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_change_feed(text,uuid,xid8,bigint,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_projects_busy(text,uuid,uuid[]) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_prune_changes(text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_group_lab_data(text,uuid) TO :"api_role";
+-- Durable campaigns (migration 066). The API acts only for capability holders. The
+-- director role is function-only and every mutation is fenced by campaign generation.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_create_campaign(text,uuid,uuid,text,text,text,jsonb,jsonb,jsonb) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_start_campaign(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_pause_campaign(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_resume_campaign(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_stop_campaign(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_get_campaign(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_list_campaigns(text,uuid,text,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_campaign_events_page(text,uuid,uuid,bigint,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_campaign_records_page(text,uuid,uuid,bigint,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_campaign_planner_calls_page(text,uuid,uuid,bigint,integer) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_campaign_planner_text(text,uuid,uuid,text) TO :"api_role";
+\if :{?director_role}
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_claim_campaign(text,text,integer) TO :"director_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_renew_campaign(text,uuid,text,bigint,integer) TO :"director_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_yield_campaign(text,uuid,text,bigint) TO :"director_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_campaign_director_view(text,uuid,text,bigint) TO :"director_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_campaign_finished_steps(text,uuid,text,bigint) TO :"director_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_campaign_apply(text,uuid,text,bigint,jsonb) TO :"director_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_start_campaign_step(text,uuid,text,bigint,uuid,uuid,text,text,text[],uuid,uuid) TO :"director_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_start_campaign_planner_call(text,uuid,text,bigint,uuid,bytea,text) TO :"director_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_finish_campaign_planner_call(text,uuid,text,bigint,uuid,bytea,text,text) TO :"director_role";
+SELECT NOT enrichedlab_agent.broker_campaign_director_role_safe(:'director_role'::name)
+  AS director_role_unsafe_after_grants \gset
+\if :director_role_unsafe_after_grants
+  \warn 'director role is not function-only after provisioning'
+  \quit 17
+\endif
+\endif
+\if :{?custodian_role}
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_custody_admitted_code(text,uuid,text,integer,bigint) TO :"custodian_role";
+\endif
+
+-- Migration 070: literature review artifacts for project lab members.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_literature_review(text,uuid,uuid,text) TO :"api_role";
+-- Migration 074: a lab member's read of a run's checked orientation.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_orientation(text,uuid,uuid) TO :"api_role";
+
+-- Migration 072: answer documents. People ask for and read them; the worker builds them under its lease.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_request_document(text,uuid,uuid,uuid,text,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_document_detail(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_run_documents(text,uuid,uuid) TO :"api_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_document(text,uuid,text,integer,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_document_receipt(text,uuid,text,integer,bigint,text,text,text,text,text,jsonb,jsonb,jsonb,text,timestamptz,timestamptz) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_complete_document(text,uuid,text,integer,bigint,text,text,jsonb,jsonb,jsonb,text,bigint,text,text,bigint,text,text,jsonb,timestamptz,timestamptz) TO :"worker_role";
+
+-- Migration 075: the evidence record. The API and worker roles append as their registered broker producers; the API
+-- verifies a stream's chain for the signed-in person, who must be allowed to read it, and names a purpose; the worker
+-- keeps the monthly partitions ahead. No role gets a table privilege.
+GRANT USAGE ON SCHEMA evidence TO :"api_role", :"worker_role";
+GRANT EXECUTE ON FUNCTION evidence.append(text,text,text,text,uuid,uuid,text,text,timestamptz,text,text) TO :"api_role", :"worker_role";
+GRANT EXECUTE ON FUNCTION evidence.verify_stream(text,uuid,uuid,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION evidence.ensure_record_partitions(integer) TO :"worker_role";
+
+-- Migration 076: the lineage graph. evidence.append writes it; the API reads one activity's provenance for a person who
+-- may read its stream.
+GRANT EXECUTE ON FUNCTION evidence.trace_activity(text,uuid,uuid,text,text) TO :"api_role";
+
+-- The gRPC evidence append service's database role (optional): it may append, read which producers are bound to it,
+-- and keep the coming months' partitions, and nothing else. Which producers it may name is the
+-- evidence.adapter_bindings rows the migration owner writes for it.
+\if :{?evidence_adapter_role}
+GRANT USAGE ON SCHEMA evidence TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.append(text,text,text,text,uuid,uuid,text,text,timestamptz,text,text) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.adapter_producers(text) TO :"evidence_adapter_role";
+-- Partition upkeep is bounded to twelve months and only creates missing empty partitions.
+GRANT EXECUTE ON FUNCTION evidence.ensure_record_partitions(integer) TO :"evidence_adapter_role";
+-- Migration 079: the same service is the custody writer. Each function checks that the producer is bound to this role
+-- and holds a custody.store grant for the scope; only the service's own observations (a missing copy, an applied
+-- retention, a new epoch) are written without a producer.
+GRANT EXECUTE ON FUNCTION evidence.custody_authorise(text,text,text,text,uuid,uuid) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_issue_claim(text,text,text,text,uuid,uuid,text,text,bigint,text,text,bigint,text,text,timestamptz,boolean) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_record_copy(text,uuid,text,text,bigint,text,text,timestamptz,boolean) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_mark_ready(text,text,uuid,uuid) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_claim(text,text,uuid) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_waiting(text,integer,uuid) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_due_copies(text,interval,integer) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_retention_pending(text,integer) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_observe(text,uuid,uuid,text,jsonb) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_epoch_check(text) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_complete_acceptances(text) TO :"evidence_adapter_role";
+-- Migration 081: the same service runs the capture recorder, which records only what the capture triggers logged, and
+-- reads the log's age (a number) to warn when recording falls behind even while its recorder calls fail.
+-- It calls the procedure, which commits before and after recording; the function itself refuses this role unless reached
+-- through that call.
+GRANT EXECUTE ON PROCEDURE evidence.capture_record_now(integer, jsonb) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.capture_record(integer) TO :"evidence_adapter_role";
+GRANT EXECUTE ON FUNCTION evidence.capture_log_age() TO :"evidence_adapter_role";
+-- The same timeouts as the other runtime roles: a transaction of this role cannot hold a lock idle or wait unbounded.
+ALTER ROLE :"evidence_adapter_role" SET statement_timeout = '30s';
+ALTER ROLE :"evidence_adapter_role" SET lock_timeout = '5s';
+ALTER ROLE :"evidence_adapter_role" SET idle_in_transaction_session_timeout = '30s';
+\endif
+
+-- Migration 079: a lab's lead approves its records class through the API.
+GRANT EXECUTE ON FUNCTION evidence.custody_approve_records_class(text,uuid,text,interval,uuid,interval,text) TO :"api_role";
+GRANT EXECUTE ON FUNCTION evidence.custody_acceptance_state(text,uuid) TO :"api_role";
+
+-- Migration 080: a lab member reads the lab's tools, their tool groups and how each is granted.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_lab_tools(text,uuid,text) TO :"api_role";

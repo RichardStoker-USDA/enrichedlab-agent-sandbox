@@ -1,0 +1,355 @@
+/* Quiet Instrument for the workspace (design_direction.md), on the working paper's figure and table
+   rules. Official UC Davis values with the reference application's semantic roles; the dark theme is this
+   application's own accessible interpretation (UC Davis publishes no dark-mode specification). Components use the semantic layer, never the
+   primitives. */
+:root {
+  color-scheme: light;
+  --type-scale: 1;
+
+  --aggie-blue: #022851;
+  --aggie-gold: #FFBF00;
+  --blue-90: #033266; --blue-80: #1D4776; --blue-70: #355B85; --blue-60: #4F7094; --blue-50: #6884A3;
+  --blue-40: #8198B2; --blue-30: #9AADC2; --blue-20: #B3C1D1; --blue-10: #CDD6E0;
+  --gold-80: #FFCC33; --gold-30: #FFECB2; --gold-20: #FFF2CC;
+  --k-90: #191919; --k-80: #333333; --k-70: #4C4C4C; --k-60: #666666; --k-50: #7F7F7F;
+  --k-40: #999999; --k-30: #B2B2B2; --k-20: #CCCCCC; --k-10: #E5E5E5;
+  --uc-gunrock: #0047BA; --uc-rec-pool: #6FCFEB; --uc-double-decker: #C10230; --uc-rose: #FF8189;
+
+  --canvas: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-2: var(--k-10);
+  --line: var(--k-20);
+  --line-2: var(--k-30);
+  --text: var(--k-90);
+  --text-2: var(--k-70);
+  --text-3: var(--k-60);
+  --heading: var(--aggie-blue);
+  --brand: var(--aggie-blue);
+  --on-brand: #FFFFFF;
+  --on-brand-2: var(--blue-20);
+  --fill: var(--aggie-blue);
+  --on-fill: #FFFFFF;
+  --fill-hover: var(--blue-90);
+  /* Only published UC Davis values: bright gold on white is 1.6:1, so a thin mark on the light page is Aggie Blue. */
+  --mark: var(--aggie-blue);
+  --focus: var(--uc-gunrock);
+  /* The halo behind a focused field is a published tint, not a blend: Aggie Blue 10% on the light page. */
+  --focus-halo: var(--blue-10);
+  --failed: var(--uc-double-decker);
+  --active: var(--uc-gunrock);
+  --stage: var(--k-10);
+  --paper: #FFFFFF;
+  --hover-wash: rgb(2 40 81 / 0.045);
+  --scrim: rgb(2 40 81 / 0.34);
+  --overlay-shadow: 0 1px 3px rgb(2 40 81 / 0.10), 0 10px 28px rgb(2 40 81 / 0.12);
+  /* Depth has three layers: the canvas, raised groups and panels, and overlays above a scrim. A raised group in light
+     is white with a hairline and a soft blue shadow; the soft track behind a segmented control or a search field is a
+     faint Aggie Blue wash, with the chosen segment raised on it in white. */
+  --raised: #FFFFFF;
+  --group-edge: 0 0 0 1px rgb(2 40 81 / 0.09), 0 1px 2px rgb(2 40 81 / 0.05), 0 6px 18px rgb(2 40 81 / 0.05);
+  --raised-edge: 0 0 0 1px rgb(2 40 81 / 0.08), 0 1px 3px rgb(2 40 81 / 0.12);
+  --track: rgb(2 40 81 / 0.05);
+  --track-line: rgb(2 40 81 / 0.07);
+  --row-hover: rgb(2 40 81 / 0.04);
+  --glass: rgb(255 255 255 / 0.86);
+  --light-table: rgb(25 25 25 / 0.97);
+  /* The sidebar is an inset panel a shade off the canvas; the bar's controls sit on veils of white over its dark plane,
+     and the chosen view is white with Aggie Blue words in light and Aggie Gold in dark (Glass Box). */
+  --side: rgb(2 40 81 / 0.035);
+  --side-w: clamp(212px, calc(232px * var(--type-scale)), 280px);
+  --bar-track: rgb(255 255 255 / 0.13);
+  --bar-line: rgb(255 255 255 / 0.28);
+  --bar-ink-2: rgb(255 255 255 / 0.84);
+  --bar-seg-on: #FFFFFF;
+  --bar-seg-on-ink: var(--aggie-blue);
+
+  /* Earlier names still used by the older step and file readers. */
+  --bench: var(--canvas); --page: var(--surface); --plate: var(--stage); --plate-edge: var(--line);
+  --ink: var(--text); --ink-soft: var(--text-2); --rule: var(--line); --rule-strong: var(--line-2);
+  --action: var(--fill); --action-ink: var(--on-fill); --action-hover: var(--fill-hover); --control: var(--fill);
+
+  --ui: "Proxima Nova", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Charter, "Book Antiqua", Georgia, serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: var(--ui);
+  --font-body: calc(15px * var(--type-scale));
+  --font-small: calc(13px * var(--type-scale));
+  --font-xs: max(11.5px, calc(12px * var(--type-scale)));
+  --font-lede: calc(19px * var(--type-scale));
+  --control-h: clamp(40px, calc(42px * var(--type-scale)), 56px);
+  --bar-h: max(56px, calc(58px * var(--type-scale)));
+  --rail-w: clamp(220px, calc(236px * var(--type-scale)), 300px);
+  --gutter: clamp(16px, 3.4vw, 44px);
+  --measure: 760px;
+  /* Shapes: data marks keep small corners so they read as quantities; controls 8, groups and popovers 12, sheets 16. */
+  --r-1: 4px;
+  --r-2: 8px;
+  --r-3: 12px;
+  --r-4: 16px;
+  --r-pill: 999px;
+  --ease: cubic-bezier(.32, .72, 0, 1);
+  --t-fast: 120ms;
+  --t-base: 220ms;
+  --t-slow: 380ms;
+
+  font-family: var(--ui);
+  font-size: var(--font-body);
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern", "tnum" 0;
+}
+:root[data-type-size="small"] { --type-scale: .925; }
+:root[data-type-size="large"] { --type-scale: 1.2; }
+:root[data-type-size="largest"] { --type-scale: 1.45; }
+
+/* Neutral dark reading room shared with the reference application; blue and gold stay accents. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #000000;
+  --surface: var(--k-90);
+  --surface-2: var(--k-80);
+  --line: var(--k-80);
+  --line-2: var(--k-70);
+  --text: #FFFFFF;
+  --text-2: var(--k-20);
+  --text-3: var(--k-40);
+  --heading: #FFFFFF;
+  --brand: var(--k-90);
+  --on-brand-2: var(--k-30);
+  --fill: var(--aggie-gold);
+  --on-fill: var(--aggie-blue);
+  --fill-hover: var(--gold-80);
+  --mark: var(--aggie-gold);
+  --focus: var(--aggie-gold);
+  --focus-halo: var(--aggie-gold);
+  --failed: var(--uc-rose);
+  --active: var(--uc-rec-pool);
+  --stage: #000000;
+  --hover-wash: rgb(255 255 255 / 0.06);
+  --scrim: rgb(0 0 0 / 0.6);
+  --overlay-shadow: 0 1px 3px rgb(0 0 0 / .5), 0 12px 32px rgb(0 0 0 / .6);
+  /* Dark groups rise on the published #191919 with a white veil for their edge, so lists read as grouped instead of a
+     flat black page; the chosen segment is a brighter veil. */
+  --raised: rgb(255 255 255 / 0.12);
+  --group-edge: 0 0 0 1px rgb(255 255 255 / 0.07);
+  --raised-edge: 0 0 0 1px rgb(255 255 255 / 0.10), 0 1px 2px rgb(0 0 0 / 0.5);
+  --track: rgb(255 255 255 / 0.06);
+  --track-line: rgb(255 255 255 / 0.07);
+  --row-hover: rgb(255 255 255 / 0.05);
+  --glass: rgb(0 0 0 / 0.78);
+  --side: rgb(255 255 255 / 0.05);
+  --bar-seg-on: var(--aggie-gold);
+}
+
+/* Floating chrome is translucent only where the reader and the browser allow it; otherwise it is solid. */
+@media (prefers-reduced-transparency: reduce) { :root, :root[data-theme="dark"] { --glass: var(--surface); } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { :root, :root[data-theme="dark"] { --glass: var(--surface); } }
+
+* { box-sizing: border-box; }
+html { background: var(--canvas); scroll-padding-top: calc(var(--bar-h) + 16px); }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--canvas); color: var(--text); }
+h1, h2, h3, h4, p, figure, blockquote, dl, dd { margin: 0; }
+h1, h2, h3, h4 { color: var(--heading); font-weight: 700; letter-spacing: -0.012em; line-height: 1.22; }
+a { color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; }
+/* A disabled control goes neutral; a faded gold or blue fill would read as a tint UC Davis does not publish. */
+button:disabled { cursor: not-allowed; opacity: 0.45; filter: grayscale(1); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+::selection { background: var(--gold-30); color: var(--aggie-blue); }
+code, kbd, samp, .machine { font-family: var(--mono); font-size: 0.88em; }
+.num, .tabular { font-variant-numeric: tabular-nums; }
+
+input, select, textarea {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 9px 11px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 120ms var(--ease), box-shadow 120ms var(--ease), background-color 120ms var(--ease);
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--focus-halo); }
+textarea { min-height: 110px; resize: vertical; line-height: 1.55; }
+input::placeholder, textarea::placeholder { color: var(--text-3); opacity: 1; }
+input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; min-height: 0; padding: 0; accent-color: var(--fill); }
+label { display: grid; gap: 6px; font-size: var(--font-small); font-weight: 650; color: var(--heading); }
+label small, label .hint { font-weight: 400; color: var(--text-2); }
+
+/* One primary action per view is a solid fill; everything else is a quiet button or a word. */
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--control-h); padding: 0 18px; border-radius: var(--r-2);
+  background: var(--fill); color: var(--on-fill); font-weight: 650; font-size: calc(14px * var(--type-scale));
+  text-decoration: none; white-space: nowrap;
+  transition: background-color 120ms var(--ease), box-shadow 120ms var(--ease), transform 120ms var(--ease);
+}
+.button:hover:not(:disabled) { background: var(--fill-hover); }
+.button:active:not(:disabled) { transform: scale(0.985); }
+.button.secondary { background: var(--surface); color: var(--heading); box-shadow: inset 0 0 0 1px var(--line-2); }
+.button.secondary:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--heading); background: var(--surface); }
+.link {
+  color: var(--heading); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px;
+  text-underline-offset: 3px; text-decoration-color: var(--line-2);
+  transition: text-decoration-color 120ms var(--ease);
+}
+.link:hover { text-decoration-color: var(--mark); }
+
+/* Paper sections number themselves in reading order. */
+.paper { counter-reset: section; }
+.section-label {
+  counter-increment: section;
+  display: flex; align-items: baseline; gap: 14px;
+  font-size: calc(22px * var(--type-scale)); font-weight: 700; color: var(--heading);
+  padding-bottom: 10px; border-bottom: 1px solid var(--line);
+}
+.section-label::before {
+  content: counter(section);
+  font-variant-numeric: tabular-nums; font-weight: 600; color: var(--mark); min-width: 1ch;
+}
+@media (min-width: 1200px) {
+  .paper .section-label::before { margin-left: -38px; width: 24px; text-align: right; }
+}
+
+.soft { color: var(--text-2); }
+.faint { color: var(--text-3); }
+.small { font-size: var(--font-small); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* An editor's change bar: marks a passage that needs the reader, without boxing it. */
+.change-bar { position: relative; }
+.change-bar::before { content: ""; position: absolute; left: -16px; top: 3px; bottom: 3px; width: 3px; background: var(--mark); }
+
+/* Status: a small drawn mark plus words, never color alone and never a pill. */
+.status { display: inline-flex; align-items: center; gap: 7px; font-size: var(--font-small); font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.status .glyph { width: 12px; height: 12px; flex: none; }
+.status.wrap { white-space: normal; align-items: flex-start; }
+.status.wrap .glyph { margin-top: 0.3em; }
+.status.done { color: var(--heading); }
+.status.attention { color: var(--heading); }
+.status.attention .glyph { color: var(--mark); }
+.status.failed { color: var(--failed); }
+.status.active { color: var(--active); }
+
+/* Real ongoing work: three bars that settle when the work stops. */
+/* Keeps a value with the punctuation that touches it, such as its brackets, on one line. */
+.nw { white-space: nowrap; }
+.waveform { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.waveform i { width: 3px; height: 100%; border-radius: 1px; background: var(--active); transform-origin: bottom; animation: wave 1.1s var(--ease) infinite; }
+.waveform i:nth-child(2) { animation-delay: 0.15s; }
+.waveform i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes wave { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+
+/* Technical details stay one step away and use the machine face. */
+details.technical { border-top: 1px solid var(--line); padding-top: 8px; }
+details.technical > summary { cursor: pointer; font-size: var(--font-small); font-weight: 600; color: var(--text-2); min-height: 32px; display: flex; align-items: center; }
+details.technical dl { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); gap: 6px 18px; margin: 10px 0 0; font-size: var(--font-xs); }
+details.technical dt { color: var(--text-2); }
+details.technical dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+
+/* Inline messages are sentences with a mark, not boxes. */
+.notice { display: flex; gap: 10px; align-items: baseline; font-size: var(--font-small); color: var(--text); }
+.notice::before { content: ""; flex: none; width: 8px; height: 8px; transform: translateY(-1px); background: var(--heading); }
+.notice.error { color: var(--failed); }
+.notice.error::before { background: var(--failed); transform: translateY(-1px) rotate(45deg); }
+
+/* A grouped list: things to open, on one raised surface with hairline rows and a chevron. */
+.grouped { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--r-3); box-shadow: var(--group-edge); overflow: clip; }
+.grouped > li + li { border-top: 1px solid var(--line); }
+.grouped-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 16px;
+  padding: 14px 16px 14px 18px; color: inherit; text-decoration: none; text-align: left; width: 100%;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.grouped-row:hover { background: var(--row-hover); }
+.grouped-row:focus-visible { outline-offset: -2px; border-radius: var(--r-3); }
+.chevron { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--text-3); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--t-fast) var(--ease), stroke var(--t-fast) var(--ease); }
+.grouped-row:hover .chevron { transform: translateX(2px); stroke: var(--heading); }
+/* A section's title on a reading page, with a quiet count or date beside it. */
+.section-title { font-size: calc(19px * var(--type-scale)); font-weight: 650; letter-spacing: -0.01em; color: var(--heading); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.section-title small { font-size: var(--font-xs); font-weight: 500; color: var(--text-3); }
+.section-title:focus { outline: none; }
+.grouped-title { font-size: calc(13px * var(--type-scale)); font-weight: 700; color: var(--text-2); letter-spacing: 0.005em; margin: 0 0 8px 4px; display: flex; align-items: baseline; gap: 8px; }
+.count { font-variant-numeric: tabular-nums; color: var(--text-3); font-size: var(--font-xs); font-weight: 600; }
+
+/* A row in a grouped list: its title, one line of the question in the paper's serif, where it stands in a recorded
+   sentence, then who and when. A row with its own action (`act-row`) is covered by its main link (`stretch`), so a tap
+   anywhere opens it, and a second action (`quiet-action`, such as Pause) sits above that cover. */
+.row-body { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.row-title { font-size: calc(16px * var(--type-scale)); font-weight: 650; color: var(--heading); line-height: 1.3; letter-spacing: -0.005em; }
+.row-question { font-family: var(--serif); font-size: calc(15.5px * var(--type-scale)); line-height: 1.5; color: var(--text); display: -webkit-box; -webkit-line-clamp: 1; line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.row-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: var(--font-small); }
+.row-review { font-size: var(--font-xs); color: var(--text-2); }
+.row-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: var(--font-xs); color: var(--text-3); }
+.row-meta .who-can { color: var(--text-2); }
+.row-meta .new { font-weight: 700; color: var(--heading); }
+.act-row { position: relative; display: flex; align-items: center; gap: 14px; padding: 14px 16px 14px 20px; transition: background-color var(--t-fast) var(--ease); }
+.act-row:hover { background: var(--row-hover); }
+.act-row .button { min-height: 36px; padding: 0 16px; flex: none; }
+.act-row:hover .chevron { transform: translateX(2px); stroke: var(--heading); }
+.stretch::after { content: ""; position: absolute; inset: 0; }
+.stretch:focus-visible { outline: none; }
+.stretch:focus-visible::after { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--r-3); }
+.row-open { display: grid; place-items: center; width: 24px; height: 24px; flex: none; }
+.quiet-action { position: relative; z-index: 1; min-height: 36px; padding: 0 10px; border-radius: var(--r-2); font-size: var(--font-small); font-weight: 600; color: var(--text-2);
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+.quiet-action:hover:not(:disabled) { color: var(--heading); text-decoration-color: var(--mark); }
+@media (max-width: 640px) { .act-row { padding: 13px 14px 13px 16px; flex-wrap: wrap; } }
+
+/* A segmented control on a soft track: the chosen segment is raised. */
+.segmented { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--track); box-shadow: inset 0 0 0 1px var(--track-line); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.segmented > label, .segmented > button, .segmented > a {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 14px;
+  border-radius: var(--r-pill); font-size: var(--font-small); font-weight: 600; color: var(--text-2); white-space: nowrap;
+  text-decoration: none; cursor: pointer; transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.segmented > label { display: inline-flex; }
+.segmented input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.segmented > :hover { color: var(--heading); }
+.segmented > label:has(input:checked), .segmented > [aria-pressed="true"], .segmented > [aria-current], .segmented > [aria-selected="true"] { color: var(--heading); background: var(--raised); box-shadow: var(--raised-edge); }
+/* The raised fill is too faint to mark the choice by itself (about 1.1:1 in light, 1.4:1 in dark), so the chosen
+   segment also carries the editor's mark, which clears 3:1 against the segment and the track in both themes. */
+.segmented > label:has(input:checked)::after, .segmented > [aria-pressed="true"]::after, .segmented > [aria-current]::after, .segmented > [aria-selected="true"]::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 2px; background: var(--mark);
+}
+.segmented > label:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* A search field on the soft track, with its glass. */
+.search-field { position: relative; display: flex; align-items: center; min-width: 0; }
+.search-field svg { position: absolute; left: 12px; width: 16px; height: 16px; fill: none; stroke: var(--text-3); stroke-width: 1.8; stroke-linecap: round; pointer-events: none; }
+.search-field input { min-height: 38px; padding: 7px 14px 7px 36px; border-radius: var(--r-pill); border-color: transparent; background: var(--track); box-shadow: inset 0 0 0 1px var(--track-line); }
+.search-field input:focus-visible { background: var(--surface); box-shadow: 0 0 0 3px var(--focus-halo); border-color: var(--focus); }
+
+/* A popover panel: a raised surface above the page with a soft shadow, opening from 98 percent. */
+.panel-popover { margin: 0; padding: 6px; border: 0; border-radius: var(--r-3); background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--track-line), var(--overlay-shadow); }
+.panel-popover:popover-open { animation: panel-in 140ms var(--ease); }
+@keyframes panel-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+
+/* A tab bar under a page's head: it stays below the masthead, and the chosen tab's gold or blue mark slides to it. */
+.tabbar { position: sticky; top: var(--bar-h); z-index: 6; min-width: 0; background: var(--glass); -webkit-backdrop-filter: saturate(1.6) blur(14px); backdrop-filter: saturate(1.6) blur(14px); border-bottom: 1px solid var(--line); }
+.tabbar [role="tablist"] { position: relative; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+/* Tabs past the edge of a narrow screen fade out, so the row reads as one that scrolls. */
+.tabbar [role="tablist"].more-end { mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.tabbar [role="tablist"].more-start { mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); }
+.tabbar [role="tablist"].more-start.more-end { mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+.tabbar [role="tab"] { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 46px; padding: 0 14px; font-size: calc(14px * var(--type-scale)); font-weight: 600; color: var(--text-2); white-space: nowrap; text-decoration: none; transition: color var(--t-fast) var(--ease); }
+.tabbar [role="tab"]:hover { color: var(--heading); }
+.tabbar [role="tab"][aria-selected="true"] { color: var(--heading); }
+.tabbar [role="tab"] .count { font-weight: 650; }
+.tab-mark { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--mark); border-radius: 2px 2px 0 0; transition: transform var(--t-base) var(--ease), width var(--t-base) var(--ease); pointer-events: none; }
+.tab-panel { animation: tab-in 180ms var(--ease); }
+@keyframes tab-in { from { opacity: 0; transform: translateY(4px); } }
+
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 180ms; animation-timing-function: var(--ease); }
+/* A figure plate opened from a project's contents grows into the same figure on its analysis page. */
+::view-transition-group(chosen-figure) { animation-duration: 320ms; animation-timing-function: var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+  .waveform i { transform: scaleY(0.7); }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}

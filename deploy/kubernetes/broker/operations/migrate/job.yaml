@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-broker-migrate-002
+  labels:
+    app.kubernetes.io/name: enrichedlab-agent-broker
+    app.kubernetes.io/component: database-admin
+    app.kubernetes.io/part-of: enrichedlab-agent-sandbox
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: enrichedlab-agent-broker
+        app.kubernetes.io/component: database-admin
+        app.kubernetes.io/part-of: enrichedlab-agent-sandbox
+    spec:
+      restartPolicy: Never
+      serviceAccountName: agent-broker-database-admin
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        enrichedlab.ai/agent-control-node: selected
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: registry.example.invalid/enrichedlab/agent-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          args:
+            - migrate
+          env:
+            - name: AGENT_SANDBOX_BROKER_MIGRATION_DSN_FILE
+              value: /run/secrets/database/database.dsn
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: database
+              mountPath: /run/secrets/database
+              readOnly: true
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: database
+          secret:
+            secretName: agent-broker-migration-database
+            defaultMode: 0440
+        - name: temporary
+          emptyDir:
+            sizeLimit: 64Mi

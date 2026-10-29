@@ -1,0 +1,9 @@
+# Per-run output exporter
+
+`broker::export_workload` renders the isolated Pod, ClusterIP Service and NetworkPolicy for a completed direct Sandbox run. The renderer accepts only trusted task, binding, handle, operator configuration and per-run Secret metadata. It generates the public `config.json` metadata that the trusted Secret issuer must materialize alongside `terminal.json`, `ca.pem`, `server.pem` and `server.key`.
+
+The Pod mounts only `artifacts-<admitted-run-name>` read-only. Both the init container and runtime exporter run as UID/GID 65532 under restricted Pod Security. The init container uses the pod `fsGroup` access to create an owned `identity` child in a memory `emptyDir`, copies only fixed Secret filenames there with modes 0700 and 0600, and both containers mount the full memory volume at `/runtime`; the exporter reads the private `/runtime/identity` child through a read-only mount. This avoids Kata's unsupported memory-volume `subPath` handoff. The init container never mounts the artifact PVC. The Pod carries no service-account token, host mount, broker durable PVC, owner reference or network configuration beyond the rendered Service and NetworkPolicy.
+
+The renderer does not provision PVCs or Secrets, prove Secret immutability, attest terminal quiescence, dispatch the workload, authorize a service role, or prove storage scheduling. Those are separate trusted controller and staging responsibilities. The NetworkPolicy admits TCP 8443 only from the fixed broker worker labels in the configured broker namespace and denies new exporter egress. Recovery and cleanup remain broker lifecycle work.
+
+The terminal-record parser permits records larger than a Kubernetes Secret. Before creating the immutable per-run Secret, the trusted publisher must reject an aggregate payload over Kubernetes' 1 MiB limit. This Secret-based adapter cannot claim that a 16 MiB terminal record will fit.

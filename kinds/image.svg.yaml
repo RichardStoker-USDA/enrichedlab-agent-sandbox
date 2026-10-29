@@ -1,0 +1,15 @@
+# SVG is an untrusted document: a view draws it only in a sandboxed frame with no scripts and no network.
+id: image.svg
+version: 1
+status: accepted
+owner: agents
+summary: UTF-8 SVG document whose first element is svg.
+media_types: [image/svg+xml]
+validator: svg-document
+access: whole
+limits: {bytes: 16777216}
+views:
+  - {view: svg-sandboxed, gpu: [still], fallback: download}
+fixtures:
+  - {path: fixtures/image.svg/circle.svg, media_type: image/svg+xml, expect: passed}
+  - {path: fixtures/image.svg/page.svg, media_type: image/svg+xml, expect: failed}

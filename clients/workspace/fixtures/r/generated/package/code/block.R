@@ -1,0 +1,32 @@
+# Plasma response by diet: one-way ANOVA, Tukey comparisons and a box plot.
+analyze <- function(data) {
+  data$condition <- stats::relevel(data$condition, ref = "reference")
+  fit <- stats::aov(response ~ condition, data = data)
+  anova_table <- as.data.frame(summary(fit)[[1]])
+  anova_table$term <- trimws(rownames(anova_table))
+  rownames(anova_table) <- NULL
+  comparisons <- as.data.frame(stats::TukeyHSD(fit, "condition")$condition)
+  comparisons$comparison <- rownames(comparisons)
+  rownames(comparisons) <- NULL
+  group_summary <- stats::aggregate(response ~ condition, data = data,
+                                    FUN = function(x) c(n = length(x), mean = mean(x), sd = stats::sd(x)))
+  group_summary <- do_flatten(group_summary)
+  list(
+    tables = list(anova = anova_table, diet_comparisons = comparisons, group_summary = group_summary),
+    figures = list(
+      response_by_diet = function() {
+        boxplot(response ~ condition, data = data, col = c("#B3C1D1", "#FFBF00", "#022851"),
+                xlab = "Diet", ylab = "Plasma response", main = "Plasma response by diet")
+        stripchart(response ~ condition, data = data, vertical = TRUE, method = "jitter",
+                   pch = 19, cex = 0.6, add = TRUE, col = "#1D4776")
+      }
+    ),
+    notes = c("One-way ANOVA of response on diet with the reference diet as baseline.",
+              "Tukey HSD compares every pair of diets.")
+  )
+}
+
+do_flatten <- function(summary) {
+  stats <- summary$response
+  data.frame(condition = summary$condition, n = stats[, "n"], mean = stats[, "mean"], sd = stats[, "sd"])
+}

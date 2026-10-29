@@ -1,0 +1,2 @@
+# Reviewed blobs the public-boundary history scan accepts: blob id, then the path it had. A new or edited file is a new
+# blob, so it is scanned again. Drop a line once no reachable commit holds the blob.

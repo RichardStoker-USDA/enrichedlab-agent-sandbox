@@ -1,0 +1,8 @@
+Template: template://r-generated-analysis/v2
+Dataset: data/measurements.csv
+Columns: sample_id:character, condition:factor, response:numeric
+MaxTables: 8
+MaxTableRows: 100000
+MaxFigures: 6
+MaxNotes: 20
+TimeLimitSeconds: 120

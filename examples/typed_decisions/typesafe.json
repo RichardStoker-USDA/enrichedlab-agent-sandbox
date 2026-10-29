@@ -1,0 +1,6 @@
+{
+  "name": "typesafe_jev_candidate",
+  "protocol": "systemone-v1",
+  "endpoint": "https://api.typesafe.ai/v1/systemone",
+  "model": "jev-1.13.0"
+}

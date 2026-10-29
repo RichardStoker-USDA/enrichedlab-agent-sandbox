@@ -1,0 +1,3 @@
+interface:
+  display_name: "EnrichedLab agent continuity"
+  short_description: "Resume named agents on disposable compute"

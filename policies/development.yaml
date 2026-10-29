@@ -1,0 +1,98 @@
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only: [/usr, /lib, /proc, /dev/urandom, /etc, /var/log, /opt]
+  read_write: [/sandbox, /tmp, /dev/null]
+
+landlock:
+  compatibility: __LANDLOCK_MODE__
+
+network_policies:
+  web_search:
+    name: web-search
+    endpoints:
+      - { host: api.exa.ai, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: duckduckgo.com, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: html.duckduckgo.com, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: lite.duckduckgo.com, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: r.jina.ai, port: 443, protocol: rest, enforcement: enforce, access: full }
+    binaries:
+      - { path: /usr/bin/curl }
+      - { path: /usr/bin/wget }
+      - { path: /usr/bin/node }
+      - { path: /sandbox/.local/opencode/node_modules/.bin/opencode }
+      - { path: /sandbox/.local/pi/node_modules/.bin/pi }
+
+  github_read:
+    name: github-read
+    endpoints:
+      - { host: api.github.com, port: 443, protocol: rest, enforcement: enforce, access: read-only }
+      - { host: raw.githubusercontent.com, port: 443, protocol: rest, enforcement: enforce, access: read-only }
+      - { host: objects.githubusercontent.com, port: 443, protocol: rest, enforcement: enforce, access: read-only }
+      - { host: codeload.github.com, port: 443, protocol: rest, enforcement: enforce, access: read-only }
+    binaries:
+      - { path: /usr/bin/curl }
+      - { path: /usr/bin/wget }
+      - { path: /usr/bin/git }
+      - { path: /usr/bin/node }
+      - { path: /sandbox/.local/opencode/node_modules/.bin/opencode }
+      - { path: /sandbox/.local/pi/node_modules/.bin/pi }
+
+  github_git_read:
+    name: github-git-read
+    endpoints:
+      - host: github.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - { allow: { method: GET, path: "**" } }
+          - { allow: { method: HEAD, path: "**" } }
+          - { allow: { method: OPTIONS, path: "**" } }
+          - { allow: { method: POST, path: "/**/git-upload-pack" } }
+    binaries:
+      - { path: /usr/bin/git }
+      - { path: /usr/local/bin/git }
+
+  package_registries:
+    name: package-registries
+    endpoints:
+      - { host: registry.npmjs.org, port: 443, protocol: rest, enforcement: enforce, access: full, allow_encoded_slash: true }
+      - { host: pypi.org, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: files.pythonhosted.org, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: bootstrap.pypa.io, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: downloads.python.org, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: astral.sh, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: crates.io, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: index.crates.io, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: static.crates.io, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: static.rust-lang.org, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: sh.rustup.rs, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: mise.jdx.dev, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: ghcr.io, port: 443, protocol: rest, enforcement: enforce, access: full }
+      - { host: pkg-containers.githubusercontent.com, port: 443, protocol: rest, enforcement: enforce, access: full }
+    binaries:
+      - { path: /usr/bin/curl }
+      - { path: /usr/bin/wget }
+      - { path: /usr/bin/git }
+      - { path: /usr/bin/node }
+      - { path: /usr/bin/npm }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/local/bin/python3 }
+      - { path: /sandbox/.local/bin/** }
+      - { path: /sandbox/.pixi/envs/**/bin/** }
+
+  harness_updates:
+    name: harness-updates
+    endpoints:
+      - { host: opencode.ai, port: 443, protocol: rest, enforcement: enforce, access: read-only }
+      - { host: install.opencode.ai, port: 443, protocol: rest, enforcement: enforce, access: read-only }
+    binaries:
+      - { path: /usr/bin/curl }
+      - { path: /usr/bin/wget }
+      - { path: /usr/bin/node }
+      - { path: /sandbox/.local/opencode/node_modules/.bin/opencode }
+      - { path: /sandbox/.local/pi/node_modules/.bin/pi }
+
+  # __EXTRA_POLICIES__

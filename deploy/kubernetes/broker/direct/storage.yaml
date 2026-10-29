@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-broker-direct-control
+  labels:
+    sandbox.enrichedlab.org/control-plane: "true"
+  annotations:
+    sandbox.enrichedlab.org/writer-fence: required
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: REPLACE_WITH_WRITER_FENCE_STORAGE_CLASS
+  resources:
+    requests:
+      storage: 20Gi

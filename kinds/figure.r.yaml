@@ -1,0 +1,17 @@
+# A figure drawn by reviewed R code. No media type makes a file one: the broker path or reviewed method that drew it
+# declares it, bound to the file's path and SHA-256, and the kind that owns the file's media type checks the bytes.
+id: figure.r
+version: 1
+status: accepted
+owner: agents
+summary: Figure drawn by reviewed R code; the R drawing is the master copy.
+recognition: declared
+checked_as: [image.svg, document.pdf, image.raster]
+media_types: [image/svg+xml, application/pdf, image/png]
+validator: delegated
+access: whole
+limits: {}
+views:
+  - {view: svg-sandboxed, media_types: [image/svg+xml], gpu: [still], fallback: download}
+  - {view: pdf, media_types: [application/pdf], gpu: [still], fallback: download}
+  - {view: image, media_types: [image/png], gpu: [still], fallback: download}

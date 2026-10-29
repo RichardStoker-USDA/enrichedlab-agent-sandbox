@@ -1,0 +1,16 @@
+# Raster images, checked by their signature and their ending, never by file name.
+id: image.raster
+version: 1
+status: accepted
+owner: agents
+summary: PNG, JPEG, GIF or WebP image whose bytes begin and end as that format requires.
+media_types: [image/png, image/jpeg, image/gif, image/webp]
+validator: raster-image
+access: whole
+limits: {bytes: 67108864}
+views:
+  - {view: image, gpu: [still], fallback: download}
+fixtures:
+  - {path: fixtures/image.raster/dot.png, media_type: image/png, expect: passed}
+  - {path: fixtures/image.raster/dot.jpg, media_type: image/jpeg, expect: passed}
+  - {path: fixtures/image.raster/truncated.png, media_type: image/png, expect: failed}

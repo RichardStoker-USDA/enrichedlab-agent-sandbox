@@ -1,0 +1,30 @@
+{
+  "name": "enrichedlab-research-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "preview:fixtures": "vite --mode fixtures --host 127.0.0.1",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --test src/*.test.ts",
+    "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "test:browser": "node ./scripts/test_workspace_browser.mjs"
+  },
+  "dependencies": {
+    "papaparse": "5.7.0",
+    "pdfjs-dist": "6.3.289",
+    "svelte": "5.57.0",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "@types/node": "26.5.0",
+    "@types/papaparse": "5.5.2",
+    "@types/three": "0.186.0",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "vite": "8.3.5"
+  }
+}

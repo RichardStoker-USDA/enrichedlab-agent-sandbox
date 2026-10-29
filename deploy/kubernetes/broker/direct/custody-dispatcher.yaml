@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-broker-custody-dispatcher
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: custody-dispatcher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: custody-dispatcher
+    spec:
+      serviceAccountName: agent-broker-custodian
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: stage-custody-config
+          image: registry.example.invalid/enrichedlab/agent-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          command: ["/bin/sh", "-eu", "-c"]
+          args:
+            - >-
+              install -d -m 0700 /private &&
+              install -m 0600 /projection/dispatcher.json /private/dispatcher.json &&
+              install -m 0600 /projection/input-custodian.json /private/input-custodian.json &&
+              install -m 0600 /projection/output-custodian.json /private/output-custodian.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          volumeMounts:
+            - {name: custody-config-projection, mountPath: /projection, readOnly: true}
+            - {name: custody-config-private, mountPath: /private}
+      containers:
+        - name: dispatcher
+          image: registry.example.invalid/enrichedlab/agent-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          command: ["/usr/local/bin/agent-sandbox-custody-dispatcher"]
+          args: ["--config", "/run/agent-sandbox/custody/dispatcher.json", "--config-owner-uid", "65532"]
+          env:
+            - {name: HOME, value: /home/agent}
+            - {name: RUST_LOG, value: agent_sandbox_broker=info}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          volumeMounts:
+            - {name: custody-config-private, mountPath: /run/agent-sandbox/custody, readOnly: true}
+            - {name: custodian-database, mountPath: /run/secrets/database, readOnly: true}
+            - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/input-notices, subPath: notices/input, readOnly: true}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/output-notices, subPath: notices/output, readOnly: true}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/input-plans, subPath: plans/input, readOnly: true}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/output-plans, subPath: plans/output, readOnly: true}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/admissions, subPath: admissions}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/terminal-records, subPath: terminal-records}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/clients, subPath: clients}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/input-custody, subPath: custody/input}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/output-custody, subPath: custody/output}
+            - {name: direct-control, mountPath: /var/lib/enrichedlab/direct/dispatcher-state, subPath: dispatcher-state}
+            - {name: temporary, mountPath: /tmp}
+      volumes:
+        - name: custody-config-projection
+          secret: {secretName: agent-broker-custody-config, defaultMode: 0440}
+        - name: custody-config-private
+          emptyDir: {sizeLimit: 1Mi}
+        - name: custodian-database
+          secret: {secretName: agent-broker-custodian-database, defaultMode: 0440}
+        - name: kube-api-access
+          projected:
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 3600}
+              - configMap: {name: kube-root-ca.crt, items: [{key: ca.crt, path: ca.crt}]}
+        - name: direct-control
+          persistentVolumeClaim: {claimName: agent-broker-direct-control}
+        - name: temporary
+          emptyDir: {sizeLimit: 1Gi}

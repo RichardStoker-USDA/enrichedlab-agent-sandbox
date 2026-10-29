@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "request_id": "d99392d0-c8f2-47f9-bac0-c98d88a858b3",
+  "reason": "Read the referenced public API documentation.",
+  "created_at": "2026-08-29T00:00:00Z",
+  "kind": "domain-read",
+  "parameters": {
+    "host": "docs.example.org"
+  }
+}

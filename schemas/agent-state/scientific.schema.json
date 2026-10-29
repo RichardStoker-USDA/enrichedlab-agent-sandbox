@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "enrichedlab://agent-state/scientific/v1",
+  "title": "Scientific workflow state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["input_refs", "method_refs", "intermediate_refs", "failed_attempts", "claim_refs", "validation_refs"],
+  "properties": {
+    "input_refs": {"$ref": "#/$defs/ref_map"},
+    "method_refs": {"$ref": "#/$defs/ref_map"},
+    "intermediate_refs": {"$ref": "#/$defs/ref_map"},
+    "claim_refs": {"$ref": "#/$defs/ref_map"},
+    "validation_refs": {"$ref": "#/$defs/ref_map"},
+    "failed_attempts": {
+      "type": "object",
+      "maxProperties": 2000,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["summary", "input_refs", "method_ref", "output_refs", "failure_class"],
+        "properties": {
+          "summary": {"type": "string", "minLength": 1, "maxLength": 8192},
+          "input_refs": {"type": "array", "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+          "method_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
+          "output_refs": {"type": "array", "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+          "failure_class": {"type": "string", "minLength": 1, "maxLength": 256}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "role", "label"],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "role": {"type": "string", "minLength": 1, "maxLength": 128},
+        "label": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    },
+    "ref_map": {"type": "object", "maxProperties": 10000, "additionalProperties": {"$ref": "#/$defs/artifact_ref"}}
+  }
+}

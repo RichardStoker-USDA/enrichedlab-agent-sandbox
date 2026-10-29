@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "routes": {
+    "local-agent": {
+      "workspace": "local-models",
+      "pool_cap": 5,
+      "model": "replace-with-model-id",
+      "display_name": "Site agent model",
+      "context_limit": 131072,
+      "output_limit": 16384,
+      "reasoning": true,
+      "attachment": false,
+      "interleaved_field": "reasoning_content",
+      "input_modalities": ["text"],
+      "options": {},
+      "variants": {
+        "off": {"reasoningEffort": "off"},
+        "on": {"reasoningEffort": "on"}
+      },
+      "default_variant": "on",
+      "pi_api": "openai-completions",
+      "pi_compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": true
+      },
+      "inference_engine": "openai-compatible",
+      "reasoning_parser": "replace-with-reviewed-parser",
+      "model_revision": "replace-with-model-revision-or-digest"
+    }
+  }
+}

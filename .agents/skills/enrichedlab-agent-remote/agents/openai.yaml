@@ -1,0 +1,4 @@
+interface:
+  display_name: "EnrichedLab remote agents"
+  short_description: "Run durable agents on an approved cluster"
+  default_prompt: "Use $enrichedlab-agent-remote to connect this workstation to my approved agent broker and verify the client setup."

@@ -1,0 +1,167 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-broker-worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: enrichedlab-agent-broker
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: enrichedlab-agent-broker
+        app.kubernetes.io/component: worker
+    spec:
+      serviceAccountName: agent-broker-worker
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 45
+      nodeSelector:
+        enrichedlab.ai/agent-control-node: selected
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: stage-controller-config
+          image: registry.example.invalid/enrichedlab/agent-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          command:
+            - /bin/sh
+            - -eu
+            - -c
+            - >-
+              install -d -m 0700 /var/lib/enrichedlab/controller/config &&
+              cp /staging/controller.toml /staging/routes.json /var/lib/enrichedlab/controller/config/ &&
+              chmod 0600 /var/lib/enrichedlab/controller/config/controller.toml
+              /var/lib/enrichedlab/controller/config/routes.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: controller
+              mountPath: /var/lib/enrichedlab/controller
+            - name: controller-config
+              mountPath: /staging
+              readOnly: true
+        - name: stage-openshell-config
+          image: registry.example.invalid/enrichedlab/agent-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          command:
+            - /bin/sh
+            - -eu
+            - -c
+            - >-
+              install -d -m 0700 /home-config &&
+              cp -RL /staging/. /home-config/ &&
+              chmod -R go-rwx /home-config
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: openshell-config
+              mountPath: /staging
+              readOnly: true
+            - name: openshell-home
+              mountPath: /home-config
+      containers:
+        - name: worker
+          image: registry.example.invalid/enrichedlab/agent-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          args:
+            - worker
+          env:
+            - name: HOME
+              value: /home/agent
+            - name: AGENT_SANDBOX_BROKER_TENANT
+              valueFrom:
+                configMapKeyRef:
+                  name: agent-broker-site
+                  key: tenant
+            - name: AGENT_SANDBOX_BROKER_ARTIFACT_ROOT
+              value: /var/lib/enrichedlab/artifacts/data
+            - name: AGENT_SANDBOX_BROKER_CONTROLLER_ROOT
+              value: /var/lib/enrichedlab/controller/root
+            - name: AGENT_SANDBOX_BROKER_CONTROLLER_STATE
+              value: /var/lib/enrichedlab/controller/state
+            - name: AGENT_SANDBOX_BROKER_CONTROLLER_CONFIG
+              value: /var/lib/enrichedlab/controller/config
+            - name: AGENT_SANDBOX_BROKER_DATABASE_DSN_FILE
+              value: /run/secrets/database/database.dsn
+            - name: AGENT_SANDBOX_BROKER_MAX_PARALLEL
+              valueFrom:
+                configMapKeyRef:
+                  name: agent-broker-site
+                  key: worker_max_parallel
+            - name: AGENT_SANDBOX_BROKER_LEASE_SECONDS
+              value: "120"
+            - name: AGENT_SANDBOX_CONTROLLER_BIN
+              value: /usr/local/bin/agent-sandbox
+            - name: AGENT_SANDBOX_OPENSHELL_BIN
+              value: /usr/bin/openshell
+            - name: AGENT_SANDBOX_DOCKER_BIN
+              value: /bin/false
+            - name: RUST_LOG
+              value: agent_sandbox_broker=info
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: controller
+              mountPath: /var/lib/enrichedlab/controller
+            - name: artifacts
+              mountPath: /var/lib/enrichedlab/artifacts
+            - name: database
+              mountPath: /run/secrets/database
+              readOnly: true
+            - name: openshell-home
+              mountPath: /home/agent/.config/openshell
+              readOnly: true
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: controller
+          persistentVolumeClaim:
+            claimName: agent-broker-controller
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: agent-broker-artifacts
+        - name: database
+          secret:
+            secretName: agent-broker-worker-database
+            defaultMode: 0440
+        - name: controller-config
+          configMap:
+            name: agent-sandbox-controller-config
+            defaultMode: 0440
+        - name: openshell-config
+          secret:
+            secretName: agent-broker-openshell-client
+            defaultMode: 0440
+        - name: openshell-home
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: temporary
+          emptyDir:
+            sizeLimit: 1Gi

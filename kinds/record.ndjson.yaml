@@ -1,0 +1,14 @@
+id: record.ndjson
+version: 1
+status: accepted
+owner: agents
+summary: Newline-delimited JSON, one document per non-empty line.
+media_types: [application/x-ndjson]
+validator: ndjson-document
+access: whole
+limits: {bytes: 268435456, line_bytes: 16777216}
+views:
+  - {view: record, gpu: [still], fallback: download}
+fixtures:
+  - {path: fixtures/record.ndjson/events.ndjson, media_type: application/x-ndjson, expect: passed}
+  - {path: fixtures/record.ndjson/broken.ndjson, media_type: application/x-ndjson, expect: failed}

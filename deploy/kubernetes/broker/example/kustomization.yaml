@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: enrichedlab-agent-system
+resources:
+  - ../workloads
+configMapGenerator:
+  - name: agent-broker-site
+    envs:
+      - broker-site.env
+  - name: agent-sandbox-controller-config
+    files:
+      - controller.toml
+      - routes.json
+generatorOptions:
+  disableNameSuffixHash: true
+images:
+  - name: registry.example.invalid/enrichedlab/agent-sandbox
+    newName: registry.example.invalid/enrichedlab/agent-sandbox
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000

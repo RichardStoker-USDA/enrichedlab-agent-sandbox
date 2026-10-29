@@ -1,0 +1,14 @@
+id: document.pdf
+version: 1
+status: accepted
+owner: agents
+summary: PDF file that starts with a PDF header and ends with an end-of-file marker.
+media_types: [application/pdf]
+validator: pdf-document
+access: whole
+limits: {bytes: 268435456}
+views:
+  - {view: pdf, gpu: [still], fallback: download}
+fixtures:
+  - {path: fixtures/document.pdf/blank.pdf, media_type: application/pdf, expect: passed}
+  - {path: fixtures/document.pdf/truncated.pdf, media_type: application/pdf, expect: failed}

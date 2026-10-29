@@ -1,0 +1,603 @@
+broker_admin_audit actor_id uuid copy
+broker_admin_audit detail jsonb content
+broker_admin_audit event_id uuid copy
+broker_admin_audit kind text copy
+broker_admin_audit occurred_at timestamp with time zone copy
+broker_admin_audit tenant_id text copy
+broker_analysis_receipts attempt integer copy
+broker_analysis_receipts error_code text copy
+broker_analysis_receipts files jsonb content
+broker_analysis_receipts finished_at timestamp with time zone copy
+broker_analysis_receipts image_digest text copy
+broker_analysis_receipts lease_generation bigint copy
+broker_analysis_receipts message text content
+broker_analysis_receipts method text content
+broker_analysis_receipts notes jsonb content
+broker_analysis_receipts package_sha256 text copy
+broker_analysis_receipts recorded_at timestamp with time zone copy
+broker_analysis_receipts refusal jsonb content
+broker_analysis_receipts service_version text copy
+broker_analysis_receipts started_at timestamp with time zone copy
+broker_analysis_receipts status text copy
+broker_analysis_receipts task_id uuid copy
+broker_analysis_receipts tenant_id text copy
+broker_analysis_requests catalog_sha256 text copy
+broker_analysis_requests created_at timestamp with time zone copy
+broker_analysis_requests feature text copy
+broker_analysis_requests previous_task_id uuid copy
+broker_analysis_requests principal_id uuid copy
+broker_analysis_requests project_id uuid copy
+broker_analysis_requests request jsonb content
+broker_analysis_requests request_sha256 text copy
+broker_analysis_requests settings jsonb content
+broker_analysis_requests source_artifact_id uuid copy
+broker_analysis_requests source_package_sha256 text copy
+broker_analysis_requests source_task_id uuid copy
+broker_analysis_requests table_columns jsonb content
+broker_analysis_requests table_path text copy
+broker_analysis_requests table_rows bigint copy
+broker_analysis_requests table_sha256 text copy
+broker_analysis_requests task_id uuid copy
+broker_analysis_requests tenant_id text copy
+broker_analysis_requests title text content
+broker_artifact_digests artifact_id uuid copy
+broker_artifact_digests artifact_sha256 text copy
+broker_artifact_digests attempt integer copy
+broker_artifact_digests digest jsonb content
+broker_artifact_digests digest_sha256 text copy
+broker_artifact_digests lease_generation bigint copy
+broker_artifact_digests recorded_at timestamp with time zone copy
+broker_artifact_digests schema_version text copy
+broker_artifact_digests source text copy
+broker_artifact_digests status text copy
+broker_artifact_digests task_id uuid copy
+broker_artifact_digests tenant_id text copy
+broker_artifact_kinds artifact_id uuid copy
+broker_artifact_kinds artifact_sha256 text copy
+broker_artifact_kinds checked_kind_id text copy
+broker_artifact_kinds checked_kind_version integer copy
+broker_artifact_kinds kind_id text copy
+broker_artifact_kinds kind_version integer copy
+broker_artifact_kinds media_type text copy
+broker_artifact_kinds reason text content
+broker_artifact_kinds receipt text content
+broker_artifact_kinds receipt_sha256 text copy
+broker_artifact_kinds recorded_at timestamp with time zone copy
+broker_artifact_kinds recorded_by text copy
+broker_artifact_kinds registry_digest text copy
+broker_artifact_kinds state text copy
+broker_artifact_kinds tenant_id text copy
+broker_artifact_recoveries actor text copy
+broker_artifact_recoveries receipt jsonb content
+broker_artifact_recoveries recovered_at timestamp with time zone copy
+broker_artifact_recoveries recovery_id uuid copy
+broker_artifact_recoveries request jsonb content
+broker_artifact_recoveries task_id uuid copy
+broker_artifact_recoveries tenant_id text copy
+broker_attempt_executions attempt integer copy
+broker_attempt_executions image_digest text copy
+broker_attempt_executions lease_generation bigint copy
+broker_attempt_executions parameters_sha256 text copy
+broker_attempt_executions recorded_at timestamp with time zone copy
+broker_attempt_executions task_id uuid copy
+broker_attempt_executions template_ref text copy
+broker_attempt_executions template_sha256 text copy
+broker_attempt_executions tenant_id text copy
+broker_attempt_executions tool_ref text copy
+broker_attempt_inputs attempt integer copy
+broker_attempt_inputs custody_transaction text copy
+broker_attempt_inputs input_class text copy
+broker_attempt_inputs input_ref text copy
+broker_attempt_inputs lease_generation bigint copy
+broker_attempt_inputs recorded_at timestamp with time zone copy
+broker_attempt_inputs sealed_sha256 text copy
+broker_attempt_inputs size_bytes bigint copy
+broker_attempt_inputs source jsonb content
+broker_attempt_inputs task_id uuid copy
+broker_attempt_inputs tenant_id text copy
+broker_attempt_outputs artifact_id uuid copy
+broker_attempt_outputs attempt integer copy
+broker_attempt_outputs lease_generation bigint copy
+broker_attempt_outputs recorded_at timestamp with time zone copy
+broker_attempt_outputs relative_path text copy
+broker_attempt_outputs role text copy
+broker_attempt_outputs sha256 text copy
+broker_attempt_outputs size_bytes bigint copy
+broker_attempt_outputs task_id uuid copy
+broker_attempt_outputs tenant_id text copy
+broker_campaign_events campaign_id uuid copy
+broker_campaign_events detail jsonb content
+broker_campaign_events event_id uuid copy
+broker_campaign_events kind text copy
+broker_campaign_events occurred_at timestamp with time zone copy
+broker_campaign_events sequence bigint copy
+broker_campaign_events tenant_id text copy
+broker_campaign_planner_call_starts call_id uuid copy
+broker_campaign_planner_call_starts campaign_id uuid copy
+broker_campaign_planner_call_starts context_sha256 text copy
+broker_campaign_planner_call_starts input_size_bytes integer copy
+broker_campaign_planner_call_starts lease_generation bigint copy
+broker_campaign_planner_call_starts lease_owner text copy
+broker_campaign_planner_call_starts model text copy
+broker_campaign_planner_call_starts sequence bigint copy
+broker_campaign_planner_call_starts started_at timestamp with time zone copy
+broker_campaign_planner_call_starts tenant_id text copy
+broker_campaign_planner_calls call_id uuid copy
+broker_campaign_planner_calls called_at timestamp with time zone copy
+broker_campaign_planner_calls campaign_id uuid copy
+broker_campaign_planner_calls context_sha256 text copy
+broker_campaign_planner_calls input_size_bytes integer copy
+broker_campaign_planner_calls model text copy
+broker_campaign_planner_calls outcome_code text copy
+broker_campaign_planner_calls output_size_bytes integer copy
+broker_campaign_planner_calls reply_sha256 text copy
+broker_campaign_planner_calls sequence bigint copy
+broker_campaign_planner_calls tenant_id text copy
+broker_campaign_planner_texts content bytea model-text
+broker_campaign_planner_texts created_at timestamp with time zone copy
+broker_campaign_planner_texts sha256 text copy
+broker_campaign_planner_texts tenant_id text copy
+broker_dataset_receipts attempt integer copy
+broker_dataset_receipts error_code text copy
+broker_dataset_receipts executor text copy
+broker_dataset_receipts executor_version integer copy
+broker_dataset_receipts finished_at timestamp with time zone copy
+broker_dataset_receipts grid_sha256 text copy
+broker_dataset_receipts lease_generation bigint copy
+broker_dataset_receipts package_sha256 text copy
+broker_dataset_receipts profile jsonb content
+broker_dataset_receipts recorded_at timestamp with time zone copy
+broker_dataset_receipts started_at timestamp with time zone copy
+broker_dataset_receipts status text copy
+broker_dataset_receipts summary jsonb content
+broker_dataset_receipts table_columns jsonb content
+broker_dataset_receipts table_path text copy
+broker_dataset_receipts table_rows bigint copy
+broker_dataset_receipts table_sha256 text copy
+broker_dataset_receipts task_id uuid copy
+broker_dataset_receipts tenant_id text copy
+broker_dataset_requests created_at timestamp with time zone copy
+broker_dataset_requests dataset_id uuid copy
+broker_dataset_requests operation text copy
+broker_dataset_requests previous_task_id uuid copy
+broker_dataset_requests principal_id uuid copy
+broker_dataset_requests project_id uuid copy
+broker_dataset_requests request jsonb content
+broker_dataset_requests request_sha256 text copy
+broker_dataset_requests spec jsonb content
+broker_dataset_requests spec_sha256 text copy
+broker_dataset_requests task_id uuid copy
+broker_dataset_requests tenant_id text copy
+broker_dataset_requests title text content
+broker_datasets created_at timestamp with time zone copy
+broker_datasets dataset_id uuid copy
+broker_datasets file_name text content
+broker_datasets grid_bytes bigint copy
+broker_datasets grid_sha256 text copy
+broker_datasets guard_findings jsonb content
+broker_datasets guard_intake uuid copy
+broker_datasets guard_outcome text copy
+broker_datasets guard_policy text copy
+broker_datasets intake_task_id uuid copy
+broker_datasets media_type text copy
+broker_datasets principal_id uuid copy
+broker_datasets project_id uuid copy
+broker_datasets request_id uuid copy
+broker_datasets sha256 text copy
+broker_datasets size_bytes bigint copy
+broker_datasets tenant_id text copy
+broker_document_receipts attempt integer copy
+broker_document_receipts counts jsonb content
+broker_document_receipts error_code text copy
+broker_document_receipts file jsonb content
+broker_document_receipts finished_at timestamp with time zone copy
+broker_document_receipts image_digest text copy
+broker_document_receipts lease_generation bigint copy
+broker_document_receipts message text content
+broker_document_receipts notes jsonb content
+broker_document_receipts package_sha256 text copy
+broker_document_receipts recorded_at timestamp with time zone copy
+broker_document_receipts service_version text copy
+broker_document_receipts started_at timestamp with time zone copy
+broker_document_receipts status text copy
+broker_document_receipts task_id uuid copy
+broker_document_receipts tenant_id text copy
+broker_document_request_keys created_at timestamp with time zone copy
+broker_document_request_keys kind text copy
+broker_document_request_keys principal_id uuid copy
+broker_document_request_keys project_id uuid copy
+broker_document_request_keys request_id uuid copy
+broker_document_request_keys run_id uuid copy
+broker_document_request_keys task_id uuid copy
+broker_document_request_keys tenant_id text copy
+broker_document_requests created_at timestamp with time zone copy
+broker_document_requests figures jsonb content
+broker_document_requests kind text copy
+broker_document_requests principal_id uuid copy
+broker_document_requests project_id uuid copy
+broker_document_requests record_sha256 text copy
+broker_document_requests request jsonb content
+broker_document_requests request_sha256 text copy
+broker_document_requests run_id uuid copy
+broker_document_requests sources jsonb content
+broker_document_requests task_id uuid copy
+broker_document_requests tenant_id text copy
+broker_document_requests turn integer copy
+broker_figure_manuscript_events action text copy
+broker_figure_manuscript_events actor_id uuid copy
+broker_figure_manuscript_events event_id uuid copy
+broker_figure_manuscript_events figure_task_id uuid copy
+broker_figure_manuscript_events occurred_at timestamp with time zone copy
+broker_figure_manuscript_events project_id uuid copy
+broker_figure_manuscript_events tenant_id text copy
+broker_figure_manuscript_events version_task_id uuid copy
+broker_figure_receipts attempt integer copy
+broker_figure_receipts error_code text copy
+broker_figure_receipts files jsonb content
+broker_figure_receipts finished_at timestamp with time zone copy
+broker_figure_receipts image_digest text copy
+broker_figure_receipts lease_generation bigint copy
+broker_figure_receipts message text content
+broker_figure_receipts notes jsonb content
+broker_figure_receipts package_sha256 text copy
+broker_figure_receipts recorded_at timestamp with time zone copy
+broker_figure_receipts service_version text copy
+broker_figure_receipts started_at timestamp with time zone copy
+broker_figure_receipts status text copy
+broker_figure_receipts task_id uuid copy
+broker_figure_receipts tenant_id text copy
+broker_figure_requests catalog_sha256 text copy
+broker_figure_requests controls jsonb content
+broker_figure_requests created_at timestamp with time zone copy
+broker_figure_requests feature text copy
+broker_figure_requests previous_task_id uuid copy
+broker_figure_requests principal_id uuid copy
+broker_figure_requests project_id uuid copy
+broker_figure_requests request jsonb content
+broker_figure_requests request_sha256 text copy
+broker_figure_requests source_artifact_id uuid copy
+broker_figure_requests source_package_sha256 text copy
+broker_figure_requests source_task_id uuid copy
+broker_figure_requests table_columns jsonb content
+broker_figure_requests table_path text copy
+broker_figure_requests table_rows bigint copy
+broker_figure_requests table_sha256 text copy
+broker_figure_requests task_id uuid copy
+broker_figure_requests tenant_id text copy
+broker_figure_requests title text content
+broker_inbox_acknowledgements acknowledged_at timestamp with time zone copy
+broker_inbox_acknowledgements item_ref text copy
+broker_inbox_acknowledgements item_version text copy
+broker_inbox_acknowledgements kind text copy
+broker_inbox_acknowledgements principal_id uuid copy
+broker_inbox_acknowledgements request_id uuid copy
+broker_inbox_acknowledgements tenant_id text copy
+broker_lab_note_events actor_id uuid copy
+broker_lab_note_events created_at timestamp with time zone copy
+broker_lab_note_events event_id uuid copy
+broker_lab_note_events kind text copy
+broker_lab_note_events note_id uuid copy
+broker_lab_note_events reason text content
+broker_lab_note_events request_id uuid copy
+broker_lab_note_events review_by timestamp with time zone copy
+broker_lab_note_events tenant_id text copy
+broker_lab_notes created_at timestamp with time zone copy
+broker_lab_notes data text[] content
+broker_lab_notes evidence jsonb content
+broker_lab_notes group_key text copy
+broker_lab_notes kind text copy
+broker_lab_notes methods text[] content
+broker_lab_notes note_id uuid copy
+broker_lab_notes project_id uuid copy
+broker_lab_notes reason text content
+broker_lab_notes request_id uuid copy
+broker_lab_notes review_by timestamp with time zone copy
+broker_lab_notes revision bigint copy
+broker_lab_notes shared_by uuid copy
+broker_lab_notes statement text content
+broker_lab_notes statement_sha256 text copy
+broker_lab_notes tenant_id text copy
+broker_library_label_events actor_id uuid copy
+broker_library_label_events created_at timestamp with time zone copy
+broker_library_label_events event_id uuid copy
+broker_library_label_events kind text copy
+broker_library_label_events namespace text copy
+broker_library_label_events paper_id uuid copy
+broker_library_label_events request_id uuid copy
+broker_library_label_events tenant_id text copy
+broker_library_label_events value text content
+broker_library_paper_events actor_id uuid copy
+broker_library_paper_events created_at timestamp with time zone copy
+broker_library_paper_events event_id uuid copy
+broker_library_paper_events kind text copy
+broker_library_paper_events paper_id uuid copy
+broker_library_paper_events reason text content
+broker_library_paper_events request_id uuid copy
+broker_library_paper_events tenant_id text copy
+broker_library_papers added_by uuid copy
+broker_library_papers authors jsonb content
+broker_library_papers byte_size bigint copy
+broker_library_papers created_at timestamp with time zone copy
+broker_library_papers document_id uuid copy
+broker_library_papers doi text copy
+broker_library_papers group_key text copy
+broker_library_papers page_count integer copy
+broker_library_papers paper_id uuid copy
+broker_library_papers parse jsonb content
+broker_library_papers request_id uuid copy
+broker_library_papers source_sha256 text copy
+broker_library_papers tenant_id text copy
+broker_library_papers title text content
+broker_library_papers year integer copy
+broker_literature_reviews created_at timestamp with time zone copy
+broker_literature_reviews inputs_sha256 text copy
+broker_literature_reviews record jsonb model-text
+broker_literature_reviews run_id uuid copy
+broker_literature_reviews tenant_id text copy
+broker_plan_archived_keys action_key text copy
+broker_plan_archived_keys ordinal integer copy
+broker_plan_archived_keys page integer copy
+broker_plan_archived_keys project_id uuid copy
+broker_plan_archived_keys status text copy
+broker_plan_archived_keys submitted_at timestamp with time zone copy
+broker_plan_archived_keys task_id uuid copy
+broker_plan_archived_keys tenant_id text copy
+broker_plan_events action_key text copy
+broker_plan_events changes text[] content
+broker_plan_events error_code text copy
+broker_plan_events project_id uuid copy
+broker_plan_events rationale text model-text
+broker_plan_events result_count integer copy
+broker_plan_events revision bigint copy
+broker_plan_events status_after text copy
+broker_plan_events status_before text copy
+broker_plan_events step_number integer copy
+broker_plan_events task_id uuid copy
+broker_plan_events task_status text copy
+broker_plan_events tenant_id text copy
+broker_plan_events title text model-text
+broker_plan_pages archived_at timestamp with time zone copy
+broker_plan_pages page integer copy
+broker_plan_pages project_id uuid copy
+broker_plan_pages revision bigint copy
+broker_plan_pages run_id uuid copy
+broker_plan_pages steps jsonb content
+broker_plan_pages steps_sha256 text copy
+broker_plan_pages tenant_id text copy
+broker_plan_revisions principal_id uuid copy
+broker_plan_revisions project_id uuid copy
+broker_plan_revisions recorded_at timestamp with time zone copy
+broker_plan_revisions revision bigint copy
+broker_plan_revisions run_id uuid copy
+broker_plan_revisions source text copy
+broker_plan_revisions step_changes integer copy
+broker_plan_revisions tenant_id text copy
+broker_plan_revisions turn integer copy
+broker_profile_templates block_path text copy
+broker_profile_templates contract jsonb content
+broker_profile_templates created_at timestamp with time zone copy
+broker_profile_templates profile_key text copy
+broker_profile_templates template_ref text copy
+broker_profile_templates template_sha256 text copy
+broker_profile_templates tenant_id text copy
+broker_project_audit actor_id uuid copy
+broker_project_audit detail jsonb content
+broker_project_audit event_id uuid copy
+broker_project_audit kind text copy
+broker_project_audit occurred_at timestamp with time zone copy
+broker_project_audit project_id uuid copy
+broker_project_audit tenant_id text copy
+broker_project_checkpoints author_id uuid copy
+broker_project_checkpoints created_at timestamp with time zone copy
+broker_project_checkpoints project_id uuid copy
+broker_project_checkpoints request_id uuid copy
+broker_project_checkpoints revision bigint copy
+broker_project_checkpoints state jsonb content
+broker_project_checkpoints tenant_id text copy
+broker_project_packages content_sha256 text copy
+broker_project_packages created_at timestamp with time zone copy
+broker_project_packages created_by uuid copy
+broker_project_packages disclosure_scope text copy
+broker_project_packages inventory jsonb content
+broker_project_packages project_id uuid copy
+broker_project_packages revision bigint copy
+broker_project_packages tenant_id text copy
+broker_project_tasks action_key text copy
+broker_project_tasks parent_task_id uuid copy
+broker_project_tasks project_id uuid copy
+broker_project_tasks task_id uuid copy
+broker_project_tasks tenant_id text copy
+broker_query_receipts attempt integer copy
+broker_query_receipts columns jsonb content
+broker_query_receipts error_code text copy
+broker_query_receipts finished_at timestamp with time zone copy
+broker_query_receipts lease_generation bigint copy
+broker_query_receipts package_sha256 text copy
+broker_query_receipts recorded_at timestamp with time zone copy
+broker_query_receipts row_count integer copy
+broker_query_receipts server_version text copy
+broker_query_receipts source_version jsonb content
+broker_query_receipts started_at timestamp with time zone copy
+broker_query_receipts status text copy
+broker_query_receipts task_id uuid copy
+broker_query_receipts tenant_id text copy
+broker_research_contexts content bytea model-text
+broker_research_contexts created_at timestamp with time zone copy
+broker_research_contexts sha256 text copy
+broker_research_contexts tenant_id text copy
+broker_research_orientations created_at timestamp with time zone copy
+broker_research_orientations record jsonb model-text
+broker_research_orientations run_id uuid copy
+broker_research_orientations tenant_id text copy
+broker_research_run_events code text copy
+broker_research_run_events failures integer copy
+broker_research_run_events generation bigint copy
+broker_research_run_events lead_context_sha256 text copy
+broker_research_run_events lead_reasoning_sha256 text copy
+broker_research_run_events lead_reply_sha256 text copy
+broker_research_run_events occurred_at timestamp with time zone copy
+broker_research_run_events reason text content
+broker_research_run_events run_id uuid copy
+broker_research_run_events sequence bigint copy
+broker_research_run_events status_after text copy
+broker_research_run_events tenant_id text copy
+broker_research_run_events turn integer copy
+broker_research_turns checkpoint_revision bigint copy
+broker_research_turns context_revision bigint copy
+broker_research_turns created_at timestamp with time zone copy
+broker_research_turns generation bigint copy
+broker_research_turns record jsonb model-text
+broker_research_turns run_id uuid copy
+broker_research_turns tenant_id text copy
+broker_research_turns turn integer copy
+broker_reviewed_queries created_at timestamp with time zone copy
+broker_reviewed_queries definition jsonb content
+broker_reviewed_queries source_key text copy
+broker_reviewed_queries tenant_id text copy
+broker_reviewed_queries tool_key text copy
+broker_reviewed_queries version integer copy
+broker_sql_source_cards card jsonb content
+broker_sql_source_cards card_sha256 text copy
+broker_sql_source_cards created_at timestamp with time zone copy
+broker_sql_source_cards manifest_sha256 text copy
+broker_sql_source_cards source_key text copy
+broker_sql_source_cards tenant_id text copy
+broker_sql_sources connection_ref text copy
+broker_sql_sources created_at timestamp with time zone copy
+broker_sql_sources data_class text copy
+broker_sql_sources description text content
+broker_sql_sources functions text[] content
+broker_sql_sources profile_key text copy
+broker_sql_sources relations jsonb content
+broker_sql_sources release text copy
+broker_sql_sources row_cap integer copy
+broker_sql_sources schema_name text copy
+broker_sql_sources snapshot jsonb content
+broker_sql_sources source_key text copy
+broker_sql_sources statement_timeout_ms integer copy
+broker_sql_sources tenant_id text copy
+broker_sql_sources title text content
+broker_task_events code text copy
+broker_task_events kind text copy
+broker_task_events metadata jsonb content
+broker_task_events occurred_at timestamp with time zone copy
+broker_task_events sequence bigint copy
+broker_task_events state text copy
+broker_task_events task_id uuid copy
+broker_task_events tenant_id text copy
+broker_task_generated_code admission jsonb content
+broker_task_generated_code configuration jsonb content
+broker_task_generated_code content text model-text
+broker_task_generated_code created_at timestamp with time zone copy
+broker_task_generated_code path text copy
+broker_task_generated_code profile_key text copy
+broker_task_generated_code run_id uuid copy
+broker_task_generated_code sha256 text copy
+broker_task_generated_code size_bytes integer copy
+broker_task_generated_code task_id uuid copy
+broker_task_generated_code template_ref text copy
+broker_task_generated_code template_sha256 text copy
+broker_task_generated_code tenant_id text copy
+broker_task_generated_code turn integer copy
+broker_task_methods basis text content
+broker_task_methods profile_key text copy
+broker_task_methods profile_name text content
+broker_task_methods recorded_at timestamp with time zone copy
+broker_task_methods task_id uuid copy
+broker_task_methods template_ref text copy
+broker_task_methods template_sha256 text copy
+broker_task_methods tenant_id text copy
+broker_task_origins basis text content
+broker_task_origins origin text copy
+broker_task_origins principal_id uuid copy
+broker_task_origins recorded_at timestamp with time zone copy
+broker_task_origins run_id uuid copy
+broker_task_origins task_id uuid copy
+broker_task_origins tenant_id text copy
+broker_task_origins turn integer copy
+broker_task_output_closures attempt integer copy
+broker_task_output_closures closed_at timestamp with time zone copy
+broker_task_output_closures dropped bigint copy
+broker_task_output_closures lease_generation bigint copy
+broker_task_output_closures pieces integer copy
+broker_task_output_closures sha256 text copy
+broker_task_output_closures size bigint copy
+broker_task_output_closures task_id uuid copy
+broker_task_output_closures tenant_id text copy
+broker_task_output_pieces at timestamp with time zone copy
+broker_task_output_pieces attempt integer copy
+broker_task_output_pieces bytes integer copy
+broker_task_output_pieces dropped integer copy
+broker_task_output_pieces lease_generation bigint copy
+broker_task_output_pieces recorded_at timestamp with time zone copy
+broker_task_output_pieces seq bigint copy
+broker_task_output_pieces stream text copy
+broker_task_output_pieces task_id uuid copy
+broker_task_output_pieces tenant_id text copy
+broker_task_output_pieces text text content
+broker_task_queries admitted_sql text model-text
+broker_task_queries created_at timestamp with time zone copy
+broker_task_queries guard text copy
+broker_task_queries profile_key text copy
+broker_task_queries proposed_sql text model-text
+broker_task_queries relations text[] content
+broker_task_queries reviewed_query jsonb content
+broker_task_queries row_limit integer copy
+broker_task_queries run_id uuid copy
+broker_task_queries source_key text copy
+broker_task_queries sql_sha256 text copy
+broker_task_queries task_id uuid copy
+broker_task_queries tenant_id text copy
+broker_task_queries turn integer copy
+broker_task_reviews attempt integer copy
+broker_task_reviews created_at timestamp with time zone copy
+broker_task_reviews decision text copy
+broker_task_reviews lease_generation bigint copy
+broker_task_reviews note text content
+broker_task_reviews outputs jsonb content
+broker_task_reviews request_id uuid copy
+broker_task_reviews review_id uuid copy
+broker_task_reviews reviewer_id uuid copy
+broker_task_reviews task_id uuid copy
+broker_task_reviews tenant_id text copy
+broker_tool_group_grants grant_id bigint copy
+broker_tool_group_grants granted_at timestamp with time zone copy
+broker_tool_group_grants group_key text copy
+broker_tool_group_grants revoked_at timestamp with time zone copy
+broker_tool_group_grants tenant_id text copy
+broker_tool_group_grants tool_group_key text copy
+broker_tool_group_grants version integer copy
+broker_tool_group_members profile_key text copy
+broker_tool_group_members tenant_id text copy
+broker_tool_group_members tool_group_key text copy
+broker_tool_group_members version integer copy
+broker_tool_groups created_at timestamp with time zone copy
+broker_tool_groups description text content
+broker_tool_groups tenant_id text copy
+broker_tool_groups title text content
+broker_tool_groups tool_group_key text copy
+broker_tool_groups version integer copy
+provenance_events actor text copy
+provenance_events content_sha256 text copy
+provenance_events engine text copy
+provenance_events event_id uuid copy
+provenance_events evidence_role text copy
+provenance_events harness text copy
+provenance_events hash text copy
+provenance_events kind text copy
+provenance_events metadata jsonb content
+provenance_events model text copy
+provenance_events occurred_at text copy
+provenance_events parent_source_event_id text copy
+provenance_events parser text copy
+provenance_events previous_hash text copy
+provenance_events provider text copy
+provenance_events restricted_content text model-text
+provenance_events run_id text copy
+provenance_events segment bigint copy
+provenance_events sequence bigint copy
+provenance_events session_id text copy
+provenance_events source_event_id text copy
+provenance_events subject text copy
+provenance_events tenant_id text copy
+provenance_events visibility text copy

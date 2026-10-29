@@ -1,0 +1,36 @@
+{
+  "schema": "enrichedlab.generated-code-admission.v1",
+  "result": "accepted",
+  "template_ref": "template://r-generated-analysis/v2",
+  "block_sha256": "sha256:f58670ad40f0d02386bcd489b30b0e1ef3c5cac1ca7ce91c370f72f3d81a7208",
+  "size_bytes": 1593,
+  "lines": 32,
+  "reasons": [],
+  "functions_used": [
+    "TukeyHSD",
+    "aggregate",
+    "aov",
+    "as.data.frame",
+    "boxplot",
+    "c",
+    "data.frame",
+    "do_flatten",
+    "length",
+    "list",
+    "mean",
+    "relevel",
+    "rownames",
+    "sd",
+    "stripchart",
+    "summary",
+    "trimws"
+  ],
+  "namespaces": [
+    "stats"
+  ],
+  "numeric_literals": 3,
+  "string_literals": 15,
+  "uses_random_numbers": false,
+  "allowlist": "sha256:869e5cadcf8ba4cc3a215b30e0164f045626de5779f9acbd03670fbd076402a1",
+  "scientific_validation": "not_performed"
+}

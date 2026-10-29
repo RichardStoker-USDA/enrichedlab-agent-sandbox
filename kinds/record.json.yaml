@@ -1,0 +1,14 @@
+id: record.json
+version: 1
+status: accepted
+owner: agents
+summary: One JSON document.
+media_types: [application/json]
+validator: json-document
+access: whole
+limits: {bytes: 16777216}
+views:
+  - {view: record, gpu: [still], fallback: download}
+fixtures:
+  - {path: fixtures/record.json/run.json, media_type: application/json, expect: passed}
+  - {path: fixtures/record.json/broken.json, media_type: application/json, expect: failed}

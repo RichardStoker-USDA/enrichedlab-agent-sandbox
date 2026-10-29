@@ -1,0 +1,3 @@
+interface:
+  display_name: "EnrichedLab operations"
+  short_description: "Run governed local or cluster subagents"

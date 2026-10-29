@@ -1,0 +1,141 @@
+[package]
+name = "enrichedlab-agent-sandbox"
+version = "0.8.0"
+edition = "2024"
+rust-version = "1.93"
+description = "Governed local control plane for isolated AI subagents"
+license = "MIT"
+keywords = ["agents", "openshell", "sandbox", "security"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "agent-sandbox"
+path = "src/main.rs"
+
+[[bin]]
+name = "agent-sandbox-relay"
+path = "src/bin/relay.rs"
+
+[[bin]]
+name = "agent-sandbox-broker"
+path = "src/bin/broker.rs"
+
+[[bin]]
+name = "agent-sandbox-custodian"
+path = "src/bin/agent-sandbox-custodian.rs"
+
+[[bin]]
+name = "agent-sandbox-exporter"
+path = "src/bin/agent-sandbox-exporter.rs"
+
+[[bin]]
+name = "agent-sandbox-input-custodian"
+path = "src/bin/agent-sandbox-input-custodian.rs"
+
+[[bin]]
+name = "agent-sandbox-output-custodian"
+path = "src/bin/agent-sandbox-output-custodian.rs"
+
+[[bin]]
+name = "agent-sandbox-custody-dispatcher"
+path = "src/bin/agent-sandbox-custody-dispatcher.rs"
+
+[[bin]]
+name = "agent-sandbox-output-inventory"
+path = "src/bin/agent-sandbox-output-inventory.rs"
+
+[[bin]]
+name = "agent-sandbox-plan-publisher"
+path = "src/bin/agent-sandbox-plan-publisher.rs"
+
+[[bin]]
+name = "agent-sandbox-remote"
+path = "src/bin/remote.rs"
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1.89"
+axum = { version = "0.8.9", features = ["json"] }
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive", "env"] }
+csv = "1.4"
+csv-core = "0.1"
+deadpool-postgres = { version = "0.14.2", features = ["with-serde_json-1", "with-time-0_3", "with-uuid-1"] }
+fs2 = "0.4.3"
+futures-util = "0.3.34"
+getrandom = { version = "0.4", features = ["std"] }
+globset = "0.4.20"
+hmac = "0.13.0"
+hex = "0.4"
+ipnet = { version = "2.12.1", features = ["serde"] }
+jsonschema = { version = "0.52.1", default-features = false }
+jsonwebtoken = { version = "11.0.0", features = ["rust_crypto"] }
+libc = "0.2"
+native-tls = "0.2.18"
+postgres = { version = "0.19.14", features = ["with-serde_json-1", "with-time-0_3", "with-uuid-1"] }
+postgres-native-tls = "0.5.3"
+# The evidence append service's gRPC (generated from the contracts descriptor in proto/; see build.rs).
+prost = "0.14.1"
+prost-types = "0.14.1"
+# PostgreSQL's own parser (libpg_query) for the guarded query method; builds with libclang.
+pg_query = "6.2.0"
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring", "x509-parser"] }
+regex = "1.12"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls-no-provider", "stream"] }
+rusqlite = { version = "0.40.2", default-features = false, features = ["bundled", "fallible_uint"] }
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1.0", features = ["derive"] }
+# float_roundtrip: a number reads as the double nearest its text, so a result keeps every digit the service wrote.
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
+# Where a lab's preparation specification does not parse, as a path the person's editor can point to.
+serde_path_to_error = "0.1.20"
+serde_yaml_ng = "0.10.0"
+sha2 = "0.11.0"
+time = { version = "0.3.55", features = ["formatting", "macros", "parsing", "serde", "serde-well-known"] }
+tokio = { version = "1.47", features = ["full"] }
+tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1", "with-time-0_3", "with-uuid-1"] }
+tokio-stream = "0.1.18"
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring", "tls12"] }
+tokio-util = { version = "0.7.19", features = ["io"] }
+toml = "1.1.4"
+tonic = { version = "0.14.6", default-features = false, features = ["channel", "codegen", "router", "server", "tls-ring"] }
+# The evidence append service's traces and RPC metrics, exported over OTLP when OTEL_EXPORTER_OTLP_ENDPOINT is set.
+opentelemetry = { version = "0.33", default-features = false, features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.33", default-features = false, features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "0.33", default-features = false, features = ["grpc-tonic", "trace", "metrics"] }
+tonic-health = "0.14.6"
+tower = { version = "0.5.3", features = ["util"] }
+socket2 = { version = "0.6.5", features = ["all"] }
+tonic-prost = "0.14.6"
+tonic-types = "0.14.6"
+tower-http = { version = "0.7.1", features = ["fs", "request-id", "set-header", "trace"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+unicode-normalization = "0.1.25"
+uuid = { version = "1.26.0", features = ["serde", "v4"] }
+walkdir = "2.5.0"
+flate2 = "1.1"
+tar = "0.4"
+# Evidence object custody stores objects as plain zstd (S3 requests are signed in evidence_objects.rs with hmac and
+# sha2; the AWS signing crates need a newer Rust than this crate supports).
+zstd = { version = "0.14", default-features = false }
+# Content-MD5 for S3 object-lock requests (already in the tree through the PostgreSQL client).
+md-5 = "0.11"
+
+[build-dependencies]
+prost = "0.14.1"
+prost-types = "0.14.1"
+tonic-prost-build = "0.14.6"
+
+[dev-dependencies]
+rsa = "0.9"
+tempfile = "3.23"
+# Paused time for the live output follower tests.
+tokio = { version = "1.47", features = ["test-util"] }
+tower = { version = "0.5.3", features = ["util"] }
+# The append service's telemetry test records through an in-memory exporter.
+opentelemetry_sdk = { version = "0.33", default-features = false, features = ["trace", "metrics", "testing"] }
+
+[profile.release]
+lto = "thin"
+strip = "symbols"

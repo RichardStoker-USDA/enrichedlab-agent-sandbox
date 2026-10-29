@@ -1,0 +1,71 @@
+{
+  "key": "fdc-rank-foods-by-nutrient-2021-04",
+  "version": 1,
+  "source": "fdc-foundation-2021-04",
+  "title": "Rank Foundation Foods by one nutrient (April 2021)",
+  "purpose": "Rank the Foundation Foods in this FoodData Central release by their amount per 100 g of one nutrient, highest or lowest first, with each food's FDC id, description, food category, the nutrient's name and unit and the amount. Foods without a published amount for the nutrient are left out. Ties order by description, then FDC id. Each food and nutrient pair has one amount in this release.",
+  "parameters": [
+    {
+      "name": "nutrient_id",
+      "description": "Nutrient id in this release (fdc-food-nutrients-2021-04 lists them, for example 1003 protein or 1162 vitamin C)",
+      "type": "integer",
+      "required": true,
+      "minimum": 1,
+      "maximum": 99999
+    },
+    {
+      "name": "order",
+      "description": "highest or lowest amount first",
+      "type": "enum",
+      "required": false,
+      "choices": [
+        "highest",
+        "lowest"
+      ],
+      "default": "highest"
+    },
+    {
+      "name": "limit",
+      "description": "Maximum rows",
+      "type": "integer",
+      "required": false,
+      "minimum": 1,
+      "maximum": 100,
+      "default": 20
+    }
+  ],
+  "output_columns": [
+    {
+      "name": "fdc_id",
+      "type": "integer",
+      "description": "FoodData Central id of the food"
+    },
+    {
+      "name": "description",
+      "type": "text",
+      "description": "Food description as published"
+    },
+    {
+      "name": "food_category",
+      "type": "text",
+      "description": "Food category description as published"
+    },
+    {
+      "name": "nutrient",
+      "type": "text",
+      "description": "Nutrient name"
+    },
+    {
+      "name": "unit",
+      "type": "text",
+      "description": "Unit of the amount"
+    },
+    {
+      "name": "amount",
+      "type": "numeric",
+      "description": "Amount per 100 g of the food, as published"
+    }
+  ],
+  "row_cap": 100,
+  "state": "enabled"
+}

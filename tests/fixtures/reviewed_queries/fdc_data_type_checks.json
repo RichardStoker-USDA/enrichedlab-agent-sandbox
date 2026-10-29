@@ -1,0 +1,55 @@
+{
+ "sources": {
+  "fdc-branded-2026-04-r2": {
+   "duplicate_pairs": 0,
+   "reader": "fdc_branded_2026_04_reader"
+  },
+  "fdc-fndds-2019-04": {
+   "duplicate_pairs": 0,
+   "reader": "fdc_fndds_2019_04_reader"
+  },
+  "fdc-fndds-2020-04": {
+   "duplicate_pairs": 0,
+   "reader": "fdc_fndds_2020_04_reader"
+  },
+  "fdc-fndds-2020-10": {
+   "duplicate_pairs": 0,
+   "reader": "fdc_fndds_2020_10_reader"
+  },
+  "fdc-fndds-2022-10": {
+   "duplicate_pairs": 0,
+   "reader": "fdc_fndds_2022_10_reader"
+  },
+  "fdc-fndds-2024-10": {
+   "duplicate_pairs": 0,
+   "reader": "fdc_fndds_2024_10_reader"
+  },
+  "fdc-sr-legacy-2018-04": {
+   "duplicate_pairs": 0,
+   "reader": "fdc_sr_legacy_2018_04_reader"
+  }
+ },
+ "tools": {
+  "fdc-branded-find-foods-2026-04": "\"milk\" returned 25 matches (5.1 s), empty text returned 100 of the 1999950 Branded Foods (7.6 s), each with its brand owner, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-branded-food-nutrients-2026-04": "the first Branded Food returned 18 rows with 18 distinct nutrients, 18 with an amount and 0 with data points; an id that is not one of the release's Branded Foods returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-branded-rank-foods-by-nutrient-2026-04": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order (11.6 s); vitamin C (1162) lowest returned 10 rows in ascending order (9.6 s).",
+  "fdc-fndds-find-foods-2019-04": "\"milk\" returned 25 matches, empty text returned 100 of the 8536 FNDDS survey foods, each with its WWEIA category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-fndds-find-foods-2020-04": "\"milk\" returned 25 matches, empty text returned 100 of the 8690 FNDDS survey foods, each with its WWEIA category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-fndds-find-foods-2020-10": "\"milk\" returned 25 matches, empty text returned 100 of the 7083 FNDDS survey foods, each with its WWEIA category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-fndds-find-foods-2022-10": "\"milk\" returned 25 matches, empty text returned 100 of the 5624 FNDDS survey foods, each with its WWEIA category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-fndds-find-foods-2024-10": "\"milk\" returned 25 matches, empty text returned 100 of the 5432 FNDDS survey foods, each with its WWEIA category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-fndds-food-nutrients-2019-04": "the first FNDDS survey food returned 65 rows with 65 distinct nutrients, 65 with an amount and 0 with data points; an id that is not one of the release's FNDDS survey foods returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-fndds-food-nutrients-2020-04": "the first FNDDS survey food returned 65 rows with 65 distinct nutrients, 65 with an amount and 0 with data points; an id that is not one of the release's FNDDS survey foods returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-fndds-food-nutrients-2020-10": "the first FNDDS survey food returned 65 rows with 65 distinct nutrients, 65 with an amount and 0 with data points; an id that is not one of the release's FNDDS survey foods returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-fndds-food-nutrients-2022-10": "the first FNDDS survey food returned 65 rows with 65 distinct nutrients, 65 with an amount and 0 with data points; an id that is not one of the release's FNDDS survey foods returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-fndds-food-nutrients-2024-10": "the first FNDDS survey food with nutrient rows returned 65 rows with 65 distinct nutrients, 65 with an amount and 0 with data points; an id that is not one of the release's FNDDS survey foods returned none; the release publishes no food and nutrient pairs with two amounts. One of the 5432 survey foods, the first by id, has no nutrient rows and returns none.",
+  "fdc-fndds-rank-foods-by-nutrient-2019-04": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "fdc-fndds-rank-foods-by-nutrient-2020-04": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "fdc-fndds-rank-foods-by-nutrient-2020-10": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "fdc-fndds-rank-foods-by-nutrient-2022-10": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "fdc-fndds-rank-foods-by-nutrient-2024-10": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order.",
+  "fdc-sr-find-foods-2018-04": "\"milk\" returned 25 matches, empty text returned 100 of the 7793 SR Legacy foods, each with its food category, a phrase with no match returned none, and the first food's own description put that food first.",
+  "fdc-sr-food-nutrients-2018-04": "the first SR Legacy food returned 14 rows with 14 distinct nutrients, 14 with an amount and 14 with data points; an id that is not one of the release's SR Legacy foods returned none; the release publishes no food and nutrient pairs with two amounts.",
+  "fdc-sr-rank-foods-by-nutrient-2018-04": "protein (1003) highest returned 20 rows for 20 distinct foods in descending order; vitamin C (1162) lowest returned 10 rows in ascending order."
+ }
+}

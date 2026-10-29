@@ -1,0 +1,18 @@
+# Comma- or tab-separated tables with one header row, read as stored strings (src/broker/tables.rs rules, version 1).
+id: table.delimited
+version: 1
+status: accepted
+owner: agents
+summary: Comma- or tab-separated table with one header row and the same field count on every row.
+media_types: [text/csv, text/tab-separated-values]
+validator: delimited-table
+access: paged
+limits: {bytes: 16777216, rows: 1000000, columns: 1000, cells: 2000000}
+views:
+  - {view: table, gpu: [still], fallback: download}
+  # A surface over three columns that a method's output binding names; without that encoding the view is not offered.
+  - {view: surface, gpu: [webgpu, webgl2, still], fallback: image, encoding: [x, y, z]}
+fixtures:
+  - {path: fixtures/table.delimited/dose.csv, media_type: text/csv, expect: passed}
+  - {path: fixtures/table.delimited/dose.tsv, media_type: text/tab-separated-values, expect: passed}
+  - {path: fixtures/table.delimited/ragged.csv, media_type: text/csv, expect: failed}

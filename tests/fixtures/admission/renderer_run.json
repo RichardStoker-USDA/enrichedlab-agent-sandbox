@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "sandbox.enrichedlab.org/run/v3",
+  "runId": "run-20260909-0001",
+  "tenantId": "example-001",
+  "principalRef": "principal://example/scientist",
+  "principalHash": "2f4b66b9706c1ef57d67e2cf9ad98127",
+  "labRef": "lab://example/research",
+  "toolRef": "tool://example/reference-runner",
+  "profileRef": "profile://example-kata",
+  "runtimeClass": "kata-clh",
+  "createdAt": "2026-09-09T10:48:45Z",
+  "executable": {
+    "ref": "oci://docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+    "digest": "sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0"
+  },
+  "parameterBundle": {
+    "ref": "artifact://example/parameters/run-20260909-0001",
+    "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "inputBundle": {
+    "ref": "input://example/snapshots/run-20260909-0001",
+    "digest": "sha256:beae683f4c3cd4066d4931ebeb3b676f14031bd8f8c750dca30d427e8bb7df9b",
+    "materializationMode": "checksummed-copy",
+    "stagingRef": "receipt://sandbox-staging/example/run-20260909-0001",
+    "stagingDigest": "sha256:864a705f9cb9961f939f76796bfe8e5f6fe86ea9ebc6125391dec357cb66deb2",
+    "pvcName": "input-run-20260909-0001"
+  },
+  "artifactTarget": {
+    "ref": "artifact://example/runs/run-20260909-0001",
+    "storageGi": 2,
+    "retentionUntil": "2026-09-09T11:48:45Z"
+  },
+  "action": {
+    "proposalRef": "proposal://example/run-20260909-0001",
+    "approvalRef": "approval://example/run-20260909-0001",
+    "ledgerRef": "ledger://example/run-20260909-0001",
+    "rollbackRef": "rollback://example/run-20260909-0001"
+  },
+  "telemetry": {
+    "traceRef": "trace://0123456789abcdef0123456789abcdef",
+    "evidenceRef": "evidence://example/run-20260909-0001",
+    "payloadPolicy": "metadata-only"
+  },
+  "computeDeadlineAt": "2026-09-09T10:52:45Z"
+}

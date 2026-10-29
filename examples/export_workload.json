@@ -1,0 +1,18 @@
+{
+  "runtimeClassName": "kata-clh",
+  "image": "registry.example.invalid/enrichedlab/agent-sandbox@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "brokerNamespace": "broker-system",
+  "dnsSuffix": "svc.cluster.local",
+  "poolSelector": {
+    "sandbox.enrichedlab.org/pool": "export"
+  },
+  "cpuRequestMillis": 100,
+  "cpuLimitMillis": 500,
+  "memoryRequestMib": 128,
+  "memoryLimitMib": 256,
+  "activeDeadlineSeconds": 120,
+  "maxFiles": 100,
+  "maxBytes": 104857600,
+  "maxSeconds": 90,
+  "identityMemoryMib": 32
+}

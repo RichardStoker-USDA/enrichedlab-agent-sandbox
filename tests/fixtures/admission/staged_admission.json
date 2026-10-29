@@ -1,0 +1,179 @@
+{
+  "schemaVersion": "sandbox.enrichedlab.org/broker-staged-admission/v1",
+  "taskId": "00000000-0000-0000-0000-000000000000",
+  "attempt": 2,
+  "leaseGeneration": 7,
+  "principalId": "00000000-0000-0000-0000-000000000000",
+  "groupKey": "research",
+  "profileKey": "reference",
+  "authorization": {
+    "runId": "run-20260909-0001",
+    "principalHash": "2f4b66b9706c1ef57d67e2cf9ad98127",
+    "profileId": "example-kata",
+    "namespace": "sandbox-example-001",
+    "executableDigest": "sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+    "inputDigest": "sha256:beae683f4c3cd4066d4931ebeb3b676f14031bd8f8c750dca30d427e8bb7df9b",
+    "stagingDigest": "sha256:864a705f9cb9961f939f76796bfe8e5f6fe86ea9ebc6125391dec357cb66deb2",
+    "manifestDigest": "sha256:beae683f4c3cd4066d4931ebeb3b676f14031bd8f8c750dca30d427e8bb7df9b",
+    "attestationDigest": "sha256:93ce172983537d5a28d22572e26cb5b8606bb6a49920896f60e2f9296c72d1f5"
+  },
+  "sealedInput": {
+    "schemaVersion": "sandbox.enrichedlab.org/input-staging/v1",
+    "stagingId": "stage-20260909-0001",
+    "runId": "run-20260909-0001",
+    "tenantId": "example-001",
+    "namespace": "sandbox-example-001",
+    "principalHash": "2f4b66b9706c1ef57d67e2cf9ad98127",
+    "materializationMode": "checksummed-copy",
+    "inputRef": "input://example/snapshots/run-20260909-0001",
+    "inputDigest": "sha256:beae683f4c3cd4066d4931ebeb3b676f14031bd8f8c750dca30d427e8bb7df9b",
+    "pvcName": "input-run-20260909-0001",
+    "manifestRef": "artifact://example/manifests/run-20260909-0001",
+    "manifestDigest": "sha256:beae683f4c3cd4066d4931ebeb3b676f14031bd8f8c750dca30d427e8bb7df9b",
+    "attestationRef": "receipt://sandbox-staging/example/run-20260909-0001",
+    "attestationDigest": "sha256:93ce172983537d5a28d22572e26cb5b8606bb6a49920896f60e2f9296c72d1f5",
+    "sealedAt": "2026-09-09T10:44:29.467239Z"
+  },
+  "sandbox": {
+    "apiVersion": "agents.x-k8s.io/v1beta1",
+    "kind": "Sandbox",
+    "metadata": {
+      "name": "run-20260909-0001",
+      "namespace": "sandbox-example-001",
+      "labels": {
+        "sandbox.enrichedlab.org/contract-version": "v3",
+        "sandbox.enrichedlab.org/run-id": "run-20260909-0001",
+        "sandbox.enrichedlab.org/tenant": "example-001",
+        "sandbox.enrichedlab.org/principal-hash": "2f4b66b9706c1ef57d67e2cf9ad98127",
+        "sandbox.enrichedlab.org/lab-hash": "6de1b27ec512a286c893e3e6d3962455",
+        "sandbox.enrichedlab.org/tool-hash": "d5d66025fe1f8a97cd317d595df9d571",
+        "sandbox.enrichedlab.org/profile": "example-kata",
+        "sandbox.enrichedlab.org/runtime": "kata-clh",
+        "sandbox.enrichedlab.org/binding-hash": "87a09354cde05d779b96df37c198c1f9",
+        "kueue.x-k8s.io/queue-name": "sandbox-runs"
+      },
+      "annotations": {
+        "sandbox.enrichedlab.org/action-ref-hash": "a84198de73203bde3ffee21888a9e827",
+        "sandbox.enrichedlab.org/approval-ref-hash": "1ab748863158fe46571aa98c3d866299",
+        "sandbox.enrichedlab.org/ledger-ref-hash": "9989922f4ae20e02fc486a3858a55ee8",
+        "sandbox.enrichedlab.org/rollback-ref-hash": "4443ffa4181089400c142c373f44ebf2",
+        "sandbox.enrichedlab.org/evidence-ref-hash": "6431616adc1dfa547a16a4f678d9e0f3",
+        "sandbox.enrichedlab.org/trace-hash": "fce35a177a37a56edd273b461c0a2d37",
+        "sandbox.enrichedlab.org/executable-digest": "sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+        "sandbox.enrichedlab.org/input-digest": "sha256:beae683f4c3cd4066d4931ebeb3b676f14031bd8f8c750dca30d427e8bb7df9b",
+        "sandbox.enrichedlab.org/input-materialization": "checksummed-copy",
+        "sandbox.enrichedlab.org/input-staging-digest": "sha256:864a705f9cb9961f939f76796bfe8e5f6fe86ea9ebc6125391dec357cb66deb2",
+        "sandbox.enrichedlab.org/input-manifest-digest": "sha256:beae683f4c3cd4066d4931ebeb3b676f14031bd8f8c750dca30d427e8bb7df9b",
+        "sandbox.enrichedlab.org/input-attestation-digest": "sha256:93ce172983537d5a28d22572e26cb5b8606bb6a49920896f60e2f9296c72d1f5",
+        "sandbox.enrichedlab.org/artifact-retention-until": "2026-09-09T11:48:45Z"
+      }
+    },
+    "spec": {
+      "service": false,
+      "shutdownTime": "2026-09-09T10:52:45Z",
+      "shutdownPolicy": "Delete",
+      "operatingMode": "Running",
+      "podTemplate": {
+        "metadata": {
+          "labels": {
+            "sandbox.enrichedlab.org/contract-version": "v3",
+            "sandbox.enrichedlab.org/run-id": "run-20260909-0001",
+            "sandbox.enrichedlab.org/tenant": "example-001",
+            "sandbox.enrichedlab.org/principal-hash": "2f4b66b9706c1ef57d67e2cf9ad98127",
+            "sandbox.enrichedlab.org/lab-hash": "6de1b27ec512a286c893e3e6d3962455",
+            "sandbox.enrichedlab.org/tool-hash": "d5d66025fe1f8a97cd317d595df9d571",
+            "sandbox.enrichedlab.org/profile": "example-kata",
+            "sandbox.enrichedlab.org/runtime": "kata-clh",
+            "sandbox.enrichedlab.org/binding-hash": "87a09354cde05d779b96df37c198c1f9",
+            "kueue.x-k8s.io/queue-name": "sandbox-runs"
+          }
+        },
+        "spec": {
+          "runtimeClassName": "kata-clh",
+          "automountServiceAccountToken": false,
+          "enableServiceLinks": false,
+          "restartPolicy": "Never",
+          "activeDeadlineSeconds": 300,
+          "terminationGracePeriodSeconds": 10,
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "runAsGroup": 65532,
+            "fsGroup": 65532,
+            "fsGroupChangePolicy": "OnRootMismatch",
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "containers": [
+            {
+              "name": "runner",
+              "image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+              "imagePullPolicy": "IfNotPresent",
+              "command": [
+                "/bin/sh"
+              ],
+              "args": [
+                "-c",
+                "test -r /input/fixture && printf qualification > /artifacts/result"
+              ],
+              "workingDir": "/tmp",
+              "resources": {
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "128Mi"
+                },
+                "limits": {
+                  "cpu": "500m",
+                  "memory": "512Mi"
+                }
+              },
+              "securityContext": {
+                "runAsNonRoot": true,
+                "runAsUser": 65532,
+                "runAsGroup": 65532,
+                "allowPrivilegeEscalation": false,
+                "readOnlyRootFilesystem": true,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                },
+                "seccompProfile": {
+                  "type": "RuntimeDefault"
+                }
+              },
+              "volumeMounts": [
+                {
+                  "name": "input",
+                  "mountPath": "/input",
+                  "subPath": "payload",
+                  "readOnly": true
+                },
+                {
+                  "name": "artifacts",
+                  "mountPath": "/artifacts"
+                }
+              ]
+            }
+          ],
+          "volumes": [
+            {
+              "name": "input",
+              "persistentVolumeClaim": {
+                "claimName": "input-run-20260909-0001",
+                "readOnly": true
+              }
+            },
+            {
+              "name": "artifacts",
+              "persistentVolumeClaim": {
+                "claimName": "artifacts-run-20260909-0001"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

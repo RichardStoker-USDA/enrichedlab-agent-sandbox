@@ -1,0 +1,3 @@
+interface:
+  display_name: "EnrichedLab install"
+  short_description: "Install or upgrade the sandbox controller"

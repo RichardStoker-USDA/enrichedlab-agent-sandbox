@@ -1,0 +1,127 @@
+name: CI
+
+# Runs on every push to development and main, on pull requests to them, and by hand. This repository is public, so
+# GitHub-hosted runner minutes do not count against an allowance and the macOS check runs every time.
+on:
+  push:
+    branches:
+      - development
+      - main
+  pull_request:
+    branches:
+      - development
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    name: Source checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Rust 1.93.0
+        shell: bash
+        run: |
+          rustup toolchain install 1.93.0 --profile minimal --component clippy,rustfmt
+          rustup default 1.93.0
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run tests
+        run: cargo test --locked --all-targets
+
+      - name: Run Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Validate scripts, dashboard, skills, and public boundary
+        shell: bash
+        env:
+          # Site markers are kept out of the repository: an optional Actions secret, one pattern per line.
+          PUBLIC_BOUNDARY_MARKERS: ${{ secrets.PUBLIC_BOUNDARY_MARKERS }}
+        run: |
+          for script in scripts/*.sh; do sh -n "$script"; done
+          node --check web/app.js
+          node --test tests/*.test.mjs
+          python3 -m unittest discover -s tests/repro
+          scripts/validate_agent_skills.sh
+          if [ -n "$PUBLIC_BOUNDARY_MARKERS" ]; then
+            umask 077
+            printf '%s\n' "$PUBLIC_BOUNDARY_MARKERS" >"$RUNNER_TEMP/boundary-markers"
+            export PUBLIC_BOUNDARY_EXTRA_PATTERNS_FILE="$RUNNER_TEMP/boundary-markers"
+          fi
+          scripts/scan_public_boundary.sh
+
+      - name: Build release binaries
+        run: cargo build --release --locked
+
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Rust 1.93.0
+        shell: bash
+        run: |
+          rustup toolchain install 1.93.0 --profile minimal
+          rustup default 1.93.0
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Audit dependencies
+        run: cargo audit --deny warnings
+
+  workspace:
+    name: Research workspace client
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: clients/workspace
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Install locked packages without install scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run tests
+        run: npm test
+
+      - name: Type-check
+        run: npm run check

@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "routes": {
+    "none": {
+      "workspace": "default",
+      "pool_cap": 10,
+      "model": null,
+      "display_name": "No inference route",
+      "context_limit": 0,
+      "output_limit": 0,
+      "reasoning": false,
+      "attachment": false,
+      "interleaved_field": "reasoning",
+      "input_modalities": ["text"],
+      "options": {},
+      "variants": {},
+      "default_variant": null,
+      "inference_engine": null,
+      "reasoning_parser": null,
+      "model_revision": null
+    },
+    "local-agent": {
+      "workspace": "local-models",
+      "pool_cap": 4,
+      "model": "replace-with-endpoint-model-id",
+      "display_name": "Local agent model",
+      "context_limit": 131072,
+      "output_limit": 16384,
+      "reasoning": true,
+      "attachment": false,
+      "interleaved_field": "reasoning_content",
+      "input_modalities": ["text"],
+      "options": {
+        "temperature": 1.0,
+        "topP": 0.95
+      },
+      "variants": {
+        "off": {
+          "reasoningEffort": "off"
+        },
+        "on": {
+          "reasoningEffort": "on"
+        }
+      },
+      "default_variant": "on",
+      "pi_api": "openai-completions",
+      "pi_compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": true
+      },
+      "inference_engine": "vllm",
+      "reasoning_parser": "replace-with-reviewed-parser",
+      "model_revision": "replace-with-model-revision-or-digest"
+    }
+  }
+}

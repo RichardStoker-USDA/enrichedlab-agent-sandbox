@@ -1,0 +1,4 @@
+interface:
+  display_name: "EnrichedLab cluster broker"
+  short_description: "Deploy and qualify the shared agent broker"
+  default_prompt: "Use $enrichedlab-agent-broker to prepare and qualify a private Kubernetes deployment of the shared agent broker."

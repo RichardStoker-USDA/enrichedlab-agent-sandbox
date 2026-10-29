@@ -1,0 +1,52 @@
+[package]
+name = "enrichedlab-guard"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+description = "Upload guard: file type and structure checks, malware scanning and content disarm before a file reaches a research service"
+license = "MIT"
+publish = false
+
+# Its own workspace: the guard builds and locks separately from the broker.
+[workspace]
+
+[lib]
+name = "enrichedlab_guard"
+path = "src/lib.rs"
+
+[[bin]]
+name = "enrichedlab-guard"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "query"] }
+calamine = { version = "0.36.1", default-features = false }
+crc32fast = "1.5"
+encoding_rs = "0.8.42"
+flate2 = "1.1"
+hex = "0.4"
+http-body-util = "0.1"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+libc = "0.2"
+# The XML reader calamine reads a workbook with, used to find what calamine will reserve room for before it reads.
+quick-xml = { version = "0.41", default-features = false }
+lopdf = { version = "0.45.0", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+tokio = { version = "1.53", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "json", "env-filter", "std"] }
+uuid = { version = "1.27", features = ["v7"] }
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
+yara-x = { version = "1.21.0", default-features = false, features = ["constant-folding", "exact-atoms", "fast-regexp", "elf-module", "hash-module", "macho-module", "math-module", "pe-module", "string-module", "zip-module"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4

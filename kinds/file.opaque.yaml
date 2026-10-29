@@ -1,0 +1,14 @@
+# The fallback: a file that matches no accepted kind, or failed its kind's check, is kept and downloadable.
+id: file.opaque
+version: 1
+status: accepted
+owner: agents
+summary: Any file, kept with its name, size and checksum and offered as a download.
+media_types: []
+validator: none
+access: whole
+limits: {}
+views:
+  - {view: download, gpu: [still], fallback: download}
+fixtures:
+  - {path: fixtures/file.opaque/blob.bin, media_type: application/octet-stream, expect: passed}

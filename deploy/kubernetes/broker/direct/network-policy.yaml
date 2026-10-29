@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-broker-direct-worker-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: direct-worker
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              enrichedlab.ai/broker-database: "true"
+          podSelector:
+            matchLabels:
+              enrichedlab.ai/broker-database: "true"
+      ports: [{port: 5432, protocol: TCP}]
+    - to:
+        - ipBlock: {cidr: 192.0.2.0/32}
+      ports: [{port: 443, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-broker-custodian-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: custody-dispatcher
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              enrichedlab.ai/broker-database: "true"
+          podSelector:
+            matchLabels:
+              enrichedlab.ai/broker-database: "true"
+      ports: [{port: 5432, protocol: TCP}]
+    - to:
+        - ipBlock: {cidr: 192.0.2.0/32}
+      ports: [{port: 443, protocol: TCP}]

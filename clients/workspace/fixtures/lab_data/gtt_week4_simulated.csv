@@ -1,0 +1,15 @@
+Glucose tolerance test week 4 (simulated values for the workspace preview),,,,,,,,
+Exported from an example meter,,,,,,,,
+Mouse ID,Diet,Sex,Glucose 0 min,Glucose 15 min,Glucose 30 min,Glucose 60 min,Glucose 120 min,Insulin 0 min
+,,,mg/dL,mg/dL,mg/dL,mg/dL,mg/dL,ng/mL
+S01,Control,male,98,245,262,198,131,0.62
+S02,Control,Male ,104,251,270,205,128,0.71
+S03,Control,female,91,228,240,176,119,<0.20
+S04,Control,Female,95,233,251,181,NA,0.48
+S05,High fat,male,128,341,402,355,214,1.84
+S06,High fat,MALE,135,366,>600,371,230,2.11
+S07,High fat,female,121,318,377,322,196,1.32
+S08,High fat,female,119,312,365,310,-,1.27
+Mean,,,111.4,297.9,,277.3,,
+SD,,,16.1,54.6,,79.6,,
+Note: readings above 600 mg/dL are the meter's ceiling.,,,,,,,,
