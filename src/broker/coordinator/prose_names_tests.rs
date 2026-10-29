@@ -324,10 +324,11 @@ fn comparisons_and_hidden_characters_never_compose_a_value() {
         assert_eq!(count, 1, "{text:?}");
         assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
     }
-    // A filler that counts as a letter puts the digits in a name: they stay unmasked, and the rule refuses them.
+    // A filler that counts as a letter joins the digits into one operand starting with a digit: both numbers mask.
+    assert_eq!(index.prose_refused("It was 1\u{3164}9 here."), ["1", "9"]);
     let (step, count) = index.mask_step_numbers("It was 1\u{3164}9 here.", None);
-    assert_eq!(count, 0);
-    assert_eq!(index.step_prose_refused(&step), ["1", "9"]);
+    assert_eq!(count, 2);
+    assert!(index.step_prose_refused(&step).is_empty(), "{step:?}");
     // Comparisons, quantities with units, and a value a source writes whole keep standing.
     assert!(
         index
@@ -364,11 +365,32 @@ fn signs_radixes_groupings_and_number_pairs_never_compose_a_value() {
     assert_eq!(index.prose_refused("It was -1e-9."), ["1", "9"]);
     assert_eq!(index.prose_refused("It was .1e-9."), ["1", "9"]);
     assert_eq!(index.prose_refused("It was .5 here."), ["5"]);
-    // A hexadecimal literal is not a quantity with a unit, in any script's letters.
+    // A radix or a multiplier writes another value than its number: refused unless shown whole, and masked cleanly.
     assert_eq!(index.prose_refused("Set 0xFF here."), ["0"]);
     assert_eq!(
         index.prose_refused("Set 0\u{FF58}\u{FF26}\u{FF26} here."),
         ["0"]
+    );
+    for text in [
+        "Set 0FFh here.",
+        "About 5k mice.",
+        "About 5M reads.",
+        "Nearly 9e-1.",
+    ] {
+        let refused = index.prose_refused(text);
+        assert!(!refused.is_empty(), "{text}");
+        let (step, count) = index.mask_step_numbers(text, None);
+        assert_eq!(count, refused.len(), "{text}");
+        assert!(index.step_prose_refused(&step).is_empty(), "{step:?}");
+        let (summary, count) = mask_refused_numbers(text, &index);
+        assert_eq!(count, refused.len(), "{text}");
+        assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
+    }
+    // A measurement with a listed unit keeps the per-number rule.
+    assert!(
+        index
+            .prose_refused("At 5mg/kg, 10min, 20wk, 9kb, 5\u{03BC}M, 1st and 10x.")
+            .is_empty()
     );
     // Two numbers in one operand stand only as a source writes them.
     assert!(index.prose_refused("Over days 10-20 it rose.").is_empty());
@@ -392,4 +414,28 @@ fn signs_radixes_groupings_and_number_pairs_never_compose_a_value() {
         assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
     }
     assert!(index.prose_refused("It was 5\u{00A0}mg and 5.").is_empty());
+    // A run of grouping characters between digits groups them however long it is, and an apostrophe groups as well.
+    for joined in [
+        "1\u{202F}\u{202F}234",
+        "1\u{200A}\u{200A}234",
+        "1 \u{2009}234",
+        "1'234",
+        "1\u{2019}234",
+        "1' 234",
+    ] {
+        let text = format!("It was {joined} here.");
+        assert_eq!(index.prose_refused(&text), ["1", "234"], "{text:?}");
+        let (step, count) = index.mask_step_numbers(&text, None);
+        assert_eq!(count, 2, "{text:?}");
+        assert!(index.step_prose_refused(&step).is_empty(), "{step:?}");
+        let (summary, count) = mask_refused_numbers(&text, &index);
+        assert_eq!(count, 2, "{text:?}");
+        assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
+    }
+    // An ASCII space, or a comma and a space, separates two numbers; a quoted number before a word stays alone.
+    assert!(
+        index
+            .prose_refused("Days 1 234, then 1, 234 and '5' days.")
+            .is_empty()
+    );
 }

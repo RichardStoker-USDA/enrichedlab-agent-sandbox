@@ -58,22 +58,14 @@ pub(super) fn raw_token(chars: &[char], start: usize, end: usize) -> String {
     chars[from..to].iter().collect()
 }
 
-/// The run around `start..end` up to a character `stop` names. A space outside ASCII between two digits never ends it:
-/// typesetting groups thousands with a narrow or thin space (`1\u{202F}234`), so the digits read as one number.
+/// The run around `start..end` up to a character `stop` names, except inside a digit grouping (`groups_digits`).
 fn run_bounds(
     chars: &[char],
     start: usize,
     end: usize,
     stop: impl Fn(char) -> bool,
 ) -> (usize, usize) {
-    let groups_digits = |i: usize| {
-        !chars[i].is_ascii()
-            && chars[i].is_whitespace()
-            && i > 0
-            && chars[i - 1].is_ascii_digit()
-            && chars.get(i + 1).is_some_and(|c| c.is_ascii_digit())
-    };
-    let stops = |i: usize| stop(chars[i]) && !groups_digits(i);
+    let stops = |i: usize| stop(chars[i]) && !groups_digits(chars, i);
     let mut from = start;
     while from > 0 && !stops(from - 1) {
         from -= 1;
@@ -83,6 +75,35 @@ fn run_bounds(
         to += 1;
     }
     (from, to)
+}
+
+/// Whether `chars[i]` lies in a run of spaces and quote marks between two digits that holds a quote mark or a space
+/// outside ASCII. Such a run groups the digits into one number however many characters it has: typesetting groups
+/// thousands with narrow or thin spaces (`1\u{202F}234`) and some locales with an apostrophe (`1'234`, `1\u{2019}234`).
+/// A plain ASCII space alone separates two numbers, as does a comma followed by a space.
+fn groups_digits(chars: &[char], i: usize) -> bool {
+    let quote = |c: char| {
+        matches!(
+            c,
+            '\'' | '"' | '`' | '\u{2018}' | '\u{2019}' | '\u{201C}' | '\u{201D}'
+        )
+    };
+    let in_run = |c: char| c.is_whitespace() || quote(c);
+    if !in_run(chars[i]) {
+        return false;
+    }
+    let mut from = i;
+    while from > 0 && in_run(chars[from - 1]) {
+        from -= 1;
+    }
+    let mut to = i + 1;
+    while to < chars.len() && in_run(chars[to]) {
+        to += 1;
+    }
+    from > 0
+        && chars[from - 1].is_ascii_digit()
+        && chars.get(to).is_some_and(|c| c.is_ascii_digit())
+        && chars[from..to].iter().any(|&c| quote(c) || !c.is_ascii())
 }
 
 /// A separator prose puts between words: whitespace, a comma, semicolon, bracket, quote, `!`, `?` or an ellipsis.
@@ -165,14 +186,15 @@ pub(super) fn obscures_numbers(token: &str) -> bool {
     })
 }
 
-/// Whether a refused number may be written as `NUMBER_MASK`: it is not inside a name (`in_a_name`) and its operand
-/// (`operand_around`) holds no letter or is a quantity with a unit (`unit_shaped`). Masking the `1` of `Fmo3-1` would
-/// leave a shown `Fmo3` standing for a name nothing showed; the `12` of `n=12`, the `37` of `37°C` and both numbers of
+/// Whether a refused number may be written as `NUMBER_MASK`. In an operand (`operand_around`) that starts with a digit
+/// every refused number masks, which leaves no name behind (`(a number)mg`, `(a number)FFh`, `(a number)e-(a number)`).
+/// Otherwise the number masks only outside a name (`in_a_name`) in an operand with no letter: masking the `1` of
+/// `Fmo3-1` would leave a shown `Fmo3` standing for a name nothing showed, while the `12` of `n=12` and both numbers of
 /// `10^-9` mask cleanly.
 pub(super) fn may_mask(chars: &[char], start: usize, end: usize) -> bool {
     let operand = operand_around(chars, start, end);
-    !in_a_name(chars, start, end)
-        && (!operand.chars().any(char::is_alphabetic) || unit_shaped(&operand))
+    operand.starts_with(|c: char| c.is_ascii_digit())
+        || (!in_a_name(chars, start, end) && !operand.chars().any(char::is_alphabetic))
 }
 
 /// How a step literal occurs in prose: the raw token with at most one sentence-final `.` or `:` after its last digit
@@ -188,9 +210,9 @@ pub(super) fn literal_occurrence(chars: &[char], start: usize, end: usize) -> St
 }
 
 /// Whether an operand (`operand_around`) stands only where a source writes it whole: one holding two or more numbers
-/// (`10^-9`, `10/20`, `1\u{202F}234`), and one holding a number and a letter unless it is a quantity with a unit
-/// (`unit_shaped`). So `1e-9` composed from an allowed 1 and 9, `Gene3%`, `<Gene3>`, `A7/B3` and `0xFF` are refused
-/// unless a source writes them whole.
+/// (`10^-9`, `10/20`, `1\u{202F}234`, `1'234`), and one holding a number and a letter unless it is a measurement with a
+/// listed unit (`unit_shaped`). So `1e-9` composed from an allowed 1 and 9, `Gene3%`, `<Gene3>`, `A7/B3`, `0xFF`,
+/// `0FFh` and `5k` are refused unless a source writes them whole.
 pub(super) fn needs_whole_token(token: &str) -> bool {
     let chars: Vec<char> = token.chars().collect();
     match number_spans(&chars).len() {
@@ -200,9 +222,22 @@ pub(super) fn needs_whole_token(token: &str) -> bool {
     }
 }
 
-/// A quantity with a unit: digits with at most one point, then a unit of ASCII letters, the letters `µ`, `μ`, `Ω` and
-/// `Å`, and the marks `°`, `/`, `%` and `‰` (`7.1mg`, `6J`, `37°C`, `5µg`, `5mg/kg`). A zero before `x` is a hexadecimal
-/// literal (`0xFF`), not a unit.
+/// Units a measurement may carry with its number in prose: mass, volume, amount and concentration, time, temperature,
+/// length, sequence and molecular size, energy, speed, fold and ordinal suffixes. None of them changes the number's
+/// own value, so a listed unit keeps the per-number rule. A multiplier (`5k`, `5M`, `5B`) or a radix (`0xFF`, `0FFh`)
+/// writes another value and is not listed; nor is bare `M`, which reads as molar or as a million.
+#[rustfmt::skip]
+const UNITS: &[&str] = &[
+    "g", "kg", "mg", "\u{00B5}g", "\u{03BC}g", "ug", "ng", "pg", "fg", "L", "l", "mL", "ml", "dL", "dl", "\u{00B5}L",
+    "\u{03BC}L", "uL", "nL", "mol", "mmol", "\u{00B5}mol", "\u{03BC}mol", "umol", "nmol", "pmol", "mM", "\u{00B5}M",
+    "\u{03BC}M", "uM", "nM", "pM", "fM", "ppm", "ppb", "IU", "U", "mU", "s", "sec", "ms", "min", "h", "hr", "hrs",
+    "d", "wk", "wks", "mo", "y", "yr", "yrs", "\u{00B0}C", "\u{00B0}F", "C", "m", "cm", "mm", "\u{00B5}m",
+    "\u{03BC}m", "um", "nm", "\u{00C5}", "bp", "kb", "kbp", "Mb", "Mbp", "Gb", "cM", "nt", "aa", "Da", "kDa", "cal",
+    "kcal", "Cal", "J", "kJ", "rpm", "x", "xg", "st", "nd", "rd", "th",
+];
+
+/// A measurement with a listed unit: digits with at most one point, then units from `UNITS` joined by `/` (`7.1mg`,
+/// `6J`, `37\u{00B0}C`, `5\u{00B5}g`, `5mg/kg`, `12wk`, `3rd`).
 pub(super) fn unit_shaped(token: &str) -> bool {
     let split = token
         .find(|c: char| !(c.is_ascii_digit() || c == '.'))
@@ -210,22 +245,8 @@ pub(super) fn unit_shaped(token: &str) -> bool {
     let (number, unit) = token.split_at(split);
     number.starts_with(|c: char| c.is_ascii_digit())
         && number.matches('.').count() <= 1
-        && !(number.trim_start_matches('0').is_empty() && unit.starts_with(['x', 'X']))
-        && unit.chars().any(char::is_alphabetic)
-        && unit.chars().all(|c| {
-            c.is_ascii_alphabetic()
-                || matches!(
-                    c,
-                    '\u{00B5}'
-                        | '\u{03BC}'
-                        | '\u{03A9}'
-                        | '\u{00C5}'
-                        | '\u{00B0}'
-                        | '/'
-                        | '%'
-                        | '\u{2030}'
-                )
-        })
+        && !unit.is_empty()
+        && unit.split('/').all(|part| UNITS.contains(&part))
 }
 
 /// A name a number may stand in when the call shows it: ASCII letters and digits with inner hyphens, periods,

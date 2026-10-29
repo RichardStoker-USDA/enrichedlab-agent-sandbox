@@ -2530,7 +2530,8 @@ fn unsourced_numbers_in_the_summary_are_masked_and_counted() {
         refusal(&p.validate_prose(&compiled.index).unwrap_err()).names,
         ["summary: 7"]
     );
-    // A number inside a name is refused, not garbled into B(a number); a free-standing one beside it is still masked.
+    // A number inside a name is refused, not garbled into B(a number); a free-standing one beside it is still masked,
+    // and so is one starting a measurement (`5g`), which leaves no name behind.
     let mut p = parse(
         "Plasma B12, IL-6, HbA1c and omega-3 rose in 45 people, about 5g a day.",
         "A second look checks the order.",
@@ -2538,20 +2539,14 @@ fn unsourced_numbers_in_the_summary_are_masked_and_counted() {
         None,
         finding,
     );
-    assert_eq!(p.mask_summary_numbers(&compiled.index), 1);
+    assert_eq!(p.mask_summary_numbers(&compiled.index), 2);
     assert_eq!(
         p.summary,
-        "Plasma B12, IL-6, HbA1c and omega-3 rose in (a number) people, about 5g a day."
+        "Plasma B12, IL-6, HbA1c and omega-3 rose in (a number) people, about (a number)g a day."
     );
     assert_eq!(
         refusal(&p.validate_prose(&compiled.index).unwrap_err()).names,
-        [
-            "summary: 12",
-            "summary: 6",
-            "summary: 1",
-            "summary: 3",
-            "summary: 5"
-        ]
+        ["summary: 12", "summary: 6", "summary: 1", "summary: 3"]
     );
     // A name written with a Unicode hyphen or an invisible joiner is a name too.
     let mut p = parse(
