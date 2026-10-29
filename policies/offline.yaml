@@ -2,8 +2,8 @@ version: 1
 
 filesystem_policy:
   include_workdir: true
-  read_only: [/usr, /lib, /proc, /dev/urandom, /etc, /var/log, /opt]
-  read_write: [/sandbox, /tmp, /dev/null]
+  read_only: [/usr, /lib, /proc, /dev/urandom, /etc, /var/log, /opt, /sys/fs/cgroup]
+  read_write: [/sandbox, /tmp, /dev/null, /dev/shm]
 
 landlock:
   compatibility: __LANDLOCK_MODE__

@@ -180,6 +180,26 @@ mod tests {
     }
 
     #[test]
+    fn every_profile_lets_runtimes_read_limits_and_share_memory() {
+        // DuckDB, the JVM, Go and Node size themselves from the cgroup files, and Python multiprocessing needs
+        // POSIX semaphores in /dev/shm; without them DuckDB aborts and process pools fall back or fail.
+        for profile in ["development", "data-science", "offline"] {
+            let policy = render(profile, LandlockMode::BestEffort, &[], &[]).unwrap();
+            let read_only = policy
+                .lines()
+                .find(|line| line.trim_start().starts_with("read_only:"))
+                .unwrap();
+            let read_write = policy
+                .lines()
+                .find(|line| line.trim_start().starts_with("read_write:"))
+                .unwrap();
+            assert!(read_only.contains("/sys/fs/cgroup"), "{profile}");
+            assert!(!read_write.contains("/sys"), "{profile}");
+            assert!(read_write.contains("/dev/shm"), "{profile}");
+        }
+    }
+
+    #[test]
     fn host_rule_names_are_stable_and_bounded() {
         let name = host_rule_name("api.example.com");
         assert_eq!(name, host_rule_name("api.example.com"));
