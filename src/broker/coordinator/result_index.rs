@@ -32,6 +32,10 @@ pub struct ResultIndex {
     /// (`with_names_from`): a number inside such a name may stand in prose. Empty in an index as compiled or rebuilt;
     /// filled only from the exact context a call sent, at the moment its reply is checked.
     pub(super) allowed_names: HashSet<String>,
+    /// Identifiers (`chromosome 12`, `figure 3`; `shown_identifier_keys`) that a paper passage, a read part or the
+    /// scientist's own words in the call being checked write: such a number may stand in prose after a label of the
+    /// same kind. Filled, like `allowed_names`, only from the exact context a call sent.
+    pub(super) allowed_identifiers: HashSet<String>,
     /// Numbers the shown template analyses' words hold (labels, first sentences, setting ranges): words that describe a
     /// step may name a setting with them, but no summary, finding, lesson or part may, so a catalog's bound that equals
     /// a result value never stands in a finding unbound.
@@ -346,8 +350,14 @@ impl ResultIndex {
         // that way admits it.
         let pointed = start > 0 && chars[start - 1] == '.';
         let n: String = chars[start..end].iter().collect();
+        let identifier = || {
+            identifier_label(chars, start, end)
+                .is_some_and(|label| self.allowed_identifiers.contains(&format!("{label} {n}")))
+        };
         !((!pointed
-            && (self.allowed_numbers.contains(&n) || (step && self.setting_numbers.contains(&n))))
+            && (self.allowed_numbers.contains(&n)
+                || (step && self.setting_numbers.contains(&n))
+                || identifier()))
             || own.is_some_and(|own| own.contains(&literal_occurrence(chars, start, end))))
     }
 
@@ -386,43 +396,52 @@ impl ResultIndex {
     /// of the parts the proposal cites. Nothing the lead or a model wrote adds a name (answers, lessons, findings, claims,
     /// readings, attempts, step titles, the tool card's action keys, a figure's model description), and neither do
     /// result cells, which a query can fill with any text, nor a study part's extracted facts.
+    ///
+    /// Identifiers (`allowed_identifiers`) come from the papers' and the scientist's words only: the question, the
+    /// constraints and instructions, the passages and the read or cited parts. A data card, a method description or the
+    /// starting point adds none, since a count or setting there can follow a column named like a label.
     pub fn with_names_from(&self, context: &Value) -> ResultIndex {
-        fn collect(value: &Value, names: &mut HashSet<String>) {
+        fn collect(value: &Value, keys: &mut HashSet<String>, read: fn(&str) -> Vec<String>) {
             match value {
-                Value::String(text) => names.extend(shown_name_keys(text)),
-                Value::Array(items) => items.iter().for_each(|v| collect(v, names)),
-                Value::Object(fields) => fields.values().for_each(|v| collect(v, names)),
+                Value::String(text) => keys.extend(read(text)),
+                Value::Array(items) => items.iter().for_each(|v| collect(v, keys, read)),
+                Value::Object(fields) => fields.values().for_each(|v| collect(v, keys, read)),
                 _ => {}
             }
         }
-        let mut names = HashSet::new();
-        for key in [
-            "question",
-            "constraints",
-            "scientist_instructions",
-            "methods",
-            "data_cards",
-            "starting_point",
-        ] {
-            collect(&context[key], &mut names);
+        // Each source text, and whether it is a paper's or the scientist's own words.
+        let mut sources: Vec<(&Value, bool)> = Vec::new();
+        for key in ["question", "constraints", "scientist_instructions"] {
+            sources.push((&context[key], true));
+        }
+        for key in ["methods", "data_cards", "starting_point"] {
+            sources.push((&context[key], false));
         }
         for passage in context["literature"].as_array().into_iter().flatten() {
-            collect(&passage["text"], &mut names);
+            sources.push((&passage["text"], true));
         }
         for part in context["reading"]["parts"].as_array().into_iter().flatten() {
             for key in ["text", "caption", "abstract"] {
-                collect(&part[key], &mut names);
+                sources.push((&part[key], true));
             }
         }
         // The methods check is not sent `reading`; it is sent the cited parts, each text cut from one of those three
         // (`reading_review::cited`), except a study part's, which is its facts.
         for part in context["reading_cited"].as_array().into_iter().flatten() {
             if part["part"] != "study" {
-                collect(&part["text"], &mut names);
+                sources.push((&part["text"], true));
+            }
+        }
+        let (mut names, mut identifiers) = (HashSet::new(), HashSet::new());
+        for (value, written) in sources {
+            collect(value, &mut names, shown_name_keys);
+            if written {
+                collect(value, &mut identifiers, shown_identifier_keys);
             }
         }
         let mut index = self.clone();
         index.allowed_names = names;
+        index.allowed_identifiers = identifiers;
         index
     }
 

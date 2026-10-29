@@ -352,6 +352,112 @@ pub(super) fn shown_name_keys(text: &str) -> Vec<String> {
     keys
 }
 
+/// Words that label a whole number as an identifier in a document or a genome rather than a quantity, by the key they
+/// share (`Fig.` and `figures` label as `figure` does): a paper's chromosome, exon, figure or table number.
+const IDENTIFIER_LABELS: &[(&str, &[&str])] = &[
+    ("chromosome", &["chromosome", "chromosomes", "chr", "chrom"]),
+    ("exon", &["exon", "exons"]),
+    ("intron", &["intron", "introns"]),
+    ("figure", &["figure", "figures", "fig", "figs"]),
+    ("table", &["table", "tables"]),
+    ("section", &["section", "sections"]),
+    ("equation", &["equation", "equations", "eq", "eqs"]),
+    ("experiment", &["experiment", "experiments"]),
+    ("appendix", &["appendix"]),
+    ("chapter", &["chapter", "chapters"]),
+];
+
+/// Most numbers one identifier label may reach through a list (`chromosomes 3, 5 and 12`).
+const IDENTIFIER_LIST_MAX: usize = 8;
+
+/// The key of the label that makes the number at `start..end` of `chars` an identifier (`chromosome` for the 12 of
+/// `chromosome 12`, `Chr. 12`, `chromosomes 3, 5 and 12` or `chromosomes 3\u{2013}12`), or `None`. The number is a
+/// whole number standing alone: whitespace before it unless a list sign joins it to the number before, and after it
+/// nothing but the end, whitespace or one closing punctuation mark. The label is a whole word, with an optional period,
+/// and whitespace between it and the first number. A measurement (`12 mg`, `12%`, `1.5`) is never labelled: a
+/// decimal is one number span here, and a sign or letter after the digits fails the closing rule.
+pub(super) fn identifier_label(chars: &[char], start: usize, end: usize) -> Option<&'static str> {
+    if !chars[start..end].iter().all(char::is_ascii_digit) {
+        return None;
+    }
+    match chars.get(end) {
+        None => {}
+        Some(c) if c.is_whitespace() => {}
+        Some('.' | ',' | ';' | ':' | ')' | '!' | '?') => {
+            if chars.get(end + 1).is_some_and(|c| !c.is_whitespace()) {
+                return None;
+            }
+        }
+        Some(_) => return None,
+    }
+    let skip_space = |mut i: usize| {
+        while i > 0 && chars[i - 1].is_whitespace() {
+            i -= 1;
+        }
+        i
+    };
+    // The start of a whole number ending at `i`, standing after whitespace, a list sign or the text's start.
+    let number_before = |i: usize| {
+        let mut k = i;
+        while k > 0 && chars[k - 1].is_ascii_digit() {
+            k -= 1;
+        }
+        (k < i
+            && (k == 0
+                || chars[k - 1].is_whitespace()
+                || matches!(chars[k - 1], ',' | '&' | '\u{2013}')))
+        .then_some(k)
+    };
+    let mut i = start;
+    for _ in 0..IDENTIFIER_LIST_MAX {
+        let j = skip_space(i);
+        if j > 0 && matches!(chars[j - 1], ',' | '&' | '\u{2013}') {
+            i = number_before(skip_space(j - 1))?;
+            continue;
+        }
+        if j == i {
+            return None;
+        }
+        let mut k = j;
+        if k > 0 && chars[k - 1] == '.' {
+            k -= 1;
+        }
+        let word_end = k;
+        while k > 0 && chars[k - 1].is_ascii_alphabetic() {
+            k -= 1;
+        }
+        if k == word_end || (k > 0 && chars[k - 1].is_alphanumeric()) {
+            return None;
+        }
+        let word: String = chars[k..word_end]
+            .iter()
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if matches!(word.as_str(), "and" | "or") && word_end == j {
+            i = number_before(skip_space(k))?;
+            continue;
+        }
+        return IDENTIFIER_LABELS
+            .iter()
+            .find(|(_, words)| words.contains(&word.as_str()))
+            .map(|(key, _)| *key);
+    }
+    None
+}
+
+/// The identifiers `text` writes (`identifier_label`), each as its label's key, a space and its digits:
+/// `chromosome 12`.
+pub(super) fn shown_identifier_keys(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    number_spans(&chars)
+        .into_iter()
+        .filter_map(|(start, end)| {
+            identifier_label(&chars, start, end)
+                .map(|label| format!("{label} {}", chars[start..end].iter().collect::<String>()))
+        })
+        .collect()
+}
+
 /// A hyphen in any of its Unicode forms (IL-6 written with a nonbreaking hyphen, an en dash or a minus sign), a soft
 /// hyphen or a zero-width joiner, which a name may hold between its letters and its number.
 pub(super) fn joins_a_name(c: char) -> bool {

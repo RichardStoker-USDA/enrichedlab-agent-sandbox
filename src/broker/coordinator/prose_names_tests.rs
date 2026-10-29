@@ -37,8 +37,10 @@ fn a_name_the_call_shows_may_stand_in_prose() {
             .is_empty()
     );
     assert!(index.prose_allowed("Fmo3 lies under it."));
-    // The number standing alone in the passage stays refused, as before.
-    assert_eq!(index.prose_refused("It lies on chromosome 17."), ["17"]);
+    // A number standing alone stays refused; after the same kind of label as in the passage it is an identifier
+    // (`identifiers_a_paper_writes_may_stand_after_their_label`).
+    assert_eq!(index.prose_refused("It lies near 17."), ["17"]);
+    assert!(index.prose_refused("It lies on chromosome 17.").is_empty());
     // A name matches only with the digits the shown text writes; its letters' case may differ (FMO3 for a shown Fmo3).
     assert_eq!(
         index.prose_refused("Fmo31 and fmo3 and FMO3 and Cyp7a2."),
@@ -531,4 +533,73 @@ fn a_bound_value_stands_only_alone() {
             "{s}: {got:?}"
         );
     }
+}
+
+/// A paper's identifiers (`chromosome 12`, `Fig. 3`) may stand in prose after a label of the same kind, as the paper
+/// writes them; a test run's lead copied chromosome numbers from passages it read into findings and was refused on
+/// five replies of eleven.
+#[test]
+fn identifiers_a_paper_writes_may_stand_after_their_label() {
+    let index = named(
+        "literature",
+        passage("The peak on chromosomes 3, 5 and 12 (Fig. 2) spans exon 4; see Table 1."),
+    );
+    for allowed in [
+        "The locus lies on chromosome 12.",
+        "Chromosomes 3 and 5 hold it.",
+        "chr 5, chromosome 3 or Chr. 12",
+        "As figure 2 shows, exon 4 of the gene.",
+        "Table 1 lists it.",
+        "chromosomes 3, 5 and 12",
+    ] {
+        assert!(index.prose_refused(allowed).is_empty(), "{allowed}");
+        assert!(index.step_prose_refused(allowed).is_empty(), "{allowed}");
+    }
+    // Another number, another label, a quantity or a value joined to the number stays refused.
+    assert_eq!(index.prose_refused("It lies on chromosome 7."), ["7"]);
+    assert_eq!(index.prose_refused("Figure 12 shows it."), ["12"]);
+    assert_eq!(index.prose_refused("Exon 12 holds it."), ["12"]);
+    assert_eq!(index.prose_refused("Chromosome 12 rose by 5."), ["5"]);
+    assert_eq!(index.prose_refused("Chromosome 12% of reads."), ["12"]);
+    assert_eq!(index.prose_refused("Chromosome 12.5 kb."), ["12.5"]);
+    assert_eq!(index.prose_refused("Chromosome -12."), ["12"]);
+    assert_eq!(
+        index.prose_refused("chromosome12 and chromosome 3x"),
+        ["12", "3"]
+    );
+    assert_eq!(index.prose_refused("Mean 12 g on chromosome 3."), ["12"]);
+    assert_eq!(index.prose_refused("Chromosome 3 to 12."), ["12"]);
+    // A list reaches only through list signs and words, so a number after other words is not labelled.
+    assert_eq!(index.prose_refused("Chromosome 3 had 12."), ["12"]);
+}
+
+#[test]
+fn identifiers_come_from_the_papers_and_the_scientist_alone() {
+    let text = "Chromosome 12 holds it.";
+    for key in ["question", "constraints", "scientist_instructions"] {
+        assert!(
+            named(key, json!([text])).prose_refused(text).is_empty(),
+            "{key}"
+        );
+    }
+    for key in ["methods", "data_cards", "starting_point"] {
+        assert_eq!(
+            named(key, json!([text])).prose_refused(text),
+            ["12"],
+            "{key}"
+        );
+    }
+    for key in ["text", "caption", "abstract"] {
+        let reading = json!({"parts": [{"ref": "library://p/s", key: text}]});
+        assert!(
+            named("reading", reading).prose_refused(text).is_empty(),
+            "{key}"
+        );
+    }
+    let cited = json!([{"ref": "library://p/s", "part": "section", "paper": "P", "text": text}]);
+    assert!(named("reading_cited", cited).prose_refused(text).is_empty());
+    let study = json!([{"ref": "library://p/s", "part": "study", "paper": "P", "text": text}]);
+    assert_eq!(named("reading_cited", study).prose_refused(text), ["12"]);
+    // A shown result's cell is not a source of identifiers, and an index as compiled holds none.
+    assert_eq!(ResultIndex::default().prose_refused(text), ["12"]);
 }
