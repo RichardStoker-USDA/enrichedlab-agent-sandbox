@@ -24,7 +24,9 @@ jobs:
   source:
     name: Source checks (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # The hosted macOS runner runs the tests in about 19 minutes against 6 on Linux, and its release build did not
+    # finish inside 30.
+    timeout-minutes: ${{ matrix.os == 'macos-15' && 60 || 30 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
