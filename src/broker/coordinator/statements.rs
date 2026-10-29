@@ -111,6 +111,20 @@ pub(super) fn literal_occurrence(chars: &[char], start: usize, end: usize) -> St
     }
 }
 
+/// Whether a number's token reads as a name rather than as an expression: it starts with a letter and holds nothing
+/// but letters and digits of any script, name separators (`-`, `.`, `_`, `/`, Unicode hyphens) and invisible joiners.
+/// `Fmo3-1`, `A7/B3` and `Gene3` are names; `n=12` and `p<0.05` are not.
+pub(super) fn name_like(token: &str) -> bool {
+    token.chars().next().is_some_and(char::is_alphabetic)
+        && token.chars().all(|c| {
+            c.is_alphanumeric()
+                || matches!(c, '-' | '.' | '_' | '/')
+                || joins_a_name(c)
+                || visible_separator(c)
+                || !c.is_ascii()
+        })
+}
+
 /// A name a number may stand in when the call shows it: ASCII letters and digits with inner hyphens, periods,
 /// underscores or slashes, starting with a letter and holding a digit (Fmo3, IL-6, rs12345, C57BL/6J). A token starting
 /// with a digit is a quantity or a value (`7.1mg`, `1e-9`, `6J`), and one with any other character is not a plain name.
@@ -177,8 +191,10 @@ pub(super) fn shown_name_keys(text: &str) -> Vec<String> {
         if plain_name(&name) {
             keys.push(name.to_ascii_lowercase());
         }
-        for segment in digit_segments(&name).unwrap_or_default() {
-            if segment != name && plain_name(segment) {
+        // A shorter key only for a token whose one digit-bearing segment it is: `Fmo3-dependent` shows `Fmo3`, while
+        // `Fmo3.5` shows only itself, so its `3` never stands alone in a name.
+        if let Some([segment]) = digit_segments(&name).as_deref() {
+            if *segment != name && plain_name(segment) {
                 keys.push(segment.to_ascii_lowercase());
             }
         }

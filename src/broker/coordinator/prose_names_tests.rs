@@ -227,3 +227,42 @@ fn a_shown_name_stands_in_another_case_or_with_a_digit_free_affix() {
         assert_eq!(index.prose_refused(prose), refused, "{prose:?}");
     }
 }
+
+#[test]
+fn numbers_allowed_on_their_own_never_admit_a_name_piece_by_piece() {
+    let mut index = named(
+        "data_cards",
+        json!([{"title": "Liver", "text": "Fmo3 and Fmo3.5 by strain."}]),
+    );
+    for n in ["7", "3", "1", "3.5"] {
+        index.allowed_numbers.insert(n.to_string());
+    }
+    index.setting_numbers.insert("3".to_string());
+    // Shown whole, a name stands; its pieces never compose another.
+    assert!(index.prose_refused("Fmo3 and Fmo3.5 rose.").is_empty());
+    assert_eq!(index.prose_refused("A7/B3 rose."), ["7", "3"]);
+    assert_eq!(index.prose_refused("Gene3 rose."), ["3"]);
+    assert_eq!(index.prose_refused("Fmo3-1 rose."), ["3", "1"]);
+    assert_eq!(
+        index.step_prose_refused("Pair Gene3 with A7\u{200e}B3"),
+        ["3", "7", "3"]
+    );
+    // Expressions keep the numeric rule.
+    assert!(
+        index
+            .prose_refused("With n=7 and p<3.5 it rose.")
+            .is_empty()
+    );
+    // Fmo3.5 shows only itself: its 3 does not stand for Fmo3 when only the longer name was written.
+    let decimal = named(
+        "data_cards",
+        json!([{"title": "Liver", "text": "Fmo3.5 by strain."}]),
+    );
+    assert_eq!(decimal.prose_refused("Fmo3 rose."), ["3"]);
+    // Masking leaves a number inside a name for the rule: Fmo3-1 is not masked into Fmo3-(a number).
+    let (masked, count) = index.mask_step_numbers("Run Fmo3-1 at 12 and 3", None);
+    assert_eq!(
+        (masked.as_str(), count),
+        ("Run Fmo3-1 at (a number) and 3", 1)
+    );
+}

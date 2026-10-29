@@ -284,6 +284,12 @@ impl ResultIndex {
         step: bool,
         own: Option<&HashSet<String>>,
     ) -> bool {
+        // A number in a name stands only where the call shows the whole name: no number allowed on its own, no step
+        // setting and no literal of the step's SQL can admit `A7/B3`, `Fmo3-1` or `Gene3` piece by piece.
+        let token = name_around(chars, start, end);
+        if name_like(&token) && token.chars().any(|c| c.is_ascii_digit()) {
+            return !shown_name(&token, &self.allowed_names);
+        }
         let n: String = chars[start..end].iter().collect();
         let shown = self.allowed_numbers.contains(&n)
             || (step && self.setting_numbers.contains(&n))
@@ -306,7 +312,12 @@ impl ResultIndex {
         let chars: Vec<char> = text.chars().collect();
         let (mut out, mut masked, mut last) = (String::new(), 0, 0);
         for (start, end) in number_spans(&chars) {
-            if in_a_name(&chars, start, end) || !self.number_refused(&chars, start, end, true, own)
+            // A number inside any token with a letter stays for the rule to refuse: masking the `1` of `Fmo3-1` would
+            // leave a shown `Fmo3` standing for a name nothing showed.
+            let token = name_around(&chars, start, end);
+            if in_a_name(&chars, start, end)
+                || token.chars().any(char::is_alphabetic)
+                || !self.number_refused(&chars, start, end, true, own)
             {
                 continue;
             }
