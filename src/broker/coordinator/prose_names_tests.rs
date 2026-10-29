@@ -173,7 +173,7 @@ fn a_name_is_read_whole_and_plain() {
     let around = |s: &str, number: &str| {
         let c: Vec<char> = s.chars().collect();
         let start = s.find(number).map(|b| s[..b].chars().count()).unwrap();
-        name_around(&c, start, start + number.chars().count())
+        operand_around(&c, start, start + number.chars().count())
     };
     assert_eq!(around("as IL-6 rose", "6"), "IL-6");
     assert_eq!(around("in C57BL/6J mice", "57"), "C57BL/6J");
@@ -268,5 +268,70 @@ fn numbers_allowed_on_their_own_never_admit_a_name_piece_by_piece() {
     assert_eq!(
         (masked.as_str(), count),
         ("Run Fmo3-1 at (a number) and 3", 1)
+    );
+}
+
+#[test]
+fn comparisons_and_hidden_characters_never_compose_a_value() {
+    let mut index = named(
+        "data_cards",
+        json!([{"title": "Liver", "text": "Fmo3 by strain."}]),
+    );
+    for n in ["1", "3", "5", "7", "9", "37"] {
+        index.allowed_numbers.insert(n.to_string());
+    }
+    // A comparison or a percent sign next to an operand does not make it an expression.
+    for text in [
+        "p=1e-9 here.",
+        "p<1e-9 here.",
+        "It was 1e-9%.",
+        "It was 1e-9= here.",
+    ] {
+        assert_eq!(index.prose_refused(text), ["1", "9"], "{text}");
+    }
+    for text in ["Gene3% rose.", "The <Gene3> rose."] {
+        assert_eq!(index.prose_refused(text), ["3"], "{text}");
+    }
+    assert_eq!(index.prose_refused("A7/B3= rose."), ["7", "3"]);
+    // A hidden or combining character between digits reads as one number nothing showed; masked, no digit remains.
+    for joined in [
+        "1\u{200B}9",
+        "1\u{200D}9",
+        "1\u{2060}9",
+        "1\u{0301}9",
+        "1\u{FE0F}9",
+    ] {
+        let text = format!("It was {joined} here.");
+        assert_eq!(index.prose_refused(&text), ["1", "9"], "{text:?}");
+        let (step, count) = index.mask_step_numbers(&text, None);
+        assert_eq!(count, 2, "{text:?}");
+        assert!(index.step_prose_refused(&step).is_empty(), "{step:?}");
+        let (summary, count) = mask_refused_numbers(&text, &index);
+        assert_eq!(count, 2, "{text:?}");
+        assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
+    }
+    // A filler that counts as a letter puts the digits in a name: they stay unmasked, and the rule refuses them.
+    let (step, count) = index.mask_step_numbers("It was 1\u{3164}9 here.", None);
+    assert_eq!(count, 0);
+    assert_eq!(index.step_prose_refused(&step), ["1", "9"]);
+    // Comparisons, quantities with units, and a value a source writes whole keep standing.
+    assert!(
+        index
+            .prose_refused("With n=7, p<9 and 5% at 37\u{00B0}C, 5\u{00B5}g and 5mg/kg.")
+            .is_empty()
+    );
+    let written = named("literature", passage("Below p<1e-9 in liver."));
+    assert!(written.prose_refused("At p=1e-9 it held.").is_empty());
+    // Masking never splits a name or an operand: Fmo3-1 stays whole for the rule, and n=12 masks cleanly.
+    let (summary, count) = mask_refused_numbers("Fmo3-1 rose at n=12.", &index);
+    assert_eq!(
+        (summary.as_str(), count),
+        ("Fmo3-1 rose at n=(a number).", 1)
+    );
+    assert_eq!(index.prose_refused(&summary), ["3", "1"]);
+    let (step, count) = index.mask_step_numbers("Fmo3-1 at n=12 and 37\u{00B0}C", None);
+    assert_eq!(
+        (step.as_str(), count),
+        ("Fmo3-1 at n=(a number) and 37\u{00B0}C", 1)
     );
 }

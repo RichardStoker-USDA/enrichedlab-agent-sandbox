@@ -20,13 +20,13 @@ pub(super) const NUMBER_MASK: &str = "(a number)";
 pub(super) const SUMMARY_MAX: usize = 2048;
 
 /// The text with each number the prose rule refuses written as `NUMBER_MASK`, read with the same tokens as `numbers`,
-/// and how many it replaced. A number inside a name stays, so the prose rule still refuses it.
+/// and how many it replaced. A number inside a name or a token that must be shown whole stays (`may_mask`), so the
+/// prose rule still refuses it.
 pub(super) fn mask_refused_numbers(text: &str, index: &ResultIndex) -> (String, usize) {
     let chars: Vec<char> = text.chars().collect();
     let (mut out, mut masked, mut last) = (String::new(), 0, 0);
     for (start, end) in number_spans(&chars) {
-        let number: String = chars[start..end].iter().collect();
-        if index.allowed_numbers.contains(&number) || in_a_name(&chars, start, end) {
+        if !may_mask(&chars, start, end) || !index.number_refused(&chars, start, end, false, None) {
             continue;
         }
         out.extend(&chars[last..start]);
@@ -51,43 +51,10 @@ pub(super) fn in_a_name(chars: &[char], start: usize, end: usize) -> bool {
         || (start >= 2 && joins_a_name(chars[start - 1]) && letter(Some(start - 2)))
 }
 
-/// The token a number inside a name (`in_a_name`) stands in: the run of characters around it up to whitespace or a
-/// separator prose puts between words (a comma, semicolon, bracket, quote, `!` or `?`), with `.`, `:`, `-`, `_` and `/`
-/// trimmed from its ends. Every other character stays in the token, so two names joined by a slash, a colon, an
-/// invisible character, a combining mark or a letter from another script read as one token that must itself be shown
-/// (`plain_name`): `Fmo3`, `IL-6`, `C57BL/6J`.
-pub(super) fn name_around(chars: &[char], start: usize, end: usize) -> String {
-    raw_token(chars, start, end)
-        .trim_matches(['.', ':', '-', '_', '/'])
-        .to_owned()
-}
-
 /// The token around `start..end` exactly as written: every character up to whitespace or a separator prose puts between
-/// words. `name_around` reads the same token and trims its ends.
+/// words. `operand_around` cuts the same token at comparisons and trims its ends.
 pub(super) fn raw_token(chars: &[char], start: usize, end: usize) -> String {
-    let stop = |c: char| {
-        c.is_whitespace()
-            || matches!(
-                c,
-                ',' | ';'
-                    | '('
-                    | ')'
-                    | '['
-                    | ']'
-                    | '{'
-                    | '}'
-                    | '"'
-                    | '\''
-                    | '!'
-                    | '?'
-                    | '`'
-                    | '\u{2018}'
-                    | '\u{2019}'
-                    | '\u{201C}'
-                    | '\u{201D}'
-                    | '\u{2026}'
-            )
-    };
+    let stop = separates_words;
     let mut from = start;
     while from > 0 && !stop(chars[from - 1]) {
         from -= 1;
@@ -97,6 +64,96 @@ pub(super) fn raw_token(chars: &[char], start: usize, end: usize) -> String {
         to += 1;
     }
     chars[from..to].iter().collect()
+}
+
+/// A separator prose puts between words: whitespace, a comma, semicolon, bracket, quote, `!`, `?` or an ellipsis.
+fn separates_words(c: char) -> bool {
+    c.is_whitespace()
+        || matches!(
+            c,
+            ',' | ';'
+                | '('
+                | ')'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '"'
+                | '\''
+                | '!'
+                | '?'
+                | '`'
+                | '\u{2018}'
+                | '\u{2019}'
+                | '\u{201C}'
+                | '\u{201D}'
+                | '\u{2026}'
+        )
+}
+
+/// A comparison between two operands (`n=12`, `p<0.05`, `r≥0.8`), which cuts a token into operands.
+fn compares(c: char) -> bool {
+    matches!(
+        c,
+        '=' | '<' | '>' | '\u{2248}' | '\u{2260}' | '\u{2264}' | '\u{2265}'
+    )
+}
+
+/// The operand a number stands in: its token (`raw_token`) cut at comparisons (`compares`), with `.`, `:`, `-`, `_` and
+/// `/` trimmed from its ends. In `p=1e-9` the 1 and the 9 stand in `1e-9`, and in `<Gene3>` the 3 stands in `Gene3`.
+/// Every other character stays, so two names joined by a slash, a colon, an invisible character, a combining mark or a
+/// letter from another script read as one operand that must itself be shown: `Fmo3`, `IL-6`, `C57BL/6J`.
+pub(super) fn operand_around(chars: &[char], start: usize, end: usize) -> String {
+    let stop = |c: char| separates_words(c) || compares(c);
+    let mut from = start;
+    while from > 0 && !stop(chars[from - 1]) {
+        from -= 1;
+    }
+    let mut to = end;
+    while to < chars.len() && !stop(chars[to]) {
+        to += 1;
+    }
+    chars[from..to]
+        .iter()
+        .collect::<String>()
+        .trim_matches(['.', ':', '-', '_', '/'])
+        .to_owned()
+}
+
+/// Whether a token holds a character that hides or changes how the digits around it read: a control character, an
+/// invisible or format character (a zero-width space or joiner, a direction mark, a variation selector, a filler), a
+/// combining mark, or any other non-ASCII character that is neither a letter nor a symbol written with numbers (`°`,
+/// `±`, `×`, a comparison, a Unicode hyphen or minus). Every number in such a token is refused: `1\u{200B}9` reads as 19.
+pub(super) fn obscures_numbers(token: &str) -> bool {
+    token.chars().any(|c| {
+        c.is_control()
+            || matches!(
+                c,
+                '\u{115F}' | '\u{1160}' | '\u{17B4}' | '\u{17B5}' | '\u{3164}' | '\u{FFA0}'
+            )
+            || (!c.is_ascii()
+                && !c.is_alphabetic()
+                && !visible_separator(c)
+                && !compares(c)
+                && !matches!(
+                    c,
+                    '\u{00B0}'
+                        | '\u{00B1}'
+                        | '\u{00B7}'
+                        | '\u{00D7}'
+                        | '\u{2030}'
+                        | '\u{2032}'
+                        | '\u{2033}'
+                        | '\u{2192}'
+                ))
+    })
+}
+
+/// Whether a refused number may be written as `NUMBER_MASK`: it is not inside a name (`in_a_name`) and its operand
+/// (`operand_around`) need not be shown whole (`needs_whole_token`). Masking the `1` of `Fmo3-1` would leave a shown
+/// `Fmo3` standing for a name nothing showed; the `12` of `n=12` and the `37` of `37°C` mask cleanly.
+pub(super) fn may_mask(chars: &[char], start: usize, end: usize) -> bool {
+    !in_a_name(chars, start, end) && !needs_whole_token(&operand_around(chars, start, end))
 }
 
 /// How a step literal occurs in prose: the raw token with at most one sentence-final `.` or `:` after its last digit
@@ -111,15 +168,12 @@ pub(super) fn literal_occurrence(chars: &[char], start: usize, end: usize) -> St
     }
 }
 
-/// Whether a token holding a letter and a digit stands only where a source writes it whole: everything but a quantity
-/// with a unit (`7.1mg`, `6J`: ASCII digits with at most one point, then ASCII letters) and an ASCII expression (`n=12`,
-/// `p<0.05`), which keep the rule for numbers. So `1e-9` composed from an allowed 1 and 9, `Gene3` with a leading
-/// invisible character and `A7/B3` are refused unless shown whole.
+/// Whether an operand (`operand_around`) holding a letter and a digit stands only where a source writes it whole:
+/// everything but a quantity with a unit, which is digits with at most one point followed by letters and the unit marks
+/// `°`, `/`, `%` and `‰` (`7.1mg`, `6J`, `37°C`, `5mg/kg`), and which keeps the rule for numbers. So `1e-9` composed
+/// from an allowed 1 and 9, `Gene3%`, `<Gene3>` and `A7/B3` are refused unless a source writes them whole.
 pub(super) fn needs_whole_token(token: &str) -> bool {
     if !token.chars().any(char::is_alphabetic) || !token.chars().any(|c| c.is_ascii_digit()) {
-        return false;
-    }
-    if token.is_ascii() && token.contains(['=', '<', '>', '%']) {
         return false;
     }
     let split = token
@@ -128,8 +182,10 @@ pub(super) fn needs_whole_token(token: &str) -> bool {
     let (number, unit) = token.split_at(split);
     let unit_shaped = number.starts_with(|c: char| c.is_ascii_digit())
         && number.matches('.').count() <= 1
-        && !unit.is_empty()
-        && unit.chars().all(|c| c.is_ascii_alphabetic());
+        && unit.chars().any(char::is_alphabetic)
+        && unit
+            .chars()
+            .all(|c| c.is_alphabetic() || matches!(c, '\u{00B0}' | '/' | '%' | '\u{2030}'));
     !unit_shaped
 }
 
@@ -147,7 +203,7 @@ pub(super) fn plain_name(token: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'/'))
 }
 
-/// Whether the call shows the name a number stands in (`name_around`): the whole token is a plain name its sources write,
+/// Whether the call shows the name a number stands in (`operand_around`): the whole token is a plain name its sources write,
 /// or, in a token of ASCII letters, digits and visible separators (`visible_separator`) where exactly one segment between
 /// the separators holds a digit, that segment is; names compare without regard to ASCII case. So `FMO3` stands where
 /// the sources write `Fmo3`, and so do `Fmo3-dependent`, `Fmo3−/−` and `anti-Fmo3`. Two digit-bearing names joined into
@@ -192,11 +248,8 @@ pub(super) fn shown_name_keys(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     let mut keys = Vec::new();
     for (start, end) in number_spans(&chars) {
-        if !in_a_name(&chars, start, end) {
-            continue;
-        }
-        let name = name_around(&chars, start, end);
-        // A name, or any other ASCII token with a letter written whole (`1e-9`), is shown as written.
+        let name = operand_around(&chars, start, end);
+        // A name, or any other ASCII operand that must be shown whole (`1e-9`), is shown as written.
         if plain_name(&name) || (name.is_ascii() && needs_whole_token(&name)) {
             keys.push(name.to_ascii_lowercase());
         }

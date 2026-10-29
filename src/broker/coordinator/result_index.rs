@@ -276,7 +276,7 @@ impl ResultIndex {
     /// Whether the prose rule refuses the number at `start..end` of `chars`: neither shown (a result's number, a shown
     /// analysis's setting in step words, or a step's own SQL literal written as a whole token) nor inside a name the
     /// call shows (`shown_name`).
-    fn number_refused(
+    pub(super) fn number_refused(
         &self,
         chars: &[char],
         start: usize,
@@ -284,21 +284,22 @@ impl ResultIndex {
         step: bool,
         own: Option<&HashSet<String>>,
     ) -> bool {
-        // A number in a name stands only where the call shows the whole name: no number allowed on its own, no step
-        // setting and no literal of the step's SQL can admit `A7/B3`, `Fmo3-1` or `Gene3` piece by piece.
-        let token = name_around(chars, start, end);
-        if needs_whole_token(&token) {
+        // A token with a hidden or digit-changing character never stands (`1\u{200B}9`), and a number in an operand that
+        // must be shown whole stands only where the call shows it whole: no number allowed on its own, no step setting
+        // and no literal of the step's SQL can admit `A7/B3`, `Fmo3-1`, `Gene3%` or `p=1e-9` piece by piece.
+        if obscures_numbers(&raw_token(chars, start, end)) {
+            return true;
+        }
+        let operand = operand_around(chars, start, end);
+        if needs_whole_token(&operand) {
             let verbatim =
-                token.is_ascii() && self.allowed_names.contains(&token.to_ascii_lowercase());
-            return !(verbatim || shown_name(&token, &self.allowed_names));
+                operand.is_ascii() && self.allowed_names.contains(&operand.to_ascii_lowercase());
+            return !(verbatim || shown_name(&operand, &self.allowed_names));
         }
         let n: String = chars[start..end].iter().collect();
-        let shown = self.allowed_numbers.contains(&n)
+        !(self.allowed_numbers.contains(&n)
             || (step && self.setting_numbers.contains(&n))
-            || own.is_some_and(|own| own.contains(&literal_occurrence(chars, start, end)));
-        let named = in_a_name(chars, start, end)
-            && shown_name(&name_around(chars, start, end), &self.allowed_names);
-        !(shown || named)
+            || own.is_some_and(|own| own.contains(&literal_occurrence(chars, start, end))))
     }
 
     /// `text` describing a step (`step_prose_refused`, with `own` for a step's own title and rationale) with each
@@ -314,12 +315,8 @@ impl ResultIndex {
         let chars: Vec<char> = text.chars().collect();
         let (mut out, mut masked, mut last) = (String::new(), 0, 0);
         for (start, end) in number_spans(&chars) {
-            // A number inside any token with a letter stays for the rule to refuse: masking the `1` of `Fmo3-1` would
-            // leave a shown `Fmo3` standing for a name nothing showed.
-            let token = name_around(&chars, start, end);
-            if in_a_name(&chars, start, end)
-                || token.chars().any(char::is_alphabetic)
-                || !self.number_refused(&chars, start, end, true, own)
+            // A number inside a name or an operand shown only whole stays for the rule to refuse (`may_mask`).
+            if !may_mask(&chars, start, end) || !self.number_refused(&chars, start, end, true, own)
             {
                 continue;
             }
