@@ -56,7 +56,7 @@ path = "src/bin/remote.rs"
 anyhow = "1.0"
 async-trait = "0.1.89"
 axum = { version = "0.8.9", features = ["json"] }
-base64 = "0.22"
+base64 = "0.23"
 clap = { version = "4.5", features = ["derive", "env"] }
 csv = "1.4"
 csv-core = "0.1"
