@@ -1835,6 +1835,11 @@ fn fit_view(parts: &Value, question: &str, context: &str, room: usize) -> Option
 }
 
 /// A digest as the coordinator's records write one.
+/// The digest a view's record names as `shown_sha256`: the SHA-256 of exactly the bytes the lead reads.
+pub fn shown_sha256(view: &Value) -> String {
+    sha(&serde_json::to_vec(view).unwrap_or_default())
+}
+
 fn sha(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }

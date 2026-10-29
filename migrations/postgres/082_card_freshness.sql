@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS enrichedlab_agent.broker_sql_source_card_refreshes (
   state text NOT NULL CHECK (state IN ('running', 'registered', 'refused', 'failed', 'abandoned')),
   code text CHECK (code IS NULL OR code ~ '^[a-z0-9_]{1,80}$'),
   card_sha256 text CHECK (card_sha256 IS NULL OR card_sha256 ~ '^sha256:[0-9a-f]{64}$'),
+  spec jsonb NOT NULL CHECK (jsonb_typeof(spec) = 'object' AND octet_length(spec::text) <= 65536),
   worker text NOT NULL CHECK (char_length(worker) BETWEEN 1 AND 200),
   started_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   finished_at timestamptz,
@@ -198,8 +199,8 @@ BEGIN
   version_digest := encode(sha256(convert_to(p_version::text, 'UTF8')), 'hex');
   BEGIN
     INSERT INTO enrichedlab_agent.broker_sql_source_card_refreshes (tenant_id, source_key, version_sha256,
-      source_version, state, worker)
-    VALUES (p_tenant, p_source, version_digest, p_version, 'running', p_worker);
+      source_version, state, spec, worker)
+    VALUES (p_tenant, p_source, version_digest, p_version, 'running', c.spec, p_worker);
   EXCEPTION WHEN unique_violation THEN
     RETURN NULL;
   END;
@@ -214,8 +215,8 @@ $$;
 REVOKE ALL ON FUNCTION enrichedlab_agent.broker_begin_sql_source_card_refresh(text, text, jsonb, text) FROM PUBLIC;
 
 -- Worker: finish a running refresh. With a card, the card must pass the registration's checks for the source's current
--- key, state the version the refresh started for (`measured_at`) and carry the spec the refresh handed out; it is
--- registered with both. Without one, `p_code` says why (`version_moved`, `declaration_drift`, or a failure code) and the
+-- key, state the version the refresh started for (`measured_at`) and carry the spec the refresh handed out and kept in
+-- its row; it is registered with both. Without one, `p_code` says why (`version_moved`, `declaration_drift`, or a failure code) and the
 -- previous card stays in use.
 CREATE OR REPLACE FUNCTION enrichedlab_agent.broker_finish_sql_source_card_refresh(p_tenant text, p_source text,
   p_version_sha256 text, p_worker text, p_card jsonb, p_code text)
@@ -240,10 +241,8 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'broker:card_refresh_not_running';
   END IF;
   SELECT * INTO s FROM enrichedlab_agent.broker_sql_sources WHERE tenant_id = p_tenant AND source_key = p_source;
-  SELECT c.spec INTO spec FROM enrichedlab_agent.broker_sql_source_cards c
-  WHERE c.tenant_id = p_tenant AND c.source_key = p_source
-    AND c.manifest_sha256 = enrichedlab_agent.broker_sql_source_card_key(s.snapshot) AND c.spec IS NOT NULL
-  ORDER BY c.created_at DESC, c.card_sha256 LIMIT 1;
+  -- The spec the refresh handed out, kept in its row: a card measured with any other spec is refused.
+  spec := f.spec;
   IF p_card IS NULL THEN
     reason := coalesce(p_code, 'card_refresh_failed');
     IF reason !~ '^[a-z0-9_]{1,80}$' THEN
@@ -329,4 +328,15 @@ END;
 $$;
 REVOKE ALL ON FUNCTION enrichedlab_agent.broker_research_run_sql_sources(text, uuid, text, bigint) FROM PUBLIC;
 
+CREATE OR REPLACE FUNCTION enrichedlab_agent.broker_schema_ready(p_version integer)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, enrichedlab_agent AS $$
+  SELECT p_version IN (2,3,7,8,9,10,11,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,
+    31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,
+    59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82)
+    AND EXISTS (SELECT 1 FROM enrichedlab_agent.schema_migrations WHERE version=2)
+    AND EXISTS (SELECT 1 FROM enrichedlab_agent.schema_migrations WHERE version=p_version)
+$$;
+
+INSERT INTO enrichedlab_agent.schema_migrations(version) VALUES (82) ON CONFLICT DO NOTHING;
 COMMIT;

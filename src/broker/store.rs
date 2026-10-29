@@ -538,7 +538,8 @@ impl Store {
     }
 
     /// A worker that serves guarded queries reads its lease's admitted query and records a receipt per attempt with
-    /// the version a lab source's database stated (migrations 038 and 053). Without them it must not claim work.
+    /// the version a lab source's database stated (migrations 038 and 053), and refreshes a live source's card
+    /// (migration 082). Without them it must not claim work.
     pub async fn ready_for_queries(&self) -> StoreResult<()> {
         let client = self.pool.get().await.map_err(pool_error)?;
         let row = client
@@ -548,6 +549,10 @@ impl Store {
                  'enrichedlab_agent.broker_task_query(text,uuid,text,integer,bigint)'),\
                  'EXECUTE'), false) AND COALESCE(has_function_privilege(current_user, \
                  to_regprocedure('enrichedlab_agent.broker_record_query_receipt(text,uuid,text,integer,bigint,text,text,integer,jsonb,text,text,timestamptz,timestamptz,jsonb)'),\
+                 'EXECUTE'), false) AND enrichedlab_agent.broker_schema_ready(82) AND COALESCE(has_function_privilege(current_user, \
+                 to_regprocedure('enrichedlab_agent.broker_begin_sql_source_card_refresh(text,text,jsonb,text)'), \
+                 'EXECUTE'), false) AND COALESCE(has_function_privilege(current_user, to_regprocedure(\
+                 'enrichedlab_agent.broker_finish_sql_source_card_refresh(text,text,text,text,jsonb,text)'), \
                  'EXECUTE'), false)",
                 &[],
             )

@@ -2252,6 +2252,42 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
                 };
                 assert_eq!(begin(new.clone()).await.unwrap(), None);
                 assert!(begin(json!({"schema_version": "0099"})).await.is_err());
+                // Finish holds a card to the spec its refresh handed out and kept, not to the newest card's: a running
+                // refresh started with another spec refuses a card measured with the newest one.
+                let other = json!({"schema_version": "0023", "newest_import_id": 9});
+                owner
+                    .execute(
+                        "INSERT INTO enrichedlab_agent.broker_sql_source_card_refreshes (tenant_id, source_key,
+                           version_sha256, source_version, state, spec, worker)
+                         VALUES ('research-site', 'lab-weights', encode(sha256(convert_to($1::jsonb::text, 'UTF8')), 'hex'),
+                           $1, 'running', '{\"source\": \"lab-weights\", \"values\": []}'::jsonb, 'spec-worker')",
+                        &[&other],
+                    )
+                    .await
+                    .unwrap();
+                let mut crafted: Value = owner
+                    .query_one(
+                        "SELECT card FROM enrichedlab_agent.broker_sql_source_cards WHERE source_key = 'lab-weights'
+                         ORDER BY created_at DESC, card_sha256 LIMIT 1",
+                        &[],
+                    )
+                    .await
+                    .unwrap()
+                    .get(0);
+                crafted["measured_at"] = other.clone();
+                let finished: Value = owner
+                    .query_one(
+                        "SELECT enrichedlab_agent.broker_finish_sql_source_card_refresh('research-site', 'lab-weights',
+                           encode(sha256(convert_to($1::jsonb::text, 'UTF8')), 'hex'), 'spec-worker', $2, NULL)",
+                        &[&other, &crafted],
+                    )
+                    .await
+                    .unwrap()
+                    .get(0);
+                assert_eq!(
+                    finished,
+                    json!({"state": "refused", "code": "card_spec_changed"})
+                );
                 owner.batch_execute(&one_row).await.unwrap();
             }
             "two-versions" => {
