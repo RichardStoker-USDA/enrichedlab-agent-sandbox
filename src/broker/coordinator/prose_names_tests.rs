@@ -310,6 +310,20 @@ fn comparisons_and_hidden_characters_never_compose_a_value() {
         assert_eq!(count, 2, "{text:?}");
         assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
     }
+    // A hidden character beside one allowed number still changes how it reads: a right-to-left override shows 37 as 73.
+    for text in [
+        "It was \u{202E}37 here.",
+        "It was \u{2067}37\u{2069} here.",
+        "It was 37\u{FE0F} here.",
+    ] {
+        assert_eq!(index.prose_refused(text), ["37"], "{text:?}");
+        let (step, count) = index.mask_step_numbers(text, None);
+        assert_eq!(count, 1, "{text:?}");
+        assert!(index.step_prose_refused(&step).is_empty(), "{step:?}");
+        let (summary, count) = mask_refused_numbers(text, &index);
+        assert_eq!(count, 1, "{text:?}");
+        assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
+    }
     // A filler that counts as a letter puts the digits in a name: they stay unmasked, and the rule refuses them.
     let (step, count) = index.mask_step_numbers("It was 1\u{3164}9 here.", None);
     assert_eq!(count, 0);
