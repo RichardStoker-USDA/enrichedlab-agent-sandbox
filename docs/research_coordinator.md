@@ -342,7 +342,12 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    stays: the turn record counts the masked numbers as `summary_numbers_masked`, and the kept reply still holds the
    original. A summary the mask would take past its 2,048-byte limit stays whole and is refused, and so does a number
    inside a name (a letter touches it, or a hyphen in any Unicode form, a soft hyphen or a zero-width joiner joins it
-   to one, as in B12 or IL-6), which masking would garble.
+   to one, as in B12 or IL-6), which masking would garble. A whole number after an identifier label (chromosome or
+   chr, exon, intron, figure or fig, table, section, equation, experiment, appendix, chapter; also through a list such
+   as `chromosomes 3, 5 and 12`) stands when a paper passage, a read or cited part, or the scientist's question,
+   constraints or instructions in the same call write that label kind with those digits. Data cards, method
+   descriptions, the starting point and result cells add none, and a measurement after a label (`12%`, `12.5`) stays
+   refused (a lab test run's lead copied paper chromosome numbers into findings in 5 of 11 refused replies).
    Titles, rationales, findings, composed openings and lesson statements keep the refusal: cutting a rationale's
    sentence could drop a condition the methods review must see, and a masked title could lose what it names (the
    source review found both). The methods check's reason has the same number rule (`method_review_prose_number`), and
@@ -760,6 +765,9 @@ come from the knowledge service's retrieval v2 (`POST /v1/retrieve`, kinds `sect
 passages of its whole text, by BM25 under the run's delegated scope, the GPU embedder and the recorded relations, and
 the lead reads the passage that matched (its paper title and heading path, then the passage) in place of the section's
 opening. A section with two matching passages appears once. Without the field the lead reads search v1 as before.
+`lab_retrieval_generations` sets a lab's own generation in place of that field for that lab (a generation's name, or
+`null` for search v1), so one lab can measure a generation on its own questions while the others keep theirs; each key
+must be one of the file's `labs`, or the file is refused.
 
 ## Guarded database queries
 
@@ -1007,7 +1015,9 @@ listed as a finding with the part of the proposal it is in (`summary`, `answer`,
 with tables or not); `needs_review` only when a person must decide. Code checks every finding
 (`method_review_findings_invalid` names each fault, a `proceed` that lists findings included, and a detail follows the
 reason's number rule). Each fault is measured: `finding 2: detail 412 characters, at most 300`, `finding 1: refs 6 of
-at most 4`, `finding 3: ref 2 is not a shown result`, `finding 1: about names no part of this proposal`. A reply
+at most 4`, `finding 3: ref 2 is not a shown result`, `finding 1: about names no part of this proposal`. These
+names are fixed words, positions and counts, so a deferred turn's log line carries them, as it carries schema field
+names; every other refusal's names stay out of logs. A reply
 refused for its findings or a number (`method_review_findings_invalid`, `method_review_prose_number`) is asked once more
 in the same turn on the same proposal, with the code and names as `prior_attempt` (names within 512 bytes; the query
 facts leave 768 bytes for that note), before the turn is refused (in three days 14 of 60
