@@ -133,7 +133,8 @@ fn a_quantity_or_an_invisible_join_is_never_a_name() {
         passage("Doses of 7.1mg and p below 1e-9 in 6J mice, A7 and B3 and A7\u{200e}B3."),
     );
     assert_eq!(index.prose_refused("It was 7.1mg."), ["7.1"]);
-    assert_eq!(index.prose_refused("p was 1e-9."), ["1", "9"]);
+    // Written whole by the source, 1e-9 stands as written; composed from separate numbers it never does.
+    assert!(index.prose_refused("p was 1e-9.").is_empty());
     assert_eq!(index.prose_refused("The 6J mice."), ["6"]);
     // Two shown names joined by an invisible character or a combining mark read as one name nothing showed.
     assert!(index.prose_refused("A7 and B3.").is_empty());
@@ -247,6 +248,9 @@ fn numbers_allowed_on_their_own_never_admit_a_name_piece_by_piece() {
         index.step_prose_refused("Pair Gene3 with A7\u{200e}B3"),
         ["3", "7", "3"]
     );
+    index.allowed_numbers.insert("9".to_string());
+    assert_eq!(index.prose_refused("p was 1e-9."), ["1", "9"]);
+    assert_eq!(index.prose_refused("\u{200B}Gene3 rose."), ["3"]);
     // Expressions keep the numeric rule.
     assert!(
         index

@@ -111,18 +111,26 @@ pub(super) fn literal_occurrence(chars: &[char], start: usize, end: usize) -> St
     }
 }
 
-/// Whether a number's token reads as a name rather than as an expression: it starts with a letter and holds nothing
-/// but letters and digits of any script, name separators (`-`, `.`, `_`, `/`, Unicode hyphens) and invisible joiners.
-/// `Fmo3-1`, `A7/B3` and `Gene3` are names; `n=12` and `p<0.05` are not.
-pub(super) fn name_like(token: &str) -> bool {
-    token.chars().next().is_some_and(char::is_alphabetic)
-        && token.chars().all(|c| {
-            c.is_alphanumeric()
-                || matches!(c, '-' | '.' | '_' | '/')
-                || joins_a_name(c)
-                || visible_separator(c)
-                || !c.is_ascii()
-        })
+/// Whether a token holding a letter and a digit stands only where a source writes it whole: everything but a quantity
+/// with a unit (`7.1mg`, `6J`: ASCII digits with at most one point, then ASCII letters) and an ASCII expression (`n=12`,
+/// `p<0.05`), which keep the rule for numbers. So `1e-9` composed from an allowed 1 and 9, `Gene3` with a leading
+/// invisible character and `A7/B3` are refused unless shown whole.
+pub(super) fn needs_whole_token(token: &str) -> bool {
+    if !token.chars().any(char::is_alphabetic) || !token.chars().any(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    if token.is_ascii() && token.contains(['=', '<', '>', '%']) {
+        return false;
+    }
+    let split = token
+        .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .unwrap_or(token.len());
+    let (number, unit) = token.split_at(split);
+    let unit_shaped = number.starts_with(|c: char| c.is_ascii_digit())
+        && number.matches('.').count() <= 1
+        && !unit.is_empty()
+        && unit.chars().all(|c| c.is_ascii_alphabetic());
+    !unit_shaped
 }
 
 /// A name a number may stand in when the call shows it: ASCII letters and digits with inner hyphens, periods,
@@ -188,15 +196,17 @@ pub(super) fn shown_name_keys(text: &str) -> Vec<String> {
             continue;
         }
         let name = name_around(&chars, start, end);
-        if plain_name(&name) {
+        // A name, or any other ASCII token with a letter written whole (`1e-9`), is shown as written.
+        if plain_name(&name) || (name.is_ascii() && needs_whole_token(&name)) {
             keys.push(name.to_ascii_lowercase());
         }
         // A shorter key only for a token whose one digit-bearing segment it is: `Fmo3-dependent` shows `Fmo3`, while
         // `Fmo3.5` shows only itself, so its `3` never stands alone in a name.
-        if let Some([segment]) = digit_segments(&name).as_deref() {
-            if *segment != name && plain_name(segment) {
-                keys.push(segment.to_ascii_lowercase());
-            }
+        if let Some([segment]) = digit_segments(&name).as_deref()
+            && *segment != name
+            && plain_name(segment)
+        {
+            keys.push(segment.to_ascii_lowercase());
         }
     }
     keys

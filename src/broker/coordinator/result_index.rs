@@ -287,8 +287,10 @@ impl ResultIndex {
         // A number in a name stands only where the call shows the whole name: no number allowed on its own, no step
         // setting and no literal of the step's SQL can admit `A7/B3`, `Fmo3-1` or `Gene3` piece by piece.
         let token = name_around(chars, start, end);
-        if name_like(&token) && token.chars().any(|c| c.is_ascii_digit()) {
-            return !shown_name(&token, &self.allowed_names);
+        if needs_whole_token(&token) {
+            let verbatim =
+                token.is_ascii() && self.allowed_names.contains(&token.to_ascii_lowercase());
+            return !(verbatim || shown_name(&token, &self.allowed_names));
         }
         let n: String = chars[start..end].iter().collect();
         let shown = self.allowed_numbers.contains(&n)
