@@ -14,16 +14,16 @@
   },
   "dependencies": {
     "papaparse": "5.7.0",
-    "pdfjs-dist": "6.3.289",
-    "svelte": "5.57.0",
+    "pdfjs-dist": "6.4.299",
+    "svelte": "5.57.2",
     "three": "0.186.1"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "7.3.0",
-    "@types/node": "26.5.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "26.6.5",
     "@types/papaparse": "5.5.2",
     "@types/three": "0.186.0",
-    "svelte-check": "4.7.6",
+    "svelte-check": "4.7.7",
     "typescript": "6.0.3",
     "vite": "8.3.5"
   }
