@@ -37,6 +37,19 @@ CREATE TABLE IF NOT EXISTS enrichedlab_agent.broker_sql_source_card_refreshes (
   CHECK ((state = 'registered') = (card_sha256 IS NOT NULL)),
   CHECK ((state IN ('running', 'registered')) = (code IS NULL))
 );
+-- A table an earlier draft of this migration made has no `spec`: its rows close as abandoned under an empty spec, which
+-- no card matches, before the column becomes required.
+ALTER TABLE enrichedlab_agent.broker_sql_source_card_refreshes ADD COLUMN IF NOT EXISTS spec jsonb;
+UPDATE enrichedlab_agent.broker_sql_source_card_refreshes
+SET spec = '{}'::jsonb,
+  state = CASE WHEN state = 'running' THEN 'abandoned' ELSE state END,
+  code = CASE WHEN state = 'running' THEN 'abandoned' ELSE code END,
+  finished_at = coalesce(finished_at, clock_timestamp())
+WHERE spec IS NULL;
+ALTER TABLE enrichedlab_agent.broker_sql_source_card_refreshes ALTER COLUMN spec SET NOT NULL;
+ALTER TABLE enrichedlab_agent.broker_sql_source_card_refreshes DROP CONSTRAINT IF EXISTS broker_sql_source_card_refreshes_spec_check;
+ALTER TABLE enrichedlab_agent.broker_sql_source_card_refreshes ADD CONSTRAINT broker_sql_source_card_refreshes_spec_check
+  CHECK (jsonb_typeof(spec) = 'object' AND octet_length(spec::text) <= 65536);
 CREATE UNIQUE INDEX IF NOT EXISTS broker_sql_source_card_refreshes_one_running
   ON enrichedlab_agent.broker_sql_source_card_refreshes (tenant_id, source_key) WHERE state = 'running';
 ALTER TABLE enrichedlab_agent.broker_sql_source_card_refreshes ENABLE ROW LEVEL SECURITY;

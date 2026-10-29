@@ -432,13 +432,14 @@ impl Store {
     /// them (050), reads a revision's query facts back for the lead (051), and reads the run's template-analysis method
     /// with the newest analysis catalog, whose analyses the commit checks again (060), and names a refused reply's
     /// reasoning in its deferral (061), and reads each digest's column summaries without a lab's values for its step
-    /// checks (073), and keeps a run's orientation and counts its faults (074). A coordinator without them must not
-    /// claim runs.
+    /// checks (073), and keeps a run's orientation and counts its faults (074), and reads each source's card and data
+    /// versions to say when a card is behind its data (082). A coordinator without them must not claim runs.
     pub async fn ready_for_research_results(&self) -> StoreResult<()> {
         let client = self.pool.get().await.map_err(pool_error)?;
         let row = client
             .query_one(
-                "SELECT enrichedlab_agent.broker_schema_ready(74) \
+                "SELECT enrichedlab_agent.broker_schema_ready(82) \
+                 AND enrichedlab_agent.broker_schema_ready(74) \
                  AND enrichedlab_agent.broker_schema_ready(73) \
                  AND enrichedlab_agent.broker_schema_ready(21) \
                  AND enrichedlab_agent.broker_schema_ready(22) \

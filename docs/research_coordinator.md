@@ -58,8 +58,8 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    `context_inputs.data_cards` records the stored card's digest and the SHA-256 of what the lead read, or `"shown":
    "none"` for a card the coordinator could not read. A source without a card leaves the context unchanged. A card
    measured at an earlier version of a lab's data than the source's newest completed query read carries
-   `card_behind_data`, a fixed note with both version rows, in room kept before the card is fitted, and its record marks
-   `card_behind_data: true` (migration 082, `reference_sql.md`). Since
+   `card_behind_data`, a fixed note (never the version rows), in room kept before the card is fitted; its record marks
+   `card_behind_data: true` and its `shown_sha256` covers the note (migration 082, `reference_sql.md`). Since
    migration 062 a source may list up to 128 relations, and a query method's relations take at most
    12,288 bytes by default and a quarter of the lead-context budget. Both the input ceiling and the optional section
    cap described below must be raised for the quarter to expose more. Before the whole-or-partial decision, relations are rebuilt from

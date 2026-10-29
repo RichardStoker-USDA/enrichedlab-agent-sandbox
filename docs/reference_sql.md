@@ -334,7 +334,8 @@ columns and refuses a live source's card without them (`sql_source_card_version_
 
 The run's sources carry the newest card's version and the version the source's newest completed query read. When both
 are known and differ, the lead sees `card_behind_data` beside the card: a fixed note that counts may be low and newer
-values missing, with both version rows as the databases stated them. No count is changed.
+values missing. The version rows are the lab database's own text and are never shown; the turn's record marks
+`card_behind_data: true` and its `shown_sha256` covers the note. No count is changed.
 
 After a completed live query, the worker asks `broker_begin_sql_source_card_refresh` whether the card is due. The
 database starts one refresh per source and version, only for a version a completed receipt of that source read, only
