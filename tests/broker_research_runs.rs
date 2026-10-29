@@ -2545,6 +2545,19 @@ fn unsourced_numbers_in_the_summary_are_masked_and_counted() {
             .names
             .contains(&"findings.statement: {}e-9".to_string())
     );
+    // A leading point would make another value of the bound cell.
+    let p = parse(
+        "Ready.",
+        "A second look checks the order.",
+        "Compare the supplements",
+        None,
+        "Orange juice gave .{a} here.",
+    );
+    assert!(
+        refusal(&p.validate_prose(&compiled.index).unwrap_err())
+            .names
+            .contains(&"findings.statement: .{}".to_string())
+    );
     // A summary the mask would take past its 2,048-byte limit stays whole and is refused.
     let long = format!("{} 7.", "word ".repeat(408));
     assert!(long.len() <= 2048 && long.len() + 9 > 2048);

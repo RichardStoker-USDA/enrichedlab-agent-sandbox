@@ -300,21 +300,25 @@ impl ResultIndex {
     }
 
     /// The places a finding's bound values would stand, refused: `expanded` is the statement with each placeholder
-    /// written as `PLACEHOLDER_VALUE` (`with_placeholder_values`). A bound value stands only alone, as a shown number
-    /// does; joined to digits, another placeholder, a letter, an exponent, a grouping run or a hidden character it would
-    /// compose a value no cell holds (`{a}{b}`, `{a}e-{b}`, `{a} {b}`, `Fmo{a}`), so the document never writes it. Each
-    /// refusal names its token with `{}` for each placeholder.
+    /// written as `PLACEHOLDER_VALUE` (`with_placeholder_values`). A bound value stands only as its whole operand, or
+    /// followed by `%`, `‰` or listed units (`unit_shaped`), in a text with no direction control and a token with no
+    /// hidden character. Anything else around it would make another value of the cell (`.{a}`, `-{a}`, `{a}{b}`,
+    /// `{a}e-{b}`, `{a} {b}`, `{a}k`, `Fmo{a}`), so the document never writes it. No shown number or name is consulted,
+    /// so the marker can match nothing a source shows. Each refusal names its token with `{}` for each placeholder.
     pub(super) fn placements_refused(&self, expanded: &str) -> Vec<String> {
         let chars: Vec<char> = expanded.chars().collect();
+        let directed = chars.iter().copied().any(directs_text);
         number_spans(&chars)
             .into_iter()
             .filter(|&(start, end)| {
-                operand_around(&chars, start, end).contains(PLACEHOLDER_VALUE)
-                    && chars[start..end].iter().collect::<String>() != PLACEHOLDER_VALUE
-                    || (chars[start..end].iter().collect::<String>() == PLACEHOLDER_VALUE
-                        && self
-                            .composition_refused(&chars, start, end)
-                            .unwrap_or(false))
+                let operand = operand_around(&chars, start, end);
+                operand.contains(PLACEHOLDER_VALUE)
+                    && (chars[start..end].iter().collect::<String>() != PLACEHOLDER_VALUE
+                        || directed
+                        || obscures_numbers(&raw_token(&chars, start, end))
+                        || !operand.strip_prefix(PLACEHOLDER_VALUE).is_some_and(|unit| {
+                            matches!(unit, "" | "%" | "\u{2030}") || unit_shaped(&operand)
+                        }))
             })
             .map(|(start, end)| {
                 without_directions(

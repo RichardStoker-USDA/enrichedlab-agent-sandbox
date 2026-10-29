@@ -497,7 +497,9 @@ fn signs_radixes_groupings_and_number_pairs_never_compose_a_value() {
 
 #[test]
 fn a_bound_value_stands_only_alone() {
-    let index = named("literature", passage("Fmo3 by strain."));
+    // A source showing the marker itself after a name admits nothing: placements consult no shown name.
+    let marker = format!("Fmo{PLACEHOLDER_VALUE} and Fmo3 by strain.");
+    let index = named("literature", passage(&marker));
     let refused = |s: &str| index.placements_refused(&with_placeholder_values(s));
     // Alone, beside a listed unit, a percent sign, a bracket or sentence punctuation, a bound value stands.
     for s in [
@@ -517,6 +519,8 @@ fn a_bound_value_stands_only_alone() {
         ("It was {a}k.", "{}k"),
         ("It was Fmo{a}.", "Fmo{}"),
         ("It was {a}-{b}.", "{}-{}"),
+        ("Mean .{a} here.", ".{}"),
+        ("Mean -{a} here.", "-{}"),
     ] {
         let got = refused(s);
         assert!(

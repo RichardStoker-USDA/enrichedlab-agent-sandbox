@@ -775,15 +775,16 @@ fn a_csv_copy_past_its_bound_is_left_to_the_result_package() {
 
 #[test]
 fn document_text_never_carries_a_direction_control() {
-    // A bound value written between direction controls would display reversed; each control shows as U+FFFD.
-    let (text, changed) = plain(
-        "Mean \u{202E}12.5\u{202C}, then \u{2067}7\u{2069} and \u{200F}9, \u{200E}4 and \u{061C}3.",
-    );
-    assert!(changed);
-    assert_eq!(
-        text,
-        "Mean \u{fffd}12.5\u{fffd}, then \u{fffd}7\u{fffd} and \u{fffd}9, \u{fffd}4 and \u{fffd}3."
-    );
+    // A bound value written between direction controls would display reversed; each of the twelve shows as U+FFFD.
+    let controls = [
+        '\u{061C}', '\u{200E}', '\u{200F}', '\u{202A}', '\u{202B}', '\u{202C}', '\u{202D}',
+        '\u{202E}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+    ];
+    for c in controls {
+        let (text, changed) = plain(&format!("Mean {c}12.5{c} here."));
+        assert!(changed, "{c:?}");
+        assert_eq!(text, "Mean \u{fffd}12.5\u{fffd} here.", "{c:?}");
+    }
     assert_eq!(
         plain("Mean 12.5 and 7."),
         ("Mean 12.5 and 7.".to_string(), false)
