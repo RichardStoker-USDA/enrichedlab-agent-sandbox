@@ -776,11 +776,13 @@ fn a_csv_copy_past_its_bound_is_left_to_the_result_package() {
 #[test]
 fn document_text_never_carries_a_direction_control() {
     // A bound value written between direction controls would display reversed; each control shows as U+FFFD.
-    let (text, changed) = plain("Mean \u{202E}12.5\u{202C}, then \u{2067}7\u{2069} and \u{200F}9.");
+    let (text, changed) = plain(
+        "Mean \u{202E}12.5\u{202C}, then \u{2067}7\u{2069} and \u{200F}9, \u{200E}4 and \u{061C}3.",
+    );
     assert!(changed);
     assert_eq!(
         text,
-        "Mean \u{fffd}12.5\u{fffd}, then \u{fffd}7\u{fffd} and \u{fffd}9."
+        "Mean \u{fffd}12.5\u{fffd}, then \u{fffd}7\u{fffd} and \u{fffd}9, \u{fffd}4 and \u{fffd}3."
     );
     assert_eq!(
         plain("Mean 12.5 and 7."),

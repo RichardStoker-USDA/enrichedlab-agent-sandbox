@@ -494,3 +494,34 @@ fn signs_radixes_groupings_and_number_pairs_never_compose_a_value() {
         assert!(index.prose_refused(&summary).is_empty(), "{summary:?}");
     }
 }
+
+#[test]
+fn a_bound_value_stands_only_alone() {
+    let index = named("literature", passage("Fmo3 by strain."));
+    let refused = |s: &str| index.placements_refused(&with_placeholder_values(s));
+    // Alone, beside a listed unit, a percent sign, a bracket or sentence punctuation, a bound value stands.
+    for s in [
+        "Mean {a} mg, then {b}% ({c}).",
+        "From {a} to {b}, and {c}: {d}.",
+    ] {
+        assert!(refused(s).is_empty(), "{s}");
+    }
+    // Joined to another placeholder, digits, an exponent, a grouping run, a hidden character, a multiplier or a name,
+    // it would compose a value no cell holds.
+    for (s, want) in [
+        ("It was {a}{b}.", "{}{}"),
+        ("It was {a}e-{b}.", "{}e-{}"),
+        ("It was {a} {b}.", "{} {}"),
+        ("It was {a}\u{200B}{b}.", "{}\u{200B}{}"),
+        ("It was {a}5.", "{}5"),
+        ("It was {a}k.", "{}k"),
+        ("It was Fmo{a}.", "Fmo{}"),
+        ("It was {a}-{b}.", "{}-{}"),
+    ] {
+        let got = refused(s);
+        assert!(
+            !got.is_empty() && got.iter().all(|t| t == want),
+            "{s}: {got:?}"
+        );
+    }
+}

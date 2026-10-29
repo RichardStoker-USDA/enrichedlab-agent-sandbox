@@ -489,14 +489,23 @@ pub(super) fn column_words(column: &str) -> String {
 }
 
 /// The statement with each placeholder replaced by a space, so a digit in a name is not read as a number.
-pub(super) fn without_placeholders(statement: &str) -> String {
+/// The number a finding's placeholder is written as when its placement is checked (`placements_refused`): one no
+/// source holds, so it only marks where a bound value would stand.
+pub(super) const PLACEHOLDER_VALUE: &str = "80860000000000000000000000000001";
+
+/// `statement` with each placeholder written as `PLACEHOLDER_VALUE`.
+pub(super) fn with_placeholder_values(statement: &str) -> String {
+    without_placeholders(statement, PLACEHOLDER_VALUE)
+}
+
+pub(super) fn without_placeholders(statement: &str, value: &str) -> String {
     let mut out = String::new();
     let mut rest = statement;
     while let Some(at) = rest.find('{') {
         out.push_str(&rest[..at]);
         match rest[at + 1..].find('}') {
             Some(close) => {
-                out.push(' ');
+                out.push_str(value);
                 rest = &rest[at + 1 + close + 1..];
             }
             None => {

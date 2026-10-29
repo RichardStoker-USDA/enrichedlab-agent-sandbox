@@ -1131,7 +1131,7 @@ fn numbers_and_placeholders_are_read_the_same_way_every_time() {
     ] {
         assert!(super::placeholders(bad).is_none(), "{bad}");
     }
-    let stripped = super::without_placeholders("Mean {dose_05} of {b}");
+    let stripped = super::without_placeholders("Mean {dose_05} of {b}", " ");
     assert!(!stripped.contains('{') && !stripped.contains('5'));
 }
 

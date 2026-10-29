@@ -280,6 +280,51 @@ impl ResultIndex {
             .collect()
     }
 
+    /// The rules that refuse a number for what surrounds it, before whether the number itself is shown: `Some(true)`
+    /// when the text sets its display direction or the token holds a hidden or digit-changing character (`\u{202E} 37`,
+    /// `1\u{200B}9`), `Some(verdict)` when its operand must be shown whole (`needs_whole_token`), `None` otherwise. No
+    /// number allowed on its own, no step setting, no step literal and no bound value can admit `A7/B3`, `Fmo3-1`,
+    /// `Gene3%` or `p=1e-9` piece by piece.
+    fn composition_refused(&self, chars: &[char], start: usize, end: usize) -> Option<bool> {
+        if chars.iter().copied().any(directs_text)
+            || obscures_numbers(&raw_token(chars, start, end))
+        {
+            return Some(true);
+        }
+        let operand = operand_around(chars, start, end);
+        needs_whole_token(&operand).then(|| {
+            let verbatim =
+                operand.is_ascii() && self.allowed_names.contains(&operand.to_ascii_lowercase());
+            !(verbatim || shown_name(&operand, &self.allowed_names))
+        })
+    }
+
+    /// The places a finding's bound values would stand, refused: `expanded` is the statement with each placeholder
+    /// written as `PLACEHOLDER_VALUE` (`with_placeholder_values`). A bound value stands only alone, as a shown number
+    /// does; joined to digits, another placeholder, a letter, an exponent, a grouping run or a hidden character it would
+    /// compose a value no cell holds (`{a}{b}`, `{a}e-{b}`, `{a} {b}`, `Fmo{a}`), so the document never writes it. Each
+    /// refusal names its token with `{}` for each placeholder.
+    pub(super) fn placements_refused(&self, expanded: &str) -> Vec<String> {
+        let chars: Vec<char> = expanded.chars().collect();
+        number_spans(&chars)
+            .into_iter()
+            .filter(|&(start, end)| {
+                operand_around(&chars, start, end).contains(PLACEHOLDER_VALUE)
+                    && chars[start..end].iter().collect::<String>() != PLACEHOLDER_VALUE
+                    || (chars[start..end].iter().collect::<String>() == PLACEHOLDER_VALUE
+                        && self
+                            .composition_refused(&chars, start, end)
+                            .unwrap_or(false))
+            })
+            .map(|(start, end)| {
+                without_directions(
+                    operand_around(&chars, start, end).replace(PLACEHOLDER_VALUE, "{}"),
+                )
+                .0
+            })
+            .collect()
+    }
+
     /// Whether the prose rule refuses the number at `start..end` of `chars`: neither shown (a result's number, a shown
     /// analysis's setting in step words, or a step's own SQL literal written as a whole token) nor inside a name the
     /// call shows (`shown_name`).
@@ -291,20 +336,8 @@ impl ResultIndex {
         step: bool,
         own: Option<&HashSet<String>>,
     ) -> bool {
-        // A text that sets its display direction and a token with a hidden or digit-changing character never stand
-        // (`\u{202E} 37 \u{202C}`, `1\u{200B}9`), and a number in an operand that
-        // must be shown whole stands only where the call shows it whole: no number allowed on its own, no step setting
-        // and no literal of the step's SQL can admit `A7/B3`, `Fmo3-1`, `Gene3%` or `p=1e-9` piece by piece.
-        if chars.iter().copied().any(directs_text)
-            || obscures_numbers(&raw_token(chars, start, end))
-        {
-            return true;
-        }
-        let operand = operand_around(chars, start, end);
-        if needs_whole_token(&operand) {
-            let verbatim =
-                operand.is_ascii() && self.allowed_names.contains(&operand.to_ascii_lowercase());
-            return !(verbatim || shown_name(&operand, &self.allowed_names));
+        if let Some(refused) = self.composition_refused(chars, start, end) {
+            return refused;
         }
         // A point before the digits (`.5`) writes another value than the digits alone, so only a step literal written
         // that way admits it.

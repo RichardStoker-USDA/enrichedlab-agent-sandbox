@@ -554,7 +554,7 @@ impl Proposal {
                     Some(_) => "table_statements.lead_in",
                     None => "findings.statement",
                 };
-                (field, without_placeholders(&f.statement))
+                (field, without_placeholders(&f.statement, " "))
             })
             .collect();
         let own: Vec<HashSet<String>> = self
@@ -584,7 +584,20 @@ impl Proposal {
                     .iter()
                     .map(|t| ("tables.lead_in", t.lead_in.as_str(), None)),
             );
-        let names = refused_numbers_with(index, texts);
+        let mut names = refused_numbers_with(index, texts);
+        // Where each bound value would stand: joined to anything that makes it part of another value, it is refused.
+        for f in &self.findings {
+            let field = match f.composed_from {
+                Some(_) => "table_statements.lead_in",
+                None => "findings.statement",
+            };
+            names.extend(
+                index
+                    .placements_refused(&with_placeholder_values(&f.statement))
+                    .into_iter()
+                    .map(|token| format!("{field}: {token}")),
+            );
+        }
         if names.is_empty() {
             Ok(())
         } else {

@@ -2525,7 +2525,25 @@ fn unsourced_numbers_in_the_summary_are_masked_and_counted() {
     assert_eq!(p.mask_summary_numbers(&compiled.index), 0);
     assert_eq!(
         refusal(&p.validate_prose(&compiled.index).unwrap_err()).names,
-        ["findings.statement: U+202E", "findings.statement: U+202C"]
+        [
+            "findings.statement: U+202E",
+            "findings.statement: U+202C",
+            "findings.statement: {}"
+        ]
+    );
+    // A bound value joined to an exponent would compose a value no cell holds once the document fills it in.
+    let mut p = parse(
+        "Ready.",
+        "A second look checks the order.",
+        "Compare the supplements",
+        None,
+        "Orange juice gave {a}e-9.",
+    );
+    assert_eq!(p.mask_summary_numbers(&compiled.index), 0);
+    assert!(
+        refusal(&p.validate_prose(&compiled.index).unwrap_err())
+            .names
+            .contains(&"findings.statement: {}e-9".to_string())
     );
     // A summary the mask would take past its 2,048-byte limit stays whole and is refused.
     let long = format!("{} 7.", "word ".repeat(408));
