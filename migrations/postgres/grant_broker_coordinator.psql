@@ -79,3 +79,6 @@ GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_literature_review_for_run(tex
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_faults(text,uuid,text,bigint) TO :"coordinator_role";
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_supervisor_pause_research_run(text,uuid,text,bigint,text) TO :"coordinator_role";
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_orientation_for_run(text,uuid,text,bigint,jsonb) TO :"coordinator_role";
+
+-- Migration 083: the run's lab objects methods, under the run lease.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_object_methods(text,uuid,text,bigint) TO :"coordinator_role";

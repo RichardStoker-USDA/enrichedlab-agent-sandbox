@@ -536,3 +536,8 @@ GRANT EXECUTE ON FUNCTION evidence.custody_acceptance_state(text,uuid) TO :"api_
 
 -- Migration 080: a lab member reads the lab's tools, their tool groups and how each is granted.
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_lab_tools(text,uuid,text) TO :"api_role";
+
+-- Lab objects (migration 083): the worker reads the objects request of its current lease and records one receipt per
+-- attempt.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_task_objects(text,uuid,text,integer,bigint) TO :"worker_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_object_receipt(text,uuid,text,integer,bigint,text,text,integer,bigint,jsonb,text,timestamptz,timestamptz) TO :"worker_role";

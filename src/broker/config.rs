@@ -279,6 +279,12 @@ pub struct WorkerArgs {
     #[arg(long, env = "AGENT_SANDBOX_BROKER_DATASET_FETCHER_CONFIG")]
     pub dataset_fetcher_config: Option<PathBuf>,
 
+    /// Optional lab objects configuration (migration 083): for each lab objects method, its bucket, the object store's
+    /// HTTPS origin, the internal CA and the read identity's key files. Without it a lab objects step ends
+    /// `objects_unconfigured`.
+    #[arg(long, env = "AGENT_SANDBOX_BROKER_LAB_OBJECTS_CONFIG")]
+    pub lab_objects_config: Option<PathBuf>,
+
     /// Follow each direct Sandbox runner's output and record it for watching. Needs `get` on
     /// `pods/log` in each lab namespace; off until the containment review accepts it.
     #[arg(
@@ -412,6 +418,7 @@ pub struct WorkerConfig {
     pub query_connection_dir: Option<PathBuf>,
     pub render_url: Option<String>,
     pub dataset_fetcher_config: Option<PathBuf>,
+    pub lab_objects_config: Option<PathBuf>,
     pub live_output: bool,
     pub max_parallel: usize,
     pub lease_seconds: u64,
@@ -622,6 +629,7 @@ impl WorkerArgs {
             query_connection_dir: self.query_connection_dir,
             render_url,
             dataset_fetcher_config: self.dataset_fetcher_config,
+            lab_objects_config: self.lab_objects_config,
             live_output: self.live_output,
             max_parallel: self.max_parallel,
             lease_seconds: self.lease_seconds,

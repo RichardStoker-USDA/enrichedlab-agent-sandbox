@@ -34,7 +34,9 @@ mod lab_tools;
 mod library;
 pub use library::LibraryPaperRecord;
 mod lineage;
+mod objects;
 mod queries;
+pub use objects::{ObjectReceipt, TaskObjects};
 pub use queries::{QueryReceipt, TaskQuery};
 mod literature_reviews;
 mod orientations;
@@ -152,6 +154,7 @@ const MIGRATION_079: &str = include_str!("../../migrations/postgres/079_evidence
 const MIGRATION_080: &str = include_str!("../../migrations/postgres/080_tool_groups.sql");
 const MIGRATION_081: &str = include_str!("../../migrations/postgres/081_evidence_live_capture.sql");
 const MIGRATION_082: &str = include_str!("../../migrations/postgres/082_card_freshness.sql");
+const MIGRATION_083: &str = include_str!("../../migrations/postgres/083_lab_objects.sql");
 
 #[derive(Clone)]
 pub struct Store {
@@ -433,12 +436,14 @@ impl Store {
     /// with the newest analysis catalog, whose analyses the commit checks again (060), and names a refused reply's
     /// reasoning in its deferral (061), and reads each digest's column summaries without a lab's values for its step
     /// checks (073), and keeps a run's orientation and counts its faults (074), and reads each source's card and data
-    /// versions to say when a card is behind its data (082). A coordinator without them must not claim runs.
+    /// versions to say when a card is behind its data (082), and commits a lab objects step (083). A coordinator
+    /// without them must not claim runs.
     pub async fn ready_for_research_results(&self) -> StoreResult<()> {
         let client = self.pool.get().await.map_err(pool_error)?;
         let row = client
             .query_one(
-                "SELECT enrichedlab_agent.broker_schema_ready(82) \
+                "SELECT enrichedlab_agent.broker_schema_ready(83) \
+                 AND enrichedlab_agent.broker_schema_ready(82) \
                  AND enrichedlab_agent.broker_schema_ready(74) \
                  AND enrichedlab_agent.broker_schema_ready(73) \
                  AND enrichedlab_agent.broker_schema_ready(21) \
@@ -1681,6 +1686,10 @@ pub async fn migrate(args: MigrationArgs) -> Result<()> {
         .batch_execute(MIGRATION_082)
         .await
         .context("failed to apply PostgreSQL migration 082")?;
+    client
+        .batch_execute(MIGRATION_083)
+        .await
+        .context("failed to apply PostgreSQL migration 083")?;
     Ok(())
 }
 

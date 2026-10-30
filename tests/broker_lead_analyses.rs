@@ -216,6 +216,7 @@ impl Turn {
             &checked.admitted,
             &checked.analyses,
             &checked.queries,
+            &checked.objects,
         )
     }
 }
@@ -813,6 +814,7 @@ async fn the_lead_runs_a_template_analysis_on_a_finished_step() {
         query_connection_dir: Some(connections),
         render_url: Some(render_service().await),
         dataset_fetcher_config: None,
+        lab_objects_config: None,
         live_output: false,
         max_parallel: 1,
         lease_seconds: 120,

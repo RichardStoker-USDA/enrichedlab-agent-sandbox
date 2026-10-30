@@ -31,6 +31,10 @@ pub struct ProposedAction {
     /// analysis the method lists and its settings; absent for every other method.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub analysis: Option<AnalysisChoice>,
+    /// The files a step of the lab's objects method reads: a collection the method showed and names from its sample;
+    /// absent for every other method (migration 083).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objects: Option<crate::broker::lead_objects::ObjectsChoice>,
     /// What the step's result must look like. Required in a reply; a step recorded before step
     /// checks has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]

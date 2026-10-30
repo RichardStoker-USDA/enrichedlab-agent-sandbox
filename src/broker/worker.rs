@@ -237,6 +237,12 @@ pub async fn run(args: WorkerArgs) -> Result<()> {
             .await
             .context("live output schema is not ready")?;
     }
+    if config.lab_objects_config.is_some() {
+        store
+            .ready_for_lab_objects()
+            .await
+            .context("lab objects schema is not ready")?;
+    }
     if config.dataset_fetcher_config.is_some() {
         store
             .ready_for_lab_datasets(false)
@@ -411,6 +417,11 @@ async fn execute_task(
     // rebuilt grid, and the preparation is the broker's own reviewed executor.
     if task.route == super::dataset_run::ROUTE {
         return super::dataset_run::execute(store, &config, task, shutdown).await;
+    }
+    // A lab objects step runs in the worker too: it reads the lab's bucket with the method's read identity and keeps
+    // the files it names, each checked against the collection's pinned manifest.
+    if task.route == super::objects_run::ROUTE {
+        return super::objects_run::execute(store, &config, task, shutdown).await;
     }
     if let Some(catalog) = direct_dispatch
         && let Some(prepared) = catalog
@@ -2300,6 +2311,7 @@ mod direct_dispatch_tests {
             query_connection_dir: None,
             render_url: None,
             dataset_fetcher_config: None,
+            lab_objects_config: None,
             max_parallel: 1,
             lease_seconds: 60,
             poll_interval: Duration::from_millis(750),

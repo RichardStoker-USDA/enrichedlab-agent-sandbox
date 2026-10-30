@@ -35,6 +35,9 @@ const DELEGATION: time::Duration = time::Duration::hours(20);
 const KINDS: [&str; 3] = ["analysis", "figure", "tool"];
 /// Research-facing records only. Operational estate kinds are deliberately absent.
 const CATALOG_KINDS: [&str; 4] = ["lab", "tool", "starting_point", "dataset"];
+/// The lab's object collections (migration 083), for a run with a lab objects method.
+const OBJECT_KINDS: [&str; 1] = ["object_collection"];
+const OBJECTS_LIMIT: u32 = 8;
 /// What the lead reads from its lab library: sections of the lab's papers.
 const LIBRARY_KINDS: [&str; 1] = ["section"];
 /// More sections than the lead is shown, since papers the lab no longer holds or has not accepted are left out after.
@@ -109,6 +112,9 @@ pub struct Hit {
     pub title: String,
     pub summary: String,
     pub source_uri: Option<String>,
+    /// The digest of the record's content, as the ingest that wrote it computed it: for an object collection, its
+    /// manifest's SHA-256.
+    pub content_sha256: Option<String>,
     pub lexical_rank: Option<u64>,
     pub dense_rank: Option<u64>,
     /// Where the record sits in its source, such as a section's heading path and pages.
@@ -246,6 +252,7 @@ fn hit(value: &Value) -> Option<Hit> {
         title: r["title"].as_str()?.to_owned(),
         summary: r["summary"].as_str().unwrap_or_default().to_owned(),
         source_uri: r["source_uri"].as_str().map(str::to_owned),
+        content_sha256: r["content_sha256"].as_str().map(str::to_owned),
         lexical_rank: rank(&value["lexical_rank"])?,
         dense_rank: rank(&value["dense_rank"])?,
         locator: match &r["locator"] {
@@ -484,6 +491,17 @@ impl KnowledgeService {
     ) -> Result<Found, KnowledgeError> {
         self.delegate(run, lab).await?;
         self.find(run, text, &CATALOG_KINDS, SEARCH_LIMIT).await
+    }
+
+    /// Delegates `run` to `lab` alone, renewing it, then searches the lab's object collections.
+    pub async fn search_objects(
+        &self,
+        run: Uuid,
+        lab: &str,
+        text: &str,
+    ) -> Result<Found, KnowledgeError> {
+        self.delegate(run, lab).await?;
+        self.find(run, text, &OBJECT_KINDS, OBJECTS_LIMIT).await
     }
 
     /// Delegates `run` to `lab` alone, renewing it, then searches the sections of the lab's library papers.

@@ -122,6 +122,36 @@ fn uri_encode(value: &str, keep_slash: bool) -> String {
     out
 }
 
+/// A URL path as SigV4 canonicalizes it for S3: each `%XX` the URL library wrote is decoded first, then every byte
+/// outside the unreserved set (and `/`) is encoded once, so a key with a space or a parenthesis signs as S3 checks it.
+fn canonical_uri(path: &str) -> String {
+    let bytes = path.as_bytes();
+    let mut raw = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |b: u8| (b as char).to_digit(16);
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(h), Some(l)) = (hex(bytes[i + 1]), hex(bytes[i + 2]))
+        {
+            raw.push((h * 16 + l) as u8);
+            i += 3;
+        } else {
+            raw.push(bytes[i]);
+            i += 1;
+        }
+    }
+    let mut out = String::with_capacity(raw.len());
+    for byte in raw {
+        if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 impl Signer {
     /// The headers to add to a request so S3 accepts it: `x-amz-date`, `x-amz-content-sha256` and `authorization`.
     /// `headers` are the other headers the signature covers, lowercase names; `host` is taken from the URL.
@@ -174,7 +204,7 @@ impl Signer {
             .collect();
         let canonical_request = format!(
             "{method}\n{}\n{canonical_query}\n{canonical_headers}\n{signed_names}\n{payload_sha256}",
-            uri_encode(url.path(), true)
+            canonical_uri(url.path())
         );
         let scope = format!("{date}/{}/s3/aws4_request", self.region);
         let string_to_sign = format!(
@@ -258,6 +288,15 @@ fn valid_key(key: &str) -> bool {
         .is_some_and(|(prefix, digest)| {
             is_sha256_hex(digest) && digest.starts_with(prefix) && prefix.len() == 2
         })
+}
+
+/// A lab object's key: 1 to 1024 bytes, no control character, no leading `/`, no empty, `.` or `..` part.
+pub fn valid_object_key(key: &str) -> bool {
+    (1..=1024).contains(&key.len())
+        && !key.chars().any(char::is_control)
+        && key
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 fn valid_version(version: &str) -> bool {
@@ -441,6 +480,53 @@ impl S3Store {
         Ok(body)
     }
 
+    /// Reads one lab object (any key `valid_object_key` accepts) by version, or its newest version when `version` is
+    /// `None`, refusing a body past `max_bytes` while it arrives.
+    pub async fn get_object(
+        &self,
+        bucket: &str,
+        key: &str,
+        version: Option<&str>,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, StoreError> {
+        if !valid_bucket(bucket) || !valid_object_key(key) {
+            return Err(StoreError::Malformed("key"));
+        }
+        if version.is_some_and(|v| !valid_version(v)) {
+            return Err(StoreError::Malformed("version id"));
+        }
+        let mut url = self.endpoint.clone();
+        url.set_path(&format!("/{bucket}/{key}"));
+        if let Some(version) = version {
+            url.query_pairs_mut().append_pair("versionId", version);
+        }
+        let response = self
+            .signed(Method::GET, &url, EMPTY_SHA256, &[])
+            .map_err(|_| StoreError::Malformed("signing"))?
+            .send()
+            .await
+            .map_err(|_| StoreError::Unavailable)?;
+        if !response.status().is_success() {
+            return Err(status_error(response.status()));
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > max_bytes)
+        {
+            return Err(StoreError::Malformed("body past its bound"));
+        }
+        let mut body = Vec::new();
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|_| StoreError::Unavailable)?;
+            if body.len() as u64 + chunk.len() as u64 > max_bytes {
+                return Err(StoreError::Malformed("body past its bound"));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Ok(body)
+    }
+
     /// Reads a copy's facts for one version, or for the newest version when `version` is `None`.
     pub async fn head(
         &self,
@@ -592,6 +678,24 @@ mod tests {
 
     /// AWS's published S3 example ("GET Object", Signature Version 4 header authentication): bucket `examplebucket`,
     /// key `test.txt`, `Range: bytes=0-9`, 24 May 2013, us-east-1, the documentation's example credentials.
+    #[test]
+    fn a_key_with_spaces_and_parentheses_signs_its_path_encoded_once() {
+        let mut url = Url::parse("https://store.example:9000/").unwrap();
+        url.set_path("/bucket/afri/raw/inputs/a b (1).csv");
+        assert_eq!(
+            canonical_uri(url.path()),
+            "/bucket/afri/raw/inputs/a%20b%20%281%29.csv"
+        );
+        assert_eq!(
+            canonical_uri("/bucket/sha256/ab/abcd.zst"),
+            "/bucket/sha256/ab/abcd.zst"
+        );
+        assert!(valid_object_key("afri/raw/inputs/a b (1).csv"));
+        for bad in ["", "/a", "a//b", "a/../b", "a/./b", "a\nb"] {
+            assert!(!valid_object_key(bad), "{bad:?}");
+        }
+    }
+
     #[test]
     fn signature_matches_the_published_s3_example() {
         // The example key id is written in two parts so the public-boundary scan's access-key pattern stays exact.

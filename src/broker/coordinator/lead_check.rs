@@ -26,6 +26,8 @@ pub struct CheckedLead {
     pub queries: HashMap<String, AdmittedQuery>,
     /// The analysis each template-analysis step runs, by step key.
     pub analyses: HashMap<String, AdmittedAnalysis>,
+    /// The files each lab objects step reads, by step key (migration 083).
+    pub objects: HashMap<String, crate::broker::lead_objects::AdmittedObjects>,
     pub admitted: HashMap<String, (String, String, codegen::AdmissionReport, Option<Value>)>,
     /// Numbers in the summary written as `(a number)` because the prose rule refuses them.
     pub summary_numbers_masked: usize,
@@ -125,6 +127,8 @@ pub fn check_lead_reply(check: &LeadCheck<'_>, reply: &Value) -> Result<CheckedL
         check.context,
         check.rejected,
     )?;
+    let objects =
+        crate::broker::lead_objects::admit(&proposal.actions, check.methods, check.context)?;
     expectations(&proposal.actions)?;
     proposal.validate_literature(&literature, &unread)?;
     let written = proposal.findings.len();
@@ -209,6 +213,7 @@ pub fn check_lead_reply(check: &LeadCheck<'_>, reply: &Value) -> Result<CheckedL
         proposal,
         queries,
         analyses,
+        objects,
         admitted,
         summary_numbers_masked,
         step_numbers_masked,

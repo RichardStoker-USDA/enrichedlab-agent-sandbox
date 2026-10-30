@@ -86,6 +86,18 @@ pub fn methods_view_ranked(
                     }
                     method["settings"] = configured.map(|c| c.view()).unwrap_or_else(|_| json!({}));
                 }
+                // A lab objects method shows its collections without the store details the commit uses.
+                if let Some(found) = method
+                    .as_object_mut()
+                    .and_then(|o| o.remove(crate::broker::lead_objects::FOUND_FIELD))
+                {
+                    let key = p["key"].as_str().unwrap_or_default();
+                    let (mut view, held) = crate::broker::lead_objects::view(&found, key);
+                    if !held.is_empty() {
+                        view["withheld"] = json!(held.len());
+                    }
+                    method["objects"] = view;
+                }
                 // The template-analysis method shows its catalog compactly; a step may choose only these.
                 if let Some(catalog) = method
                     .as_object_mut()
@@ -516,6 +528,7 @@ pub fn delegated_action(
     admitted: &HashMap<String, (String, String, codegen::AdmissionReport, Option<Value>)>,
     analyses: &HashMap<String, AdmittedAnalysis>,
     queries: &HashMap<String, AdmittedQuery>,
+    objects: &HashMap<String, crate::broker::lead_objects::AdmittedObjects>,
 ) -> Value {
     let mut action = json!({"action_key":a.action_key,"profile":a.profile,"objective":a.objective,"request_sha256":request_digest(req)});
     if let Some((template, content, report, configuration)) = admitted.get(&a.action_key) {
@@ -530,6 +543,10 @@ pub fn delegated_action(
     if let Some(analysis) = analyses.get(&a.action_key) {
         action["request_sha256"] = json!(analysis_request_digest(req, &analysis.sha256()));
         action["template_analysis"] = analysis.record();
+    }
+    if let Some(files) = objects.get(&a.action_key) {
+        action["request_sha256"] = json!(objects_request_digest(req, &files.sha256()));
+        action["objects"] = files.record();
     }
     if let Some(query) = queries.get(&a.action_key) {
         let sha = format!(
@@ -554,6 +571,18 @@ pub fn delegated_action(
         }
     }
     action
+}
+
+/// The chosen files' digest is part of the task request, so a replay with other files under the same action cannot
+/// pass as the same request.
+pub fn objects_request_digest(request: &SubmitTaskRequest, objects_sha256: &str) -> String {
+    let mut digest = Sha256::new();
+    digest.update(request_digest(request).as_bytes());
+    digest.update([0]);
+    digest.update(b"objects");
+    digest.update([0]);
+    digest.update(objects_sha256.as_bytes());
+    hex::encode(digest.finalize())
 }
 
 /// The chosen analysis's digest is part of the task request, so a replay with another analysis under the

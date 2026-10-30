@@ -351,6 +351,7 @@ async fn a_person_runs_a_template_analysis_on_a_finished_table() {
         query_connection_dir: Some(connections),
         render_url: Some(render_url),
         dataset_fetcher_config: None,
+        lab_objects_config: None,
         live_output: false,
         max_parallel: 1,
         lease_seconds: 120,

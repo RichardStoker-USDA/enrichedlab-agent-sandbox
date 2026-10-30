@@ -55,6 +55,7 @@ pub(super) const ACTION_FIELDS: Fields = &[
     ("sql", false, Shape::TextOrNull),
     ("reviewed_query", false, Shape::Map),
     ("analysis", false, Shape::Map),
+    ("objects", false, Shape::Map),
     ("expect", true, Shape::Map),
 ];
 

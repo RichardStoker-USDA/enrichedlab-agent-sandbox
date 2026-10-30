@@ -241,6 +241,7 @@ async fn a_person_gets_a_document_of_a_runs_answer() {
         query_connection_dir: Some(connections),
         render_url: None,
         dataset_fetcher_config: None,
+        lab_objects_config: None,
         live_output: false,
         max_parallel: 1,
         lease_seconds: 120,

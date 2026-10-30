@@ -208,6 +208,7 @@ fn admitted(orientation: &Orientation) -> CheckedLead {
         proposal,
         queries,
         analyses: HashMap::new(),
+        objects: HashMap::new(),
         admitted: HashMap::new(),
         summary_numbers_masked: 0,
         step_numbers_masked: 0,
