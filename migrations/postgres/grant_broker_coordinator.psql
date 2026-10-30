@@ -42,6 +42,7 @@ REVOKE ALL ON ALL SEQUENCES IN SCHEMA enrichedlab_agent FROM :"coordinator_role"
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA enrichedlab_agent FROM :"coordinator_role";
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_schema_ready(integer) TO :"coordinator_role";
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_claim_research_run(text,text,integer) TO :"coordinator_role";
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_claim_research_run(text,text,integer,text) TO :"coordinator_role";
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_renew_research_run(text,uuid,text,bigint,integer) TO :"coordinator_role";
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_yield_research_run(text,uuid,text,bigint,text) TO :"coordinator_role";
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_commit_research_turn(text,uuid,text,bigint,bigint,jsonb,jsonb,jsonb,text) TO :"coordinator_role";

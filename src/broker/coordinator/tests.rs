@@ -4008,3 +4008,54 @@ fn guidance_names_leave_the_fault_count_only_for_the_reasons_that_write_them() {
         3
     );
 }
+
+#[test]
+fn only_a_candidate_coordinator_takes_a_lead_system_text_and_only_a_sound_one() {
+    use super::load_lead_system;
+    let dir = tempfile::tempdir().unwrap();
+    let file = |name: &str, body: &[u8]| {
+        let p = dir.path().join(name);
+        std::fs::write(&p, body).unwrap();
+        p
+    };
+    let good = file("good.txt", b"You are a research lead.");
+    // No file keeps the compiled text in either lane.
+    assert!(load_lead_system("accepted", None).unwrap().is_none());
+    assert!(load_lead_system("candidate", None).unwrap().is_none());
+    // The accepted lane refuses a file, so production never takes a text by accident.
+    assert_eq!(
+        load_lead_system("accepted", Some(&good))
+            .unwrap_err()
+            .to_string(),
+        "lead_system_file_accepted_lane"
+    );
+    assert_eq!(
+        load_lead_system("candidate", Some(&good))
+            .unwrap()
+            .as_deref(),
+        Some("You are a research lead.")
+    );
+    for (name, body) in [
+        ("empty.txt", b"".to_vec()),
+        ("nul.txt", b"a\0b".to_vec()),
+        ("long.txt", vec![b'a'; 4 * 26_293 + 1]),
+    ] {
+        let p = file(name, &body);
+        assert_eq!(
+            load_lead_system("candidate", Some(&p))
+                .unwrap_err()
+                .to_string(),
+            "lead_system_file_invalid",
+            "{name}"
+        );
+    }
+    let missing = dir.path().join("missing.txt");
+    assert_eq!(
+        load_lead_system("candidate", Some(&missing))
+            .unwrap_err()
+            .to_string(),
+        "lead_system_file_unreadable"
+    );
+    // Without a file the process uses the compiled text.
+    assert_eq!(super::lead_system(), SYSTEM);
+}

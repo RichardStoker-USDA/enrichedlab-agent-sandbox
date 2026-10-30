@@ -165,7 +165,7 @@ pub(super) fn decision_texts<'a>(
     lead: &'a Call,
     review: &'a Call,
 ) -> (Vec<&'a [u8]>, Vec<&'a Value>) {
-    decision_texts_with(lead, SYSTEM, review)
+    decision_texts_with(lead, lead_system(), review)
 }
 
 pub(super) fn decision_texts_with<'a>(

@@ -174,6 +174,7 @@ impl Store {
         .map_err(database_error)?;
         Ok(())
     }
+    /// The next accepted run (migration 085: the three-argument claim claims accepted runs only).
     pub async fn claim_research_run(
         &self,
         worker: &str,
@@ -184,6 +185,23 @@ impl Store {
             .query_one(
                 "SELECT enrichedlab_agent.broker_claim_research_run($1,$2,$3)",
                 &[&self.tenant, &worker, &seconds],
+            )
+            .await
+            .map_err(database_error)?;
+        Ok(row.get(0))
+    }
+    /// The next run of `lane` (`accepted` or `candidate`, migration 085): a coordinator claims one lane only.
+    pub async fn claim_research_run_in(
+        &self,
+        worker: &str,
+        seconds: i32,
+        lane: &str,
+    ) -> StoreResult<Option<Value>> {
+        let c = self.pool.get().await.map_err(pool_error)?;
+        let row = c
+            .query_one(
+                "SELECT enrichedlab_agent.broker_claim_research_run($1,$2,$3,$4)",
+                &[&self.tenant, &worker, &seconds, &lane],
             )
             .await
             .map_err(database_error)?;

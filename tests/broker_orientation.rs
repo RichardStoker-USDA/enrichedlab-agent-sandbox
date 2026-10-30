@@ -566,6 +566,8 @@ async fn a_runs_first_turn_orients_before_the_lead_plans_and_every_later_call_re
             max_parallel: 1,
             worker_id: Some("orientation-lead".into()),
             once: true,
+            run_lane: "accepted".into(),
+            lead_system_file: None,
             library_config_file: None,
             lead_text_labs: vec![],
             lead_text_unreviewed_labs: vec![],

@@ -72,7 +72,7 @@ impl Model {
             || url.host_str().is_none()
             || !(url.scheme() == "https"
                 || (url.scheme() == "http" && internal && config.allow_internal_http))
-            || !(SYSTEM.len() + REVIEW_RESERVE + LEAD_BUDGET_MIN..=MAX_INPUT_BYTES)
+            || !(super::lead_system().len() + REVIEW_RESERVE + LEAD_BUDGET_MIN..=MAX_INPUT_BYTES)
                 .contains(&config.max_input_bytes)
             || !(512..=65536).contains(&config.max_output_tokens)
             || config.max_input_bytes + config.max_output_tokens + 1024

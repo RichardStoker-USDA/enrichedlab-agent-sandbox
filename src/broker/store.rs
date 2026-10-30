@@ -156,6 +156,7 @@ const MIGRATION_081: &str = include_str!("../../migrations/postgres/081_evidence
 const MIGRATION_082: &str = include_str!("../../migrations/postgres/082_card_freshness.sql");
 const MIGRATION_083: &str = include_str!("../../migrations/postgres/083_lab_objects.sql");
 const MIGRATION_084: &str = include_str!("../../migrations/postgres/084_lab_objects_columns.sql");
+const MIGRATION_085: &str = include_str!("../../migrations/postgres/085_research_run_lanes.sql");
 
 #[derive(Clone)]
 pub struct Store {
@@ -443,7 +444,8 @@ impl Store {
         let client = self.pool.get().await.map_err(pool_error)?;
         let row = client
             .query_one(
-                "SELECT enrichedlab_agent.broker_schema_ready(84) \
+                "SELECT enrichedlab_agent.broker_schema_ready(85) \
+                 AND enrichedlab_agent.broker_schema_ready(84) \
                  AND enrichedlab_agent.broker_schema_ready(83) \
                  AND enrichedlab_agent.broker_schema_ready(82) \
                  AND enrichedlab_agent.broker_schema_ready(74) \
@@ -1699,6 +1701,10 @@ pub async fn migrate(args: MigrationArgs) -> Result<()> {
         .batch_execute(MIGRATION_084)
         .await
         .context("failed to apply PostgreSQL migration 084")?;
+    client
+        .batch_execute(MIGRATION_085)
+        .await
+        .context("failed to apply PostgreSQL migration 085")?;
     Ok(())
 }
 

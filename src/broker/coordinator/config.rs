@@ -44,6 +44,15 @@ pub struct CoordinatorArgs {
     /// Advance one claim and exit; useful for a controlled recovery or canary.
     #[arg(long)]
     pub once: bool,
+    /// The lane of runs this coordinator claims (migration 085): `accepted`, or `candidate` for the runs of actors an
+    /// operator granted the candidate lane, so a candidate configuration is measured on real rows beside production.
+    #[arg(long, default_value = "accepted", value_parser = ["accepted", "candidate"])]
+    pub run_lane: String,
+    /// The lead's system text, read once at start, in place of the compiled text. Candidate lane only: an accepted
+    /// coordinator refuses it, so production never takes a text by accident. Every lead call's receipt records the
+    /// text's SHA-256 (`system_sha256`).
+    #[arg(long)]
+    pub lead_system_file: Option<PathBuf>,
     /// Publish readiness after all start checks; remove it when the coordinator exits.
     #[arg(long)]
     pub ready_file: Option<PathBuf>,
@@ -274,7 +283,7 @@ impl ModelSections {
 impl ModelConfig {
     pub(super) fn lead_budget(&self) -> usize {
         self.max_input_bytes
-            .saturating_sub(SYSTEM.len() + REVIEW_RESERVE)
+            .saturating_sub(super::lead_system().len() + REVIEW_RESERVE)
     }
 
     pub(super) fn section_budgets(&self) -> SectionBudgets {

@@ -647,6 +647,19 @@ record. `proposal_settings_missing` and `proposal_settings_invalid` refuse a pro
 again at commit from the template row and the settings and refuses any difference, stores the configuration with the
 labels read from the template row, and classes the task `configured` in lineage.
 
+## Run lanes
+
+Every run has a lane, `accepted` or `candidate`, fixed when it starts (migration 085): `candidate` when its actor holds
+an operator-written grant in `broker_candidate_grants` whose `until` is still ahead, otherwise `accepted`. No role can
+read or write that table, the workspace API never names a lane, and a trigger refuses any later change of a run's lane.
+A coordinator claims one lane (`--run-lane`, default `accepted`); the three-argument claim every earlier coordinator
+calls claims accepted runs only. A candidate coordinator runs the same image beside the accepted one and may take its
+own lead system text (`--lead-system-file`, read once at start, at most four times the compiled text's bytes; an
+accepted coordinator refuses the flag). Every lead call's receipt records the text's SHA-256 (`system_sha256`), so a
+result always names the text that produced it. A candidate's retrieval generation comes from its own knowledge
+configuration (`lab_retrieval_generations`). This lets a lead change be measured on a lab's real rows, paired with the
+accepted lane, before any release.
+
 ## Lab files
 
 A lab objects method (migration 083, route `server-objects`) reads files from the lab's object store. The claim shows

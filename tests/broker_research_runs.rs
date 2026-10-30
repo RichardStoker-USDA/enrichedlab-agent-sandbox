@@ -4211,6 +4211,103 @@ async fn atomic_turns_fence_restarts_recheck_delegation_and_keep_history() {
             .await
             .is_err()
     );
+    // Migration 085: a run started without a candidate grant is accepted, a candidate coordinator never claims it, and
+    // no run's lane changes after it starts.
+    let lane: String = owner
+        .query_one(
+            "SELECT lane FROM enrichedlab_agent.broker_research_runs WHERE run_id=$1",
+            &[&run],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(lane, "accepted");
+    assert!(
+        coordinator
+            .claim_research_run_in("cand-a", 90, "candidate")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        coordinator
+            .claim_research_run_in("cand-a", 90, "other")
+            .await
+            .is_err()
+    );
+    assert!(
+        owner
+            .execute(
+                "UPDATE enrichedlab_agent.broker_research_runs SET lane='candidate' WHERE run_id=$1",
+                &[&run],
+            )
+            .await
+            .is_err()
+    );
+    // An actor with an open candidate grant starts candidate runs: only the candidate claim takes one.
+    let candidate_project = Uuid::new_v4();
+    api.create_project(
+        actor,
+        &CreateProject {
+            project_id: candidate_project,
+            group: "pilot-lab".into(),
+            title: "Candidate lane".into(),
+            visibility: Visibility::Private,
+        },
+    )
+    .await
+    .unwrap();
+    api.checkpoint_project(
+        actor,
+        candidate_project,
+        &CheckpointRequest {
+            expected_revision: 0,
+            request_id: Uuid::new_v4(),
+            state: research(),
+        },
+    )
+    .await
+    .unwrap();
+    owner
+        .execute(
+            "INSERT INTO enrichedlab_agent.broker_candidate_grants(tenant_id,actor_id,until,note) \
+             VALUES ('research-site',$1,clock_timestamp()+interval '1 hour','qualification')",
+            &[&actor],
+        )
+        .await
+        .unwrap();
+    let candidate_run = api
+        .start_research_run(
+            actor,
+            candidate_project,
+            &StartRun {
+                run_id: Uuid::new_v4(),
+                expected_revision: 1,
+                allowed_profiles: vec!["general-research".into()],
+                max_turns: 8,
+                max_parallel: 2,
+            },
+        )
+        .await
+        .unwrap();
+    owner
+        .execute("DELETE FROM enrichedlab_agent.broker_candidate_grants", &[])
+        .await
+        .unwrap();
+    let candidate = coordinator
+        .claim_research_run_in("cand-a", 90, "candidate")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(candidate["run"]["run_id"], json!(candidate_run));
+    assert_eq!(candidate["run"]["lane"], "candidate");
+    assert!(
+        coordinator
+            .claim_research_run_in("cand-b", 90, "candidate")
+            .await
+            .unwrap()
+            .is_none()
+    );
     let claim = coordinator
         .claim_research_run("lead-a", 90)
         .await

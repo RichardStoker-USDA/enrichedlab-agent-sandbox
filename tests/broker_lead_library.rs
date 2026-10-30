@@ -1126,6 +1126,8 @@ async fn the_lead_reads_a_paper_whole_before_it_decides() {
         max_parallel: 1,
         worker_id: Some("reading-lead".into()),
         once: true,
+        run_lane: "accepted".into(),
+        lead_system_file: None,
         library_config_file: Some(dir.path().join("library.json")),
         lead_text_labs: vec!["pilot-lab".into()],
         lead_text_unreviewed_labs: vec!["pilot-lab".into()],
