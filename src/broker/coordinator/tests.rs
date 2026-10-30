@@ -4127,6 +4127,7 @@ fn replay_checks_a_candidate_call_against_the_system_text_it_sent() {
 #[test]
 fn a_models_lead_text_sets_its_input_floor_and_its_lead_budget() {
     use serde_json::json;
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let dir = tempfile::tempdir().unwrap();
     let write = |max_input: usize| {
         let path = dir.path().join(format!("model-{max_input}.json"));
@@ -4161,6 +4162,28 @@ fn a_models_lead_text_sets_its_input_floor_and_its_lead_budget() {
         model.lead_budget(),
         floor(long) - short.len() - super::REVIEW_RESERVE
     );
+    // A configured section may take at most half the lead budget the model's own text leaves: 12,000 literature bytes
+    // fit beside the compiled text in 65,536 bytes, not beside a 40,000-byte text.
+    let sections = dir.path().join("model-sections.json");
+    std::fs::write(
+        &sections,
+        json!({"schema_version": 1, "endpoint": "https://model.example.invalid/v1/chat/completions",
+            "model": "reasoner", "max_input_bytes": 65536, "max_output_tokens": 1024,
+            "context_window_tokens": 262144, "timeout_seconds": 30,
+            "sections": {"literature_bytes": 12000}})
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::set_permissions(
+        &sections,
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .unwrap();
+    let medium: &'static str = Box::leak("x".repeat(40_000).into_boxed_str());
+    assert!(65536 - SYSTEM.len() - super::REVIEW_RESERVE >= 2 * 12000);
+    assert!(65536 - medium.len() - super::REVIEW_RESERVE < 2 * 12000);
+    assert!(super::Model::load(&sections).is_ok());
+    assert!(super::Model::load_with(&sections, medium).is_err());
 }
 
 #[tokio::test]
