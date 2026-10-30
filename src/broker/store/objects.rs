@@ -21,6 +21,7 @@ pub struct TaskObjects {
 }
 
 /// What one attempt read and kept, or why it stopped.
+#[derive(Clone)]
 pub struct ObjectReceipt {
     pub status: &'static str,
     pub error_code: Option<String>,

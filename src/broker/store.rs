@@ -469,6 +469,9 @@ impl Store {
                  AND enrichedlab_agent.broker_schema_ready(63) \
                  AND enrichedlab_agent.broker_schema_ready(64) AND COALESCE(\
                  has_function_privilege(current_user, to_regprocedure(\
+                 'enrichedlab_agent.broker_research_run_object_methods(text,uuid,text,bigint)'),\
+                 'EXECUTE'), false) AND COALESCE(\
+                 has_function_privilege(current_user, to_regprocedure(\
                  'enrichedlab_agent.broker_research_run_analysis_catalog(text,uuid,text,bigint)'),\
                  'EXECUTE'), false) AND COALESCE(\
                  has_function_privilege(current_user, to_regprocedure(\

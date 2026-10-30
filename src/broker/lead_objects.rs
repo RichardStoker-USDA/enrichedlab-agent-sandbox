@@ -26,9 +26,10 @@ const SAMPLE_MAX: usize = 40;
 /// The private field that carries a method's collections with what the commit needs; the lead sees `objects`.
 pub const FOUND_FIELD: &str = "lab_objects";
 pub const NOTE: &str = "A step for this method names one collection by its ref and 1 to 20 files from that \
-     collection's sample, exactly as listed (\"objects\": {\"collection\": \"<ref>\", \"files\": [\"<name>\"]}). The \
-     worker keeps each file, checked against the collection's manifest; a delimited text file of at most 50,000 rows \
-     also becomes a table that a template analysis can read. You never see a file's contents.";
+     collection's sample, exactly as listed (\"objects\": {\"collection\": \"<ref>\", \"files\": [\"<name>\"]}), and \
+     nothing else a method takes. The worker keeps each file, checked against the collection's manifest; a delimited \
+     text file of at most 50,000 rows also becomes a table in analysis_source_tables once the step finishes, which a \
+     template analysis can read. You never see a file's contents.";
 
 /// The files a step of a lab objects method reads: a collection the method showed and names from its sample.
 #[derive(Debug, Clone, Serialize, Deserialize)]

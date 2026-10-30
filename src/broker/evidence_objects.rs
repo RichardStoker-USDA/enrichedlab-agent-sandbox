@@ -290,6 +290,21 @@ fn valid_key(key: &str) -> bool {
         })
 }
 
+/// A lab object's request path: the bucket, then each key byte outside the unreserved set encoded once, so `%`, `\`
+/// and dot spellings stay literal key bytes and never become path syntax (the URL library treats `%2e%2e` as `..` and
+/// `\` as `/` for https).
+fn object_path(bucket: &str, key: &str) -> String {
+    let mut out = format!("/{bucket}/");
+    for byte in key.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 /// A lab object's key: 1 to 1024 bytes, no control character, no leading `/`, no empty, `.` or `..` part.
 pub fn valid_object_key(key: &str) -> bool {
     (1..=1024).contains(&key.len())
@@ -495,8 +510,13 @@ impl S3Store {
         if version.is_some_and(|v| !valid_version(v)) {
             return Err(StoreError::Malformed("version id"));
         }
+        let path = object_path(bucket, key);
         let mut url = self.endpoint.clone();
-        url.set_path(&format!("/{bucket}/{key}"));
+        url.set_path(&path);
+        // The path the URL library keeps is the one signed and sent; it must be the literal key's encoding.
+        if url.path() != path || canonical_uri(url.path()) != path {
+            return Err(StoreError::Malformed("key"));
+        }
         if let Some(version) = version {
             url.query_pairs_mut().append_pair("versionId", version);
         }
@@ -691,6 +711,34 @@ mod tests {
             "/bucket/sha256/ab/abcd.zst"
         );
         assert!(valid_object_key("afri/raw/inputs/a b (1).csv"));
+        // Encoded dots and backslashes stay key bytes inside the bucket and the study's prefix.
+        for key in [
+            "study/raw/inputs/%2e%2e/%2e%2e/%2e%2e/%2e%2e/other-bucket/file.csv",
+            "study/raw/inputs/%2E./.%2e/x.csv",
+            "study/raw/inputs/..\\..\\..\\other-bucket\\file.csv",
+            "study/raw/inputs/a%2fb.csv",
+        ] {
+            assert!(valid_object_key(key), "{key:?}");
+            let path = object_path("bucket", key);
+            let mut url = Url::parse("https://store.example:9000/").unwrap();
+            url.set_path(&path);
+            assert_eq!(url.path(), path, "{key:?}");
+            assert_eq!(canonical_uri(url.path()), path, "{key:?}");
+            assert!(path.starts_with("/bucket/study/raw/inputs/"), "{path}");
+            assert_eq!(
+                path.matches('/').count(),
+                key.matches('/').count() + 2,
+                "{path}"
+            );
+            assert!(
+                !path.contains("%2e") && !path.contains("%2E") && !path.contains('\\'),
+                "{path}"
+            );
+        }
+        assert_eq!(
+            object_path("bucket", "afri/raw/inputs/a b (1).csv"),
+            "/bucket/afri/raw/inputs/a%20b%20%281%29.csv"
+        );
         for bad in ["", "/a", "a//b", "a/../b", "a/./b", "a\nb"] {
             assert!(!valid_object_key(bad), "{bad:?}");
         }

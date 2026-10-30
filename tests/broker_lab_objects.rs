@@ -82,6 +82,17 @@ async fn a_lab_objects_step_is_committed_read_by_its_lease_and_receipted() {
         .await
         .unwrap();
     worker.ready_for_lab_objects().await.unwrap();
+    // Without EXECUTE on the run's objects methods the coordinator is not ready.
+    owner
+        .batch_execute("REVOKE EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_object_methods(text,uuid,text,bigint) FROM broker_coordinator_qual")
+        .await
+        .unwrap();
+    assert!(coordinator.ready_for_research_results().await.is_err());
+    owner
+        .batch_execute("GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_object_methods(text,uuid,text,bigint) TO broker_coordinator_qual")
+        .await
+        .unwrap();
+    coordinator.ready_for_research_results().await.unwrap();
     // The route is request-only: no person's generic submission creates its tasks.
     let request_only: bool = owner
         .query_one(
@@ -242,6 +253,13 @@ async fn a_lab_objects_step_is_committed_read_by_its_lease_and_receipted() {
         ("lab-objects", Some(bad("files", json!(["a//b.csv"])))),
         ("lab-objects", Some(bad("files", json!(["a\nb.csv"])))),
         ("lab-objects", Some(bad("files", json!([7])))),
+        ("lab-objects", Some(bad("bucket", json!(true)))),
+        ("lab-objects", Some(bad("generation", json!(123)))),
+        ("lab-objects", Some(bad("collection", json!([COLLECTION])))),
+        (
+            "lab-objects",
+            Some(bad("manifest_sha256", json!({ "sha": MANIFEST }))),
+        ),
     ] {
         let refused = coordinator
             .commit_research_turn(
@@ -362,24 +380,43 @@ async fn a_lab_objects_step_is_committed_read_by_its_lease_and_receipted() {
         )
         .await
         .unwrap();
-    let other = ObjectReceipt {
-        files: Some(1),
-        ..receipt
-    };
-    assert_eq!(
-        worker
-            .record_object_receipt(
-                task,
-                "worker-a",
-                claimed.attempt,
-                claimed.lease_generation,
-                &other
-            )
-            .await
-            .unwrap_err()
-            .code,
-        "idempotency_conflict"
-    );
+    // Every recorded field counts: the file count, bytes, table facts and times.
+    let changed = [
+        ObjectReceipt {
+            files: Some(1),
+            ..receipt.clone()
+        },
+        ObjectReceipt {
+            bytes: Some(11),
+            ..receipt.clone()
+        },
+        ObjectReceipt {
+            tables: Some(
+                json!([{"path": "results/lab_data/afri/a_b__1_.csv", "rows": 3, "columns": 2}]),
+            ),
+            ..receipt.clone()
+        },
+        ObjectReceipt {
+            finished_at: now + time::Duration::seconds(1),
+            ..receipt.clone()
+        },
+    ];
+    for other in &changed {
+        assert_eq!(
+            worker
+                .record_object_receipt(
+                    task,
+                    "worker-a",
+                    claimed.attempt,
+                    claimed.lease_generation,
+                    other
+                )
+                .await
+                .unwrap_err()
+                .code,
+            "idempotency_conflict"
+        );
+    }
     drop(owner);
     connection.abort();
 }

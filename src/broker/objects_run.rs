@@ -33,9 +33,13 @@ use super::{
 pub const ROUTE: &str = "server-objects";
 const PACKAGE_LABEL: &str = "Lab files with their manifest rows";
 /// The largest manifest read; a lab's full copy of thousands of files writes a manifest well under this.
-const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
-/// What one step may read in all, so a package stays well inside the worker's memory.
-const MAX_STEP_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
+/// What one step may read in all, its manifest included. The step holds the files once (they move into the package),
+/// its converted tables (at most MAX_TABLE_BYTES), the compressed package and the digest's read of it, so its peak
+/// stays near four times this: about 300 MiB beside a 4 GiB server-route worker.
+const MAX_STEP_BYTES: u64 = 64 * 1024 * 1024;
+/// What one step's converted tables may hold in all; a file past it is kept as a file only.
+const MAX_TABLE_BYTES: usize = 64 * 1024 * 1024;
 /// A table an analysis can read: at most this many rows (`broker_check_analysis_request` takes 1 to 50,000).
 const MAX_TABLE_ROWS: usize = 50_000;
 const MAX_TABLE_COLUMNS: usize = 2_000;
@@ -227,9 +231,10 @@ async fn run(
     }
     let rows = rows_for(&manifest, &request.prefix, &request.files)?;
     let total: u64 = rows.iter().map(|r| r.size).sum();
-    if total > MAX_STEP_BYTES {
+    if within_budget(manifest.len() as u64, total).is_err() {
         return Err(refused("objects_too_large"));
     }
+    drop(manifest);
     let mut files = Vec::with_capacity(rows.len());
     for row in &rows {
         let bytes = s3
@@ -246,7 +251,7 @@ async fn run(
         files.push(bytes);
     }
     let (package, tables) =
-        package(task, request, &rows, &files).map_err(|_| failed("objects_package_failed"))?;
+        package(task, request, &rows, files).map_err(|_| failed("objects_package_failed"))?;
     retain(store, config, task, &package).await?;
     Ok(Done {
         files: rows.len() as i32,
@@ -381,23 +386,40 @@ fn table_path(row: &ManifestRow, taken: &mut BTreeSet<String>) -> String {
     path
 }
 
-/// A deterministic tar+gzip: sorted members, fixed owner, mode and time, so equal files give equal bytes.
+/// Whether a step's manifest and files fit its read budget.
+fn within_budget(manifest: u64, files: u64) -> Result<(), ()> {
+    match manifest.checked_add(files) {
+        Some(total) if total <= MAX_STEP_BYTES => Ok(()),
+        _ => Err(()),
+    }
+}
+
+/// A deterministic tar+gzip: sorted members, fixed owner, mode and time, so equal files give equal bytes. The files
+/// move into the package; converted tables stop at MAX_TABLE_BYTES in all.
 fn package(
     task: &ClaimedTask,
     request: &TaskObjects,
     rows: &[ManifestRow],
-    files: &[Vec<u8>],
+    files: Vec<Vec<u8>>,
 ) -> Result<(Vec<u8>, Value)> {
     let mut members: Vec<(String, Vec<u8>)> = Vec::new();
     let mut tables = Vec::new();
     let mut taken = BTreeSet::new();
+    let mut converted = 0usize;
     for (row, bytes) in rows.iter().zip(files) {
-        members.push((format!("input/objects/{}", row.key), bytes.clone()));
-        let Some(delimiter) = delimiter(&row.rel_path, bytes) else {
+        let Some(delimiter) = delimiter(&row.rel_path, &bytes) else {
+            members.push((format!("input/objects/{}", row.key), bytes));
             continue;
         };
-        match table(bytes, delimiter) {
+        let made = table(&bytes, delimiter);
+        members.push((format!("input/objects/{}", row.key), bytes));
+        let made = match made {
+            Ok((csv, ..)) if converted + csv.len() > MAX_TABLE_BYTES => Err("tables_budget"),
+            other => other,
+        };
+        match made {
             Ok((csv, rows_n, columns)) => {
+                converted += csv.len();
                 let path = table_path(row, &mut taken);
                 tables.push(
                     json!({"path": path, "source_key": row.key, "rows": rows_n, "columns": columns,

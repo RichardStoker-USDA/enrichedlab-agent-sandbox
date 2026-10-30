@@ -114,7 +114,9 @@ BEGIN
   WHERE tenant_id = p_tenant AND task_id = p_task AND attempt = p_attempt AND lease_generation = p_generation;
   IF FOUND THEN
     IF v.status IS DISTINCT FROM p_status OR v.error_code IS DISTINCT FROM p_error OR v.files IS DISTINCT FROM p_files
-      OR v.package_sha256 IS DISTINCT FROM p_package_sha256 THEN
+      OR v.bytes IS DISTINCT FROM p_bytes OR v.tables IS DISTINCT FROM p_tables
+      OR v.package_sha256 IS DISTINCT FROM p_package_sha256 OR v.started_at IS DISTINCT FROM p_started
+      OR v.finished_at IS DISTINCT FROM p_finished THEN
       RAISE EXCEPTION USING ERRCODE = '23505', MESSAGE = 'broker:idempotency_conflict';
     END IF;
   ELSE
@@ -319,6 +321,8 @@ BEGIN
       IF EXISTS (SELECT 1 FROM jsonb_object_keys(ob) k WHERE k NOT IN ('collection','bucket','prefix','generation',
           'manifest_sha256','files'))
         OR NOT (ob ?& ARRAY['collection','bucket','prefix','generation','manifest_sha256','files'])
+        OR EXISTS (SELECT 1 FROM unnest(ARRAY['collection','bucket','prefix','generation','manifest_sha256']) k
+          WHERE jsonb_typeof(ob->k) IS DISTINCT FROM 'string')
         OR (ob->>'collection') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         OR (ob->>'bucket') !~ '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
         OR (ob->>'prefix') !~ '^[a-z0-9_-]{1,64}/[a-z0-9_-]{1,64}/[a-z0-9_-]{1,64}/$'

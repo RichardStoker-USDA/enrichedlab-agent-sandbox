@@ -125,7 +125,7 @@ fn a_package_keeps_every_file_and_its_tables_list_without_cells() {
         &task(),
         &request(&["counts.csv", "plot.png"]),
         &rows,
-        &[counts.to_vec(), image.to_vec()],
+        vec![counts.to_vec(), image.to_vec()],
     )
     .unwrap();
     assert_eq!(tables.as_array().unwrap().len(), 1);
@@ -135,7 +135,7 @@ fn a_package_keeps_every_file_and_its_tables_list_without_cells() {
         &task(),
         &request(&["counts.csv", "plot.png"]),
         &rows,
-        &[counts.to_vec(), image.to_vec()],
+        vec![counts.to_vec(), image.to_vec()],
     )
     .unwrap();
     assert_eq!(kept, again);
@@ -174,9 +174,17 @@ fn two_files_with_one_name_get_two_table_paths() {
         &task(),
         &request(&["one/t.csv", "two/t.csv"]),
         &rows,
-        &[a.to_vec(), a.to_vec()],
+        vec![a.to_vec(), a.to_vec()],
     )
     .unwrap();
     assert_eq!(tables[0]["path"], "results/lab_data/afri/t.csv");
     assert_eq!(tables[1]["path"], "results/lab_data/afri/t_2.csv");
+}
+
+#[test]
+fn the_read_budget_counts_the_manifest() {
+    assert!(within_budget(0, MAX_STEP_BYTES).is_ok());
+    assert!(within_budget(1, MAX_STEP_BYTES).is_err());
+    assert!(within_budget(MAX_MANIFEST_BYTES, MAX_STEP_BYTES - MAX_MANIFEST_BYTES).is_ok());
+    assert!(within_budget(u64::MAX, 1).is_err());
 }
