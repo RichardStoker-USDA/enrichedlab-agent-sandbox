@@ -1,2 +1,5 @@
 # Reviewed blobs the public-boundary history scan accepts: blob id, then the path it had. A new or edited file is a new
 # blob, so it is scanned again. Drop a line once no reachable commit holds the blob.
+8e78e52877de02e83f35f82afbe04909451aa488 src/broker/coordinator/prose_names_tests.rs
+f440c415b72b1d5d177597977d87ce9884035d43 src/broker/coordinator/prose_names_tests.rs
+a21ac7983ce761c852fa831499e6ecfa508087ec src/broker/coordinator/prose_names_tests.rs

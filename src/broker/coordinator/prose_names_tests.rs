@@ -631,8 +631,7 @@ fn a_source_adds_an_identifier_only_where_its_number_stands_after_the_label() {
 }
 
 /// An identifier never becomes a quantity: a unit, a percent sign or another number after a space ends it, on the side
-/// of the source and of the reply; and a label joined to another word by an underscore or hyphen labels nothing (both
-/// reviewers of broker r35, round 1).
+/// of the source and of the reply; and a label joined to another word by an underscore or hyphen labels nothing.
 #[test]
 fn a_unit_after_a_space_or_a_joined_label_makes_no_identifier() {
     let index = named(
