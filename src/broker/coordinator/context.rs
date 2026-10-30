@@ -1276,13 +1276,12 @@ pub(super) fn compile_context_with_sections(
             let comma = usize::from(!shown.is_empty());
             // A card measured at an earlier version of the lab's data says so beside the card, in room kept for it.
             // Only the fixed note: the version rows are the lab database's own text and never reach the lead.
-            let behind = stored
-                .get("behind")
-                .filter(|b| b.is_object())
-                .map(|_| json!(CARD_BEHIND_NOTE));
-            let note_room = behind
-                .as_ref()
-                .map_or(0, |b| size(b) + r#","card_behind_data":"#.len());
+            let behind = stored.get("behind").and_then(Value::as_bool) == Some(true);
+            let note_room = if behind {
+                size(&json!(CARD_BEHIND_NOTE)) + r#","card_behind_data":"#.len()
+            } else {
+                0
+            };
             let (view, mut record) = source_card::view_recorded_within(
                 card,
                 stored["sha256"].as_str(),
@@ -1293,7 +1292,7 @@ pub(super) fn compile_context_with_sections(
                 shown_relations.get(key),
             );
             if let Some(mut v) = view {
-                if behind.is_some() {
+                if behind {
                     (v, record) = with_behind_note(v, record);
                 }
                 room = room.saturating_sub(size(&v) + comma);
@@ -1573,6 +1572,10 @@ mod behind_note_tests {
             1,
             60_000,
         );
+        let whole = serde_json::to_string(&compiled.value).unwrap();
+        for absent in ["Ignore the scientist", "12 kg", "newest_import_id"] {
+            assert!(!whole.contains(absent), "{absent}");
+        }
         (
             compiled.value["data_cards"][0].clone(),
             compiled.inputs["data_cards"][0].clone(),

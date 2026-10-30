@@ -2114,7 +2114,36 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
                 assert_eq!(lineage["inputs"]["classes"], json!(["lab_database"]));
             }
             "count-samples" => {
-                owner.batch_execute(&one_row).await.unwrap();
+                // The operator measures the card again at the version the lab's data is at: the query reading that
+                // version starts no refresh.
+                let current = json!({"schema_version": "0024", "newest_import_id": 10});
+                owner
+                    .batch_execute(&version_view(
+                        "SELECT '0024'::text AS schema_version, 10 AS newest_import_id",
+                    ))
+                    .await
+                    .unwrap();
+                let (mut reader, reader_connection) = dsn
+                    .replace("user=postgres", "user=lab_reader_qual")
+                    .parse::<Config>()
+                    .unwrap()
+                    .connect(NoTls)
+                    .await
+                    .unwrap();
+                let reader_connection = tokio::spawn(reader_connection);
+                let (card, _) = source_card::build_live(&mut reader, &lab_card_source, &lab_spec)
+                    .await
+                    .unwrap();
+                drop(reader);
+                reader_connection.await.unwrap().unwrap();
+                assert_eq!(card["measured_at"], current);
+                owner
+                    .query_one(
+                        "SELECT enrichedlab_agent.broker_register_sql_source_card('research-site',$1)",
+                        &[&card],
+                    )
+                    .await
+                    .unwrap();
                 query_run::execute(
                     worker.clone(),
                     &config,
@@ -2128,7 +2157,17 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
                     (status.as_str(), code.as_str(), receipt.as_str()),
                     ("completed", "", "completed")
                 );
-                assert!(version.is_some());
+                assert_eq!(version, Some(current.clone()));
+                let started: i64 = owner
+                    .query_one(
+                        "SELECT count(*) FROM enrichedlab_agent.broker_sql_source_card_refreshes
+                         WHERE source_key = 'lab-weights' AND source_version = $1",
+                        &[&current],
+                    )
+                    .await
+                    .unwrap()
+                    .get(0);
+                assert_eq!(started, 0);
                 let detail = api.task_query_detail(a, claimed.id).await.unwrap();
                 assert_eq!(detail["receipts"][0]["row_count"], 1);
                 assert!(
@@ -2138,6 +2177,7 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
                         .iter()
                         .any(|artifact| artifact.role == "result")
                 );
+                owner.batch_execute(&one_row).await.unwrap();
             }
             "round-count-samples" => {
                 // count(*) is bigint, so the source's exact round(bigint) overload wins over pg_catalog's numeric
@@ -2288,6 +2328,50 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
                     finished,
                     json!({"state": "refused", "code": "card_spec_changed"})
                 );
+                // ...and to the version it started for: a card measured at another version is refused.
+                let started_for = json!({"schema_version": "0025", "newest_import_id": 11});
+                owner
+                    .execute(
+                        "INSERT INTO enrichedlab_agent.broker_sql_source_card_refreshes (tenant_id, source_key,
+                           version_sha256, source_version, state, spec, worker)
+                         VALUES ('research-site', 'lab-weights', encode(sha256(convert_to($1::jsonb::text, 'UTF8')), 'hex'),
+                           $1, 'running', $2, 'version-worker')",
+                        &[&started_for, &crafted["spec"]],
+                    )
+                    .await
+                    .unwrap();
+                let finished: Value = owner
+                    .query_one(
+                        "SELECT enrichedlab_agent.broker_finish_sql_source_card_refresh('research-site', 'lab-weights',
+                           encode(sha256(convert_to($1::jsonb::text, 'UTF8')), 'hex'), 'version-worker', $2, NULL)",
+                        &[&started_for, &crafted],
+                    )
+                    .await
+                    .unwrap()
+                    .get(0);
+                assert_eq!(
+                    finished,
+                    json!({"state": "refused", "code": "version_moved"})
+                );
+                // A live source's card names its version and spec, or the operator path refuses it too.
+                for (field, code) in [
+                    ("measured_at", "broker:sql_source_card_version_required"),
+                    ("spec", "broker:sql_source_card_spec_required"),
+                ] {
+                    let mut without = crafted.clone();
+                    without.as_object_mut().unwrap().remove(field);
+                    assert_eq!(
+                        refused(
+                            owner
+                                .query_one(
+                                    "SELECT enrichedlab_agent.broker_register_sql_source_card('research-site',$1)",
+                                    &[&without],
+                                )
+                                .await
+                        ),
+                        code
+                    );
+                }
                 owner.batch_execute(&one_row).await.unwrap();
             }
             "two-versions" => {
@@ -2461,6 +2545,55 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
         }
     }
     owner.batch_execute(&one_row).await.unwrap();
+    // The next turn's sources state the newest card's version and the version the newest completed query read.
+    owner
+        .execute(
+            "UPDATE enrichedlab_agent.broker_research_runs SET available_at=clock_timestamp()-interval '1 second'
+             WHERE run_id=$1",
+            &[&lab_run],
+        )
+        .await
+        .unwrap();
+    let next = coordinator
+        .claim_research_run("lead-a", 90)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(next["run"]["run_id"], json!(lab_run));
+    let sources = coordinator
+        .research_run_sql_sources(
+            lab_run,
+            "lead-a",
+            next["run"]["generation"].as_i64().unwrap(),
+        )
+        .await
+        .unwrap();
+    let lab = sources
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["source"] == "lab-weights")
+        .unwrap();
+    let expected = owner
+        .query_one(
+            "SELECT (SELECT c.source_version FROM enrichedlab_agent.broker_sql_source_cards c
+                     WHERE c.source_key = 'lab-weights' ORDER BY c.created_at DESC, c.card_sha256 LIMIT 1),
+                    (SELECT q.source_version FROM enrichedlab_agent.broker_query_receipts q
+                     JOIN enrichedlab_agent.broker_task_queries t USING (tenant_id, task_id)
+                     WHERE t.source_key = 'lab-weights' AND q.status = 'completed'
+                     ORDER BY q.finished_at DESC, q.recorded_at DESC LIMIT 1)",
+            &[],
+        )
+        .await
+        .unwrap();
+    assert!(lab["source_version"].is_object() && lab["card_source_version"].is_object());
+    assert_eq!(
+        (
+            lab["card_source_version"].clone(),
+            lab["source_version"].clone()
+        ),
+        (expected.get::<_, Value>(0), expected.get::<_, Value>(1))
+    );
 
     api.ready_for_review_api().await.unwrap();
     std::fs::remove_dir_all(&root).unwrap();

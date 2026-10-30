@@ -66,14 +66,10 @@ pub struct QuerySource {
 }
 
 impl QuerySource {
-    /// When the card was measured at another version of the lab's data than the newest completed query read: both
-    /// version rows, as the databases stated them. `None` while either is unknown or they match.
-    pub(super) fn card_behind(&self) -> Option<Value> {
-        let (card, data) = (
-            self.card_source_version.as_ref()?,
-            self.source_version.as_ref()?,
-        );
-        (card != data).then(|| json!({"card_measured_at": card, "data_now_at": data}))
+    /// Whether the card was measured at another version of the lab's data than the newest completed query read. False
+    /// while either is unknown. The version rows themselves stay here: they are the lab database's text.
+    pub(super) fn card_behind(&self) -> bool {
+        matches!((&self.card_source_version, &self.source_version), (Some(card), Some(data)) if card != data)
     }
 
     pub(super) fn relation_names(&self) -> BTreeSet<String> {
@@ -365,8 +361,8 @@ pub fn with_query_sources(profiles: &Value, sources: &HashMap<String, QuerySourc
             }
             if let Some(card) = source.card.as_ref().filter(|c| c.is_object()) {
                 method["query_card"] = json!({"card": card, "sha256": source.card_sha256});
-                if let Some(behind) = source.card_behind() {
-                    method["query_card"]["behind"] = behind;
+                if source.card_behind() {
+                    method["query_card"]["behind"] = json!(true);
                 }
             }
         }
@@ -425,21 +421,19 @@ mod card_version_tests {
             json!({"newest_import_id": 4}),
             json!({"newest_import_id": 5}),
         );
-        assert!(source(None, None).card_behind().is_none());
-        assert!(source(Some(old.clone()), None).card_behind().is_none());
-        assert!(source(None, Some(new.clone())).card_behind().is_none());
-        assert!(
-            source(Some(new.clone()), Some(new.clone()))
-                .card_behind()
-                .is_none()
-        );
-        assert_eq!(
-            source(Some(old.clone()), Some(new.clone())).card_behind(),
-            Some(json!({"card_measured_at": old, "data_now_at": new}))
-        );
+        assert!(!source(None, None).card_behind());
+        assert!(!source(Some(old.clone()), None).card_behind());
+        assert!(!source(None, Some(new.clone())).card_behind());
+        assert!(!source(Some(new.clone()), Some(new.clone())).card_behind());
+        assert!(source(Some(old.clone()), Some(new.clone())).card_behind());
         let sources = HashMap::from([("lab".to_owned(), source(Some(old), Some(new)))]);
         let methods = with_query_sources(&json!([{"key": "lab"}]), &sources);
-        assert!(methods[0]["query_card"]["behind"].is_object());
+        assert_eq!(methods[0]["query_card"]["behind"], true);
+        assert!(
+            !serde_json::to_string(&methods)
+                .unwrap()
+                .contains("newest_import_id")
+        );
         let current = HashMap::from([("lab".to_owned(), source(None, Some(json!({}))))]);
         assert!(
             with_query_sources(&json!([{"key": "lab"}]), &current)[0]["query_card"]
