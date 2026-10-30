@@ -274,7 +274,10 @@ fn a_result_that_failed_its_step_check_is_no_analysis_source() {
     assert!(!sources(&failed).contains(&TABLE.to_owned()));
     let refused = failed.check(&lead_reply(TABLE, welch())).err().unwrap();
     assert_eq!(refusal(&refused).reason, "proposal_analysis_table_unknown");
-    assert_eq!(refusal(&refused).names, ["compare", "rank-foods", TABLE]);
+    assert_eq!(
+        refusal(&refused).names,
+        ["compare", "rank-foods", TABLE, "analysis: group_compare"]
+    );
 }
 
 #[test]
@@ -325,11 +328,23 @@ fn the_lead_sees_the_analyses_and_its_choice_is_checked_as_the_coordinator_check
     said["actions"][0]["title"] = json!("Compare foods by Gene488 rows a group");
     let refused = turn.check(&said).err().unwrap();
     assert_eq!(refused.to_string(), "proposal_prose_number");
-    assert_eq!(refusal(&refused).names, ["actions.title: 488"]);
+    assert_eq!(
+        refusal(&refused).names,
+        [
+            "actions.title: 488",
+            "where actions.title: Compare foods by Gene<<488>> rows a group"
+        ]
+    );
     let mut said = lead_reply(TABLE, welch());
     said["lessons"] = json!([{"statement": "A group may hold 487 rows.", "kind": "hypothesis", "evidence_refs": []}]);
     let refused = turn.check(&said).err().unwrap();
-    assert_eq!(refusal(&refused).names, ["lessons.statement: 487"]);
+    assert_eq!(
+        refusal(&refused).names,
+        [
+            "lessons.statement: 487",
+            "where lessons.statement: A group may hold <<487>> rows."
+        ]
+    );
     // The offline scorer rebuilds the same index from the kept context, setting numbers included.
     let (offline, _) = ResultIndex::from_context(&turn.compiled.value, &turn.methods).unwrap();
     assert_eq!(offline, turn.compiled.index);
@@ -338,7 +353,10 @@ fn the_lead_sees_the_analyses_and_its_choice_is_checked_as_the_coordinator_check
         .err()
         .unwrap();
     assert_eq!(wide.to_string(), "proposal_analysis_table_unsuitable");
-    assert_eq!(refusal(&wide).names, ["compare", "results/wide.csv"]);
+    assert_eq!(
+        refusal(&wide).names,
+        ["compare", "results/wide.csv", "analysis: group_compare"]
+    );
 
     // The step carries the analysis, and its request digest names it, so another analysis under the same step is
     // another request.

@@ -380,5 +380,11 @@ fn a_step_may_state_its_own_sql_literals_through_the_lead_check() {
     // A number inside a name nothing shows is still refused.
     let error = check("Keep nutrient Gene1003 above 25.").err().unwrap();
     assert_eq!(refusal(&error).reason, "proposal_prose_number");
-    assert_eq!(refusal(&error).names, ["actions.rationale: 1003"]);
+    assert_eq!(
+        refusal(&error).names,
+        [
+            "actions.rationale: 1003",
+            "where actions.rationale: Keep nutrient Gene<<1003>> above 25."
+        ]
+    );
 }

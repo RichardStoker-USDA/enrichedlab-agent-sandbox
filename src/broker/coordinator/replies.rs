@@ -54,6 +54,15 @@ impl std::fmt::Display for CodeRefused {
 
 impl std::error::Error for CodeRefused {}
 
+/// The faults a refusal names, without the names that only guide the next call: where a refused number stood (`where `)
+/// and the fields an object allows (`allowed:`), both added in r38. Counts recorded before r38 stay comparable.
+pub fn fault_count(names: &[String]) -> usize {
+    names
+        .iter()
+        .filter(|n| !n.starts_with("where ") && !n.starts_with("allowed:"))
+        .count()
+}
+
 /// What the next lead call learns from a deferred turn: the fixed reason, and the
 /// refused names when admission refused its code.
 pub fn refusal(error: &anyhow::Error) -> Refusal {

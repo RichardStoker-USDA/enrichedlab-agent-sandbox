@@ -42,6 +42,7 @@ fn request(files: &[&str]) -> TaskObjects {
         generation: "g20261030-afri-2".into(),
         manifest_sha256: "c".repeat(64),
         files: files.iter().map(|f| (*f).to_owned()).collect(),
+        columns: Vec::new(),
         request_sha256: "d".repeat(64),
     }
 }
@@ -91,19 +92,19 @@ fn delimited_files_become_tables_within_their_bounds() {
     assert_eq!(delimiter("a.txt", b"a\tb\n1\t2"), Some(b'\t'));
     assert_eq!(delimiter("a.txt", b"plain words\n"), None);
     assert_eq!(delimiter("a.npy", b"\x93NUMPY"), None);
-    let (csv, rows, columns) = table(b"gene\tcount\nA,1\t5\nB\t\"7\"\n", b'\t').unwrap();
+    let (csv, rows, columns) = table(b"gene\tcount\nA,1\t5\nB\t\"7\"\n", b'\t', &[]).unwrap();
     assert_eq!((rows, columns), (2, 2));
     assert_eq!(
         String::from_utf8(csv).unwrap(),
         "gene,count\n\"A,1\",5\nB,7\n"
     );
-    assert_eq!(table(b"a,b\n1\n", b',').unwrap_err(), "ragged");
-    assert_eq!(table(b"a,b\n", b',').unwrap_err(), "no_rows");
+    assert_eq!(table(b"a,b\n1\n", b',', &[]).unwrap_err(), "ragged");
+    assert_eq!(table(b"a,b\n", b',', &[]).unwrap_err(), "no_rows");
     let mut many = b"n\n".to_vec();
     for i in 0..=MAX_TABLE_ROWS {
         many.extend_from_slice(format!("{i}\n").as_bytes());
     }
-    assert_eq!(table(&many, b',').unwrap_err(), "too_many_rows");
+    assert_eq!(table(&many, b',', &[]).unwrap_err(), "too_many_rows");
 }
 
 #[test]
@@ -187,4 +188,30 @@ fn the_read_budget_counts_the_manifest() {
     assert!(within_budget(1, MAX_STEP_BYTES).is_err());
     assert!(within_budget(MAX_MANIFEST_BYTES, MAX_STEP_BYTES - MAX_MANIFEST_BYTES).is_ok());
     assert!(within_budget(u64::MAX, 1).is_err());
+}
+
+#[test]
+fn a_step_keeps_only_the_columns_it_names_in_their_order() {
+    let names = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    let src = b"id,a,b,c\n1,x,2,y\n3,z,4,w\n";
+    let (csv, rows, columns) = table(src, b',', &names(&["c", "id"])).unwrap();
+    assert_eq!((rows, columns), (2, 2));
+    assert_eq!(csv, b"c,id\ny,1\nw,3\n");
+    // No names keeps every column, as before.
+    let (csv, _, columns) = table(src, b',', &[]).unwrap();
+    assert_eq!((columns, csv.as_slice()), (4, &src[..]));
+    // A named column the header lacks, or holds twice, keeps the file as a file only.
+    assert_eq!(
+        table(src, b',', &names(&["id", "missing"])).unwrap_err(),
+        "columns_missing"
+    );
+    assert_eq!(
+        table(b"a,a,b\n1,2,3\n", b',', &names(&["a"])).unwrap_err(),
+        "columns_ambiguous"
+    );
+    // A ragged file is refused whatever it keeps.
+    assert_eq!(
+        table(b"a,b\n1,2\n3\n", b',', &names(&["a"])).unwrap_err(),
+        "ragged"
+    );
 }

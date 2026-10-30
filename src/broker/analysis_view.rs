@@ -311,12 +311,26 @@ fn result_path(word: &str) -> bool {
             .is_some_and(|(_, name)| name.contains('.'))
 }
 
-/// The analyses the lead named in a reply refused for `CONTRACT_NOT_SHOWN`: the refusal's names after the step's key.
+/// The name a refused template step adds once its analysis's contract was shown, so the next call shows it again.
+pub const FOCUS_NAME: &str = "analysis: ";
+
+/// The analyses the next call shows first after a refusal: those a reply named for `CONTRACT_NOT_SHOWN` (the names
+/// after the step's key), or, for any other template-step refusal, the analysis whose contract the step had read.
+/// Before r38 only the first kind counted, so an analysis refused for its table dropped back to `other_analyses` and the
+/// next reply was refused for not having seen it (October 30 objects canary, generations 7 to 9).
 pub fn focus_of(reason: &str, names: &[String]) -> Vec<String> {
-    if reason != CONTRACT_NOT_SHOWN {
-        return Vec::new();
+    if reason == CONTRACT_NOT_SHOWN {
+        return names.iter().skip(1).take(4).cloned().collect();
     }
-    names.iter().skip(1).take(4).cloned().collect()
+    if reason.starts_with("proposal_analysis_") {
+        return names
+            .iter()
+            .filter_map(|n| n.strip_prefix(FOCUS_NAME))
+            .take(4)
+            .map(str::to_owned)
+            .collect();
+    }
+    Vec::new()
 }
 
 #[cfg(test)]
@@ -496,6 +510,31 @@ mod tests {
                 "Compares a value between two groups and writes results/results.csv. Welch or Wilcoxon."
             ),
             "Compares a value between two groups and writes"
+        );
+    }
+
+    #[test]
+    fn a_refused_step_keeps_its_analysis_in_focus_whatever_the_refusal() {
+        let names = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            focus_of(CONTRACT_NOT_SHOWN, &names(&["step", "summary_stats"])),
+            names(&["summary_stats"])
+        );
+        assert_eq!(
+            focus_of(
+                "proposal_analysis_table_unsuitable",
+                &names(&["step", "results/wide.csv", "analysis: summary_stats"])
+            ),
+            names(&["summary_stats"])
+        );
+        // A refusal before the contract was read names no analysis, and other codes never focus.
+        assert!(focus_of("proposal_analysis_feature_unknown", &names(&["step", "x"])).is_empty());
+        assert!(
+            focus_of(
+                "proposal_schema_invalid",
+                &names(&["analysis: summary_stats"])
+            )
+            .is_empty()
         );
     }
 }

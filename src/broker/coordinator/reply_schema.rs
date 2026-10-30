@@ -193,16 +193,28 @@ pub(super) fn check_fields(value: &Value, fields: Fields, at: &str, names: &mut 
             _ => {}
         }
     }
+    let mut unexpected = false;
     for key in object.keys() {
         if !fields.iter().any(|(field, _, _)| field == key) {
             names.insert(format!("unexpected:{}", path(field_name(key))));
+            unexpected = true;
         }
+    }
+    // The fields this object may carry, so the next call can move or drop the field rather than guess (October 30:
+    // `unexpected:actions.expect.rows.basis` was the whole refusal).
+    if unexpected {
+        let allowed: Vec<&str> = fields.iter().map(|(field, _, _)| *field).collect();
+        names.insert(format!(
+            "allowed:{}: {}",
+            if at.is_empty() { "reply" } else { at },
+            allowed.join(", ")
+        ));
     }
 }
 
 /// Why a lead reply does not fit the proposal's shape, named by its fields: `missing:<field>`, `invalid:<field>` (a
-/// value of the wrong kind) and `unexpected:<field>` (a field the shape does not have), nested fields written as
-/// `actions.<field>`. The next lead call reads them; unlike refused code names they are only field names, so the
+/// value of the wrong kind) and `unexpected:<field>` (a field the shape does not have) with `allowed:<object>: <fields>`
+/// for the object that held it, nested fields written as `actions.<field>`. The next lead call reads them; unlike refused code names they are only field names, so the
 /// deferred turn's log line carries them too. Empty when every field fits, which leaves the fixed reason alone.
 pub fn proposal_schema_names(value: &Value) -> Vec<String> {
     let mut names = BTreeSet::new();

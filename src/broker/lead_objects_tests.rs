@@ -216,3 +216,58 @@ fn a_digest_changes_with_the_files() {
     .unwrap();
     assert_ne!(one["counts"].sha256(), two["counts"].sha256());
 }
+
+#[test]
+fn a_step_may_keep_named_columns_and_records_them_only_when_named() {
+    let (methods, context) = methods_and_context();
+    let collection = format!("knowledge://{ID}");
+    let step = |objects: Value| action("lab-objects-example", Some(objects), None);
+    let admitted = admit(
+        &[step(
+            json!({"collection": collection, "files": ["dir/c.tsv"], "columns": ["gene", "count"]}),
+        )],
+        &methods,
+        &context,
+    )
+    .unwrap();
+    let kept = &admitted["counts"];
+    assert_eq!(kept.record()["columns"], json!(["gene", "count"]));
+    // Without columns the record and its digest are exactly r37's.
+    let plain = admit(
+        &[step(
+            json!({"collection": collection, "files": ["dir/c.tsv"]}),
+        )],
+        &methods,
+        &context,
+    )
+    .unwrap();
+    assert!(plain["counts"].record().get("columns").is_none());
+    assert_ne!(plain["counts"].sha256(), kept.sha256());
+    let code = |objects: Value| admit(&[step(objects)], &methods, &context).unwrap_err();
+    let too_many: Vec<String> = (0..=COLUMNS_MAX).map(|i| format!("c{i}")).collect();
+    for (columns, name) in [
+        (
+            json!(too_many),
+            format!("columns: {} of at most {COLUMNS_MAX}", COLUMNS_MAX + 1),
+        ),
+        (json!(["a", "a"]), "column 2: named twice".to_owned()),
+        (
+            json!(["a", ""]),
+            format!("column 2: 1 to {COLUMN_BYTES} bytes, no control character"),
+        ),
+        (
+            json!(["a\nb"]),
+            format!("column 1: 1 to {COLUMN_BYTES} bytes, no control character"),
+        ),
+        (
+            json!(["x".repeat(COLUMN_BYTES + 1)]),
+            format!("column 1: 1 to {COLUMN_BYTES} bytes, no control character"),
+        ),
+    ] {
+        let refused =
+            code(json!({"collection": collection, "files": ["dir/c.tsv"], "columns": columns}));
+        assert_eq!(refused.code, "proposal_objects_columns_invalid");
+        assert_eq!(refused.names.last().unwrap(), &name);
+    }
+    assert!(column_name(&"x".repeat(COLUMN_BYTES)));
+}

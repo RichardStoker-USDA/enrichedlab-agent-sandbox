@@ -8,16 +8,35 @@ use enrichedlab_agent_sandbox::broker::{
         context_literature, finding_fault_counts, fit_methods_review, knowledge_hits,
         lead_system_bytes, method_review_context, methods_view, newest_tasks, own_query_views,
         past_research_tasks, plan_archive_keys, profile_configurations, profile_templates,
-        project_tasks, proposal_schema_names, query_step_shape, read_reply, reconcile, refusal,
-        refused_numbers, rejection_reason, repeated_queries, requires_execution_review,
-        review_input_bytes, review_outcome, review_targets, unreadable_reply, with_archived_page,
-        with_prior_attempt, with_unreadable_note,
+        project_tasks, proposal_schema_names as schema_names_with_guidance, query_step_shape,
+        read_reply, reconcile, refusal as refusal_with_guidance, refused_numbers, rejection_reason,
+        repeated_queries, requires_execution_review, review_input_bytes, review_outcome,
+        review_targets, unreadable_reply, with_archived_page, with_prior_attempt,
+        with_unreadable_note,
     },
     model::SubmitTaskRequest,
     model::{PrincipalClass, VerifiedIdentity},
     project::{CheckpointRequest, CreateProject, ResearchState, Visibility},
     store::{Store, StoreErrorKind},
 };
+
+/// The refused fields and tokens, without the names that only guide the next call (r38: `where ` places of refused
+/// numbers, `allowed:` field lists); those have their own unit tests.
+fn guidance(name: &str) -> bool {
+    name.starts_with("where ") || name.starts_with("allowed:")
+}
+
+fn refusal(error: &anyhow::Error) -> Refusal {
+    let mut r = refusal_with_guidance(error);
+    r.names.retain(|n| !guidance(n));
+    r
+}
+
+fn proposal_schema_names(value: &serde_json::Value) -> Vec<String> {
+    let mut names = schema_names_with_guidance(value);
+    names.retain(|n| !guidance(n));
+    names
+}
 use serde_json::json;
 use std::{
     collections::{HashMap, HashSet},
@@ -6473,7 +6492,10 @@ fn a_methods_check_sends_a_proposal_back_with_checked_findings_within_the_budget
         ),
         (
             "method_review_prose_number",
-            vec!["finding 1: 42".to_owned()]
+            vec![
+                "finding 1: 42".to_owned(),
+                "where finding 1: The table shows Gene<<42>> foods.".to_owned()
+            ]
         )
     );
     // A proceed that lists findings is refused, so no finding is dropped unread; an unknown field still

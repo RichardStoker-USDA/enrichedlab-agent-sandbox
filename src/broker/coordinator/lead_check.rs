@@ -338,6 +338,13 @@ pub fn rejection_reason(error: &str) -> &'static str {
         "read_rounds_spent" => "read_rounds_spent",
         "proposal_step_expect_missing" => "proposal_step_expect_missing",
         "proposal_step_expect_invalid" => "proposal_step_expect_invalid",
+        // Lab objects steps (migration 083); r37 left these out, so each reached the lead as coordinator_internal.
+        "proposal_objects_unexpected" => "proposal_objects_unexpected",
+        "proposal_objects_missing" => "proposal_objects_missing",
+        "proposal_objects_collection_unknown" => "proposal_objects_collection_unknown",
+        "proposal_objects_files_invalid" => "proposal_objects_files_invalid",
+        "proposal_objects_file_unknown" => "proposal_objects_file_unknown",
+        "proposal_objects_columns_invalid" => "proposal_objects_columns_invalid",
         code if code.starts_with("code_") => codegen::event_code(code),
         code if code.starts_with("sql_refused") => sql_guard::code(code),
         _ => "coordinator_internal",

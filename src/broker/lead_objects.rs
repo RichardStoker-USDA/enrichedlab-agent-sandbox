@@ -19,6 +19,10 @@ use uuid::Uuid;
 pub const ROUTE: &str = super::objects_run::ROUTE;
 /// The files one step may name (`broker_object_requests` holds 1 to 20).
 pub const FILES_MAX: usize = 20;
+/// The columns one step may keep: a template analysis reads 1 to 64 (`broker_check_analysis_request`).
+pub const COLUMNS_MAX: usize = 64;
+/// A kept column's name, at most this many bytes.
+pub const COLUMN_BYTES: usize = 128;
 /// The collections one call shows.
 const COLLECTIONS_MAX: usize = 8;
 /// The file names one collection shows: the index keeps a sample capped by its locator, at most this many here.
@@ -29,7 +33,10 @@ pub const NOTE: &str = "A step for this method names one collection by its ref a
      collection's sample, exactly as listed (\"objects\": {\"collection\": \"<ref>\", \"files\": [\"<name>\"]}), and \
      nothing else a method takes. The worker keeps each file, checked against the collection's manifest; a delimited \
      text file of at most 50,000 rows also becomes a table in analysis_source_tables once the step finishes, which a \
-     template analysis can read. You never see a file's contents.";
+     template analysis can read when it has at most 64 columns. For a wider table, read the file again with \
+     \"columns\": [\"<name>\"] beside its files: 1 to 64 column names exactly as analysis_source_tables listed them, \
+     and each table the step reads keeps only those columns, in that order (a table missing one stays a file only). \
+     You never see a file's contents.";
 
 /// The files a step of a lab objects method reads: a collection the method showed and names from its sample.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +44,9 @@ pub const NOTE: &str = "A step for this method names one collection by its ref a
 pub struct ObjectsChoice {
     pub collection: String,
     pub files: Vec<String>,
+    /// The columns each table keeps, in this order; empty keeps every column.
+    #[serde(default)]
+    pub columns: Vec<String>,
 }
 
 /// A step's files as the checks admitted them, in the terms the turn commit stores (`objects`).
@@ -48,13 +58,19 @@ pub struct AdmittedObjects {
     pub generation: String,
     pub manifest_sha256: String,
     pub files: Vec<String>,
+    pub columns: Vec<String>,
 }
 
 impl AdmittedObjects {
-    /// The object the turn commit checks and records.
+    /// The object the turn commit checks and records. `columns` is present only when the step names some, so a step
+    /// without it records and digests exactly as before.
     pub fn record(&self) -> Value {
-        json!({"collection": self.collection, "bucket": self.bucket, "prefix": self.prefix,
-            "generation": self.generation, "manifest_sha256": self.manifest_sha256, "files": self.files})
+        let mut record = json!({"collection": self.collection, "bucket": self.bucket, "prefix": self.prefix,
+            "generation": self.generation, "manifest_sha256": self.manifest_sha256, "files": self.files});
+        if !self.columns.is_empty() {
+            record["columns"] = json!(self.columns);
+        }
+        record
     }
 
     /// The record's digest, part of the task request so a replay with other files under the same step cannot pass as
@@ -198,9 +214,14 @@ fn objects_methods(methods: &Value) -> HashMap<&str, &Value> {
         .collect()
 }
 
+/// Whether a column name can be kept: 1 to `COLUMN_BYTES` bytes with no control character (the commit checks the same).
+pub fn column_name(name: &str) -> bool {
+    (1..=COLUMN_BYTES).contains(&name.len()) && !name.chars().any(char::is_control)
+}
+
 /// Checks each step against what the context showed: a step of an objects method carries `objects` and nothing else
-/// a method takes, names a collection its method showed, and 1 to 20 distinct files from that collection's shown
-/// sample; any other step carries no `objects`.
+/// a method takes, names a collection its method showed, 1 to 20 distinct files from that collection's shown sample,
+/// and at most 64 distinct column names to keep; any other step carries no `objects`.
 pub fn admit(
     actions: &[super::coordinator::ProposedAction],
     methods: &Value,
@@ -257,6 +278,33 @@ pub fn admit(
                 return Err(refused("proposal_objects_file_unknown", &[]));
             }
         }
+        let mut kept = HashSet::new();
+        if choice.columns.len() > COLUMNS_MAX {
+            return Err(refused(
+                "proposal_objects_columns_invalid",
+                &[&format!(
+                    "columns: {} of at most {COLUMNS_MAX}",
+                    choice.columns.len()
+                )],
+            ));
+        }
+        for (i, column) in choice.columns.iter().enumerate() {
+            if !column_name(column) {
+                return Err(refused(
+                    "proposal_objects_columns_invalid",
+                    &[&format!(
+                        "column {}: 1 to {COLUMN_BYTES} bytes, no control character",
+                        i + 1
+                    )],
+                ));
+            }
+            if !kept.insert(column.as_str()) {
+                return Err(refused(
+                    "proposal_objects_columns_invalid",
+                    &[&format!("column {}: named twice", i + 1)],
+                ));
+            }
+        }
         let text = |field: &str| full[field].as_str().unwrap_or_default().to_owned();
         let collection = choice
             .collection
@@ -272,6 +320,7 @@ pub fn admit(
                 generation: text("generation"),
                 manifest_sha256: text("manifest_sha256"),
                 files: choice.files.clone(),
+                columns: choice.columns.clone(),
             },
         );
     }

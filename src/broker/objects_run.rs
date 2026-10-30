@@ -316,8 +316,37 @@ fn delimiter(rel_path: &str, bytes: &[u8]) -> Option<u8> {
     }
 }
 
-/// A delimited file rewritten as RFC 4180 CSV with its header, or the reason it is kept as a file only.
-fn table(bytes: &[u8], delimiter: u8) -> Result<(Vec<u8>, usize, usize), &'static str> {
+/// Where each kept column sits in a header: every named column once, in the order named; all columns when none are
+/// named. A named column the header lacks, or holds twice, keeps the file as a file only.
+fn kept_columns(header: &[&[u8]], columns: &[String]) -> Result<Vec<usize>, &'static str> {
+    if columns.is_empty() {
+        return Ok((0..header.len()).collect());
+    }
+    columns
+        .iter()
+        .map(|name| {
+            let mut at = header
+                .iter()
+                .enumerate()
+                .filter(|(_, field)| **field == name.as_bytes())
+                .map(|(i, _)| i);
+            match (at.next(), at.next()) {
+                (Some(i), None) => Ok(i),
+                (None, _) => Err("columns_missing"),
+                (Some(_), Some(_)) => Err("columns_ambiguous"),
+            }
+        })
+        .collect()
+}
+
+/// A delimited file rewritten as RFC 4180 CSV with its header, keeping only `columns` (in that order) when the step
+/// names some, or the reason it is kept as a file only. Rows and width are checked on the source's own shape: a ragged
+/// file is refused whatever it keeps.
+fn table(
+    bytes: &[u8],
+    delimiter: u8,
+    columns: &[String],
+) -> Result<(Vec<u8>, usize, usize), &'static str> {
     let mut records = Records::new(
         BufReader::new(Cursor::new(bytes)),
         delimiter,
@@ -327,7 +356,8 @@ fn table(bytes: &[u8], delimiter: u8) -> Result<(Vec<u8>, usize, usize), &'stati
     let mut out = csv::WriterBuilder::new()
         .flexible(false)
         .from_writer(Vec::new());
-    let mut columns = None;
+    let mut width = None;
+    let mut kept: Vec<usize> = Vec::new();
     let mut rows = 0usize;
     loop {
         match records.read_record().map_err(|_| "unreadable")? {
@@ -335,25 +365,29 @@ fn table(bytes: &[u8], delimiter: u8) -> Result<(Vec<u8>, usize, usize), &'stati
             Some(Record::TooManyFields) => return Err("too_many_columns"),
             Some(Record::TooLong) => return Err("record_too_long"),
             Some(Record::Fields(n)) => {
-                match columns {
-                    None => columns = Some(n),
+                let fields: Vec<&[u8]> = records.fields().collect();
+                match width {
+                    None => {
+                        width = Some(n);
+                        kept = kept_columns(&fields, columns)?;
+                    }
                     Some(c) if c != n => return Err("ragged"),
                     Some(_) => rows += 1,
                 }
                 if rows > MAX_TABLE_ROWS {
                     return Err("too_many_rows");
                 }
-                let fields: Vec<&[u8]> = records.fields().collect();
-                out.write_record(fields).map_err(|_| "unwritable")?;
+                out.write_record(kept.iter().map(|&i| fields[i]))
+                    .map_err(|_| "unwritable")?;
             }
         }
     }
-    let columns = columns.ok_or("empty")?;
+    width.ok_or("empty")?;
     if rows == 0 {
         return Err("no_rows");
     }
     let bytes = out.into_inner().map_err(|_| "unwritable")?;
-    Ok((bytes, rows, columns))
+    Ok((bytes, rows, kept.len()))
 }
 
 /// A table's path: `results/lab_data/<study>/<file name without extension>.csv`, numbered when two share a name.
@@ -411,7 +445,7 @@ fn package(
             members.push((format!("input/objects/{}", row.key), bytes));
             continue;
         };
-        let made = table(&bytes, delimiter);
+        let made = table(&bytes, delimiter, &request.columns);
         members.push((format!("input/objects/{}", row.key), bytes));
         let made = match made {
             Ok((csv, ..)) if converted + csv.len() > MAX_TABLE_BYTES => Err("tables_budget"),

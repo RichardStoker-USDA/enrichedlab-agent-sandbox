@@ -17,6 +17,9 @@ pub struct TaskObjects {
     pub generation: String,
     pub manifest_sha256: String,
     pub files: Vec<String>,
+    /// The columns each table keeps, in order (migration 084); empty or absent keeps every column.
+    #[serde(default)]
+    pub columns: Vec<String>,
     pub request_sha256: String,
 }
 
@@ -41,12 +44,13 @@ fn record_invalid() -> StoreError {
 }
 
 impl Store {
-    /// A worker that serves lab objects reads its lease's request and records a receipt per attempt (migration 083).
+    /// A worker that serves lab objects reads its lease's request, with the columns it keeps (084), and records a
+    /// receipt per attempt (migration 083).
     pub async fn ready_for_lab_objects(&self) -> StoreResult<()> {
         let client = self.pool.get().await.map_err(pool_error)?;
         let row = client
             .query_one(
-                "SELECT enrichedlab_agent.broker_schema_ready(83) AND COALESCE(has_function_privilege(current_user, \
+                "SELECT enrichedlab_agent.broker_schema_ready(84) AND COALESCE(has_function_privilege(current_user, \
                  to_regprocedure('enrichedlab_agent.broker_task_objects(text,uuid,text,integer,bigint)'), 'EXECUTE'), \
                  false) AND COALESCE(has_function_privilege(current_user, to_regprocedure(\
                  'enrichedlab_agent.broker_record_object_receipt(text,uuid,text,integer,bigint,text,text,integer,bigint,\

@@ -27,7 +27,15 @@ fn own(sql: &str) -> Vec<String> {
 fn refused(p: &Proposal) -> Vec<String> {
     match p.validate_prose(&ResultIndex::default()) {
         Ok(()) => Vec::new(),
-        Err(e) => e.downcast_ref::<CodeRefused>().unwrap().names.clone(),
+        // The refused tokens; where each stood (`where` names) is the places test's.
+        Err(e) => e
+            .downcast_ref::<CodeRefused>()
+            .unwrap()
+            .names
+            .iter()
+            .filter(|n| !n.starts_with("where "))
+            .cloned()
+            .collect(),
     }
 }
 
@@ -154,4 +162,25 @@ fn a_steps_literal_matches_only_as_the_sql_writes_it() {
             .collect();
         assert_eq!(p(text), want, "{text:?}");
     }
+}
+
+#[test]
+fn a_number_refusal_says_where_each_number_stood() {
+    let p = proposal(
+        vec![action("a", None, "Show the top 20, about 35 rows.")],
+        "Done.",
+    );
+    let names = match p.validate_prose(&ResultIndex::default()) {
+        Ok(()) => Vec::new(),
+        Err(e) => e.downcast_ref::<CodeRefused>().unwrap().names.clone(),
+    };
+    assert_eq!(
+        names,
+        [
+            "actions.rationale: 20",
+            "actions.rationale: 35",
+            "where actions.rationale: Show the top <<20>>, about 35 rows.",
+            "where actions.rationale: Show the top 20, about <<35>> rows.",
+        ]
+    );
 }

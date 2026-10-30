@@ -616,6 +616,68 @@ pub(super) fn refused_numbers_with<'a>(
     names
 }
 
+/// Characters of the lead's own words kept on each side of a refused number in its `where` name.
+const PLACE_CHARS: usize = 24;
+
+/// Where each refused number stood in the lead's own words, as `where <field>: …<words> <<number>> <words>…`: its first
+/// occurrence in that field with up to `PLACE_CHARS` characters on each side, whitespace collapsed. A bare `summary: 3`
+/// does not say which of several `3`s was meant, so the next call resubmitted the same proposal (October D4 runs). These
+/// names go only to the next lead call's `prior_attempt`; the number refusals' names are never logged
+/// (`names_loggable`).
+pub(super) fn refused_number_places(names: &[String], texts: &[(&str, &str)]) -> Vec<String> {
+    let mut places = Vec::new();
+    for name in names {
+        let Some((field, number)) = name.split_once(": ") else {
+            continue;
+        };
+        let Some(text) = texts.iter().find(|(f, _)| *f == field).map(|(_, t)| *t) else {
+            continue;
+        };
+        let chars: Vec<char> = text.chars().collect();
+        // The first whole number span that writes it; a name that is not a number (a direction control) has no place.
+        let Some((start, end)) = number_spans(&chars)
+            .into_iter()
+            .find(|&(a, b)| chars[a..b].iter().collect::<String>() == number)
+        else {
+            continue;
+        };
+        // Whitespace collapsed; control and direction characters dropped, so the excerpt reads as plain text.
+        let plain = |range: &[char]| -> String {
+            let mut out = String::new();
+            for &c in range {
+                if c.is_whitespace() {
+                    if !out.ends_with(' ') {
+                        out.push(' ');
+                    }
+                } else if !c.is_control() && !directs_text(c) {
+                    out.push(c);
+                }
+            }
+            out
+        };
+        let from = start.saturating_sub(PLACE_CHARS);
+        let to = (end + PLACE_CHARS).min(chars.len());
+        let place = format!(
+            "where {field}: {}{}<<{number}>>{}{}",
+            if from > 0 { "…" } else { "" },
+            plain(&chars[from..start]),
+            plain(&chars[end..to]),
+            if to < chars.len() { "…" } else { "" },
+        );
+        if !places.contains(&place) && places.len() < REFUSED_NUMBERS_MAX {
+            places.push(place);
+        }
+    }
+    places
+}
+
+/// What a number refusal's next call is told it may do (`prior_attempt.fix`), stating the prose rule as the checks apply
+/// it (`ResultIndex::number_refused`).
+pub(super) const NUMBER_FIX: &str = "Digits may stand in these words only where this context shows them: a value in a \
+    shown result, a name written exactly as the context shows it (such as a gene, strain or file name), a shown \
+    analysis's setting in a step's words, or a step's own SQL literal. Put any other value in a finding through a \
+    placeholder bound to its result cell, or leave it out. The where names show where each refused number stood.";
+
 /// Numbers written as digits, with inner decimal points or thousands separators.
 pub(super) fn numbers(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();

@@ -330,7 +330,7 @@ pub fn check_lead_replies(
                     Err(error) => {
                         let refused = refusal(&error);
                         json!({"id": check.id, "outcome": "refused", "normalized": normalized,
-                            "code": refused.reason, "faults": refused.names.len()})
+                            "code": refused.reason, "faults": super::replies::fault_count(&refused.names)})
                     }
                 }
             }

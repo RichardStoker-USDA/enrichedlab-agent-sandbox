@@ -3721,7 +3721,8 @@ async fn a_refused_methods_reply_is_asked_once_more_with_its_faults_named() {
     assert_eq!(refused.unwrap().1, "method_review_prose_number");
     assert_eq!(
         asked(&bodies, 1)["prior_attempt"],
-        serde_json::json!({"refused": "method_review_prose_number", "names": ["finding 1: 42"]})
+        serde_json::json!({"refused": "method_review_prose_number",
+            "names": ["finding 1: 42", "where finding 1: The table shows Gene<<42>> foods."]})
     );
 
     // A second refusal ends the turn with its own code; there is no third call.
@@ -3868,4 +3869,67 @@ fn the_turn_record_counts_masked_step_numbers_only_when_some_were_masked() {
     assert_eq!(record["summary_numbers_masked"], 1);
     assert_eq!(record["step_numbers_masked"], 2);
     assert_eq!(record["query_places_cast"], 3);
+}
+
+#[test]
+fn every_objects_refusal_reaches_the_lead_by_its_own_code() {
+    use super::lead_check::rejection_reason;
+    for code in [
+        "proposal_objects_unexpected",
+        "proposal_objects_missing",
+        "proposal_objects_collection_unknown",
+        "proposal_objects_files_invalid",
+        "proposal_objects_file_unknown",
+        "proposal_objects_columns_invalid",
+    ] {
+        assert_eq!(rejection_reason(code), code);
+    }
+}
+
+#[test]
+fn a_schema_refusal_names_the_fields_its_object_allows() {
+    use super::reply_schema::proposal_schema_names;
+    use serde_json::json;
+    let reply = json!({"action": "delegate", "summary": "s", "actions": [{"action_key": "a", "title": "t",
+        "profile": "p", "objective": "o", "rationale": "r",
+        "expect": {"rows": {"min": 1, "basis": "x"}}}]});
+    assert_eq!(
+        proposal_schema_names(&reply),
+        vec![
+            "allowed:actions.expect.rows: min, max".to_owned(),
+            "unexpected:actions.expect.rows.basis".to_owned(),
+        ]
+    );
+    // A reply that fits names nothing, so the fixed reason stays alone.
+    let mut fits = reply.clone();
+    fits["actions"][0]["expect"]["rows"] = json!({"min": 1});
+    assert!(proposal_schema_names(&fits).is_empty());
+}
+
+#[test]
+fn a_number_refusal_tells_the_next_call_what_it_may_do() {
+    use super::methods_review::with_prior_attempt;
+    use super::replies::Refusal;
+    for reason in ["proposal_prose_number", "method_review_prose_number"] {
+        let mut next = serde_json::json!({});
+        with_prior_attempt(
+            &mut next,
+            Some(&Refusal {
+                reason,
+                names: vec!["summary: 3".into()],
+            }),
+            1,
+        );
+        assert_eq!(next["prior_attempt"]["fix"], super::statements::NUMBER_FIX);
+    }
+    let mut other = serde_json::json!({});
+    with_prior_attempt(
+        &mut other,
+        Some(&Refusal {
+            reason: "proposal_schema_invalid",
+            names: vec![],
+        }),
+        1,
+    );
+    assert!(other["prior_attempt"].get("fix").is_none());
 }

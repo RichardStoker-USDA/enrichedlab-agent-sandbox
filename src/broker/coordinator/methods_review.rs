@@ -213,6 +213,19 @@ pub fn check_method_review_with_parts(
         }
     }
     if !numbers.is_empty() {
+        let labels: Vec<String> = (1..=method.findings.len())
+            .map(|n| format!("finding {n}"))
+            .collect();
+        let texts: Vec<(&str, &str)> = std::iter::once(("reason", method.reason.as_str()))
+            .chain(
+                labels
+                    .iter()
+                    .zip(&method.findings)
+                    .map(|(label, f)| (label.as_str(), f.detail.as_str())),
+            )
+            .collect();
+        let places = super::statements::refused_number_places(&numbers, &texts);
+        numbers.extend(places);
         return Err(CodeRefused {
             code: "method_review_prose_number",
             names: numbers,
@@ -528,6 +541,12 @@ impl Redirect {
 pub fn with_prior_attempt(context: &mut Value, refused: Option<&Refusal>, failures: i64) {
     if let Some(refusal) = refused.filter(|_| failures > 0) {
         context["prior_attempt"] = json!({"refused": refusal.reason, "failures": failures});
+        if matches!(
+            refusal.reason,
+            "proposal_prose_number" | "method_review_prose_number"
+        ) {
+            context["prior_attempt"]["fix"] = json!(super::statements::NUMBER_FIX);
+        }
         name_faults(
             &mut context["prior_attempt"],
             &refusal.names,
