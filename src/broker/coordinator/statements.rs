@@ -591,84 +591,96 @@ pub fn refused_numbers<'a>(
 
 /// `refused_numbers` where a text may also hold the numbers in its own allowance: a step's title and rationale take the
 /// numbers that step's own SQL sets (`step_literals::step_own_numbers`) where they stand alone
-/// (`ResultIndex::step_prose_refused_own`), and no other text takes any.
+/// (`ResultIndex::refused_in` with `own`), and no other text takes any.
 pub(super) fn refused_numbers_with<'a>(
     index: &ResultIndex,
     texts: impl IntoIterator<Item = (&'static str, &'a str, Option<&'a HashSet<String>>)>,
 ) -> Vec<String> {
+    refused_numbers_placed(index, texts).0
+}
+
+/// `refused_numbers_with`, and where each refused number stood (`number_place`), taken from the text and span that
+/// refused it, so two texts under one field label never borrow each other's place.
+pub(super) fn refused_numbers_placed<'a>(
+    index: &ResultIndex,
+    texts: impl IntoIterator<Item = (&'static str, &'a str, Option<&'a HashSet<String>>)>,
+) -> (Vec<String>, Vec<String>) {
+    refused_numbers_at(
+        index,
+        texts.into_iter().map(|(field, text, own)| {
+            let step = matches!(field, "actions.title" | "actions.rationale" | "reason");
+            (field, text, step, own.filter(|_| step))
+        }),
+    )
+}
+
+/// The refused numbers and their places for texts labeled by field, each read as step prose (`step`: a shown
+/// analysis's setting numbers may stand) with its own SQL literals (`own`) or as other prose.
+pub(super) fn refused_numbers_at<'a>(
+    index: &ResultIndex,
+    texts: impl IntoIterator<Item = (&'a str, &'a str, bool, Option<&'a HashSet<String>>)>,
+) -> (Vec<String>, Vec<String>) {
     let mut names: Vec<String> = Vec::new();
-    for (field, text, own) in texts {
-        let refused = match (
-            own,
-            matches!(field, "actions.title" | "actions.rationale" | "reason"),
-        ) {
-            (Some(own), true) => index.step_prose_refused_own(text, own),
-            (None, true) => index.step_prose_refused(text),
-            (_, false) => index.prose_refused(text),
-        };
-        for number in refused {
+    let mut places: Vec<String> = Vec::new();
+    for (field, text, step, own) in texts {
+        for number in index.refused_in(text, step, own) {
             let name = format!("{field}: {}", number.chars().take(24).collect::<String>());
             if !names.contains(&name) && names.len() < REFUSED_NUMBERS_MAX {
                 names.push(name);
             }
         }
+        let chars: Vec<char> = text.chars().collect();
+        for (start, end) in index.refused_spans(&chars, step, own) {
+            let place = number_place(field, &chars, start, end);
+            if !places.contains(&place) && places.len() < REFUSED_NUMBERS_MAX {
+                places.push(place);
+            }
+        }
     }
-    names
+    (names, places)
 }
 
 /// Characters of the lead's own words kept on each side of a refused number in its `where` name.
 const PLACE_CHARS: usize = 24;
 
-/// Where each refused number stood in the lead's own words, as `where <field>: …<words> <<number>> <words>…`: its first
-/// occurrence in that field with up to `PLACE_CHARS` characters on each side, whitespace collapsed. A bare `summary: 3`
-/// does not say which of several `3`s was meant, so the next call resubmitted the same proposal (October D4 runs). These
-/// names go only to the next lead call's `prior_attempt`; the number refusals' names are never logged
+/// Where one refused number stood in the lead's own words, as `where <field>: …<words> <<number>> <words>…`: up to
+/// `PLACE_CHARS` characters on each side, whitespace collapsed, control and direction characters dropped. A bare
+/// `summary: 3` does not say which of several `3`s was meant, so the next call resubmitted the same proposal (October
+/// D4 runs). These names go only to the next lead call's `prior_attempt`; the number refusals' names are never logged
 /// (`names_loggable`).
-pub(super) fn refused_number_places(names: &[String], texts: &[(&str, &str)]) -> Vec<String> {
-    let mut places = Vec::new();
-    for name in names {
-        let Some((field, number)) = name.split_once(": ") else {
-            continue;
-        };
-        let Some(text) = texts.iter().find(|(f, _)| *f == field).map(|(_, t)| *t) else {
-            continue;
-        };
-        let chars: Vec<char> = text.chars().collect();
-        // The first whole number span that writes it; a name that is not a number (a direction control) has no place.
-        let Some((start, end)) = number_spans(&chars)
-            .into_iter()
-            .find(|&(a, b)| chars[a..b].iter().collect::<String>() == number)
-        else {
-            continue;
-        };
-        // Whitespace collapsed; control and direction characters dropped, so the excerpt reads as plain text.
-        let plain = |range: &[char]| -> String {
-            let mut out = String::new();
-            for &c in range {
-                if c.is_whitespace() {
-                    if !out.ends_with(' ') {
-                        out.push(' ');
-                    }
-                } else if !c.is_control() && !directs_text(c) {
-                    out.push(c);
+fn number_place(field: &str, chars: &[char], start: usize, end: usize) -> String {
+    let plain = |range: &[char]| -> String {
+        let mut out = String::new();
+        for &c in range {
+            if c.is_whitespace() {
+                if !out.ends_with(' ') {
+                    out.push(' ');
                 }
+            } else if !c.is_control() && !directs_text(c) {
+                out.push(c);
             }
-            out
-        };
-        let from = start.saturating_sub(PLACE_CHARS);
-        let to = (end + PLACE_CHARS).min(chars.len());
-        let place = format!(
-            "where {field}: {}{}<<{number}>>{}{}",
-            if from > 0 { "…" } else { "" },
-            plain(&chars[from..start]),
-            plain(&chars[end..to]),
-            if to < chars.len() { "…" } else { "" },
-        );
-        if !places.contains(&place) && places.len() < REFUSED_NUMBERS_MAX {
-            places.push(place);
         }
-    }
-    places
+        out
+    };
+    let from = start.saturating_sub(PLACE_CHARS);
+    let to = (end + PLACE_CHARS).min(chars.len());
+    format!(
+        "where {field}: {}{}<<{}>>{}{}",
+        if from > 0 { "…" } else { "" },
+        plain(&chars[from..start]),
+        chars[start..end].iter().collect::<String>(),
+        plain(&chars[end..to]),
+        if to < chars.len() { "…" } else { "" },
+    )
+}
+
+/// The fixed text a refusal's next call is told it may do, for the reasons that have one.
+pub(super) fn fix_for(reason: &str) -> Option<&'static str> {
+    matches!(
+        reason,
+        "proposal_prose_number" | "method_review_prose_number"
+    )
+    .then_some(NUMBER_FIX)
 }
 
 /// What a number refusal's next call is told it may do (`prior_attempt.fix`), stating the prose rule as the checks apply

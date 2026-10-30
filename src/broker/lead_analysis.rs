@@ -203,187 +203,171 @@ pub fn admit(
     let listed_ids = ids("other_analyses");
     let mut admitted = HashMap::new();
     for a in actions {
-        let mut shown_feature: Option<String> = None;
-        let checked = (|shown_feature: &mut Option<String>| -> Result<(), CodeRefused> {
-            let refused = |code: &'static str, extra: &[&str]| CodeRefused {
-                code,
-                names: std::iter::once(a.action_key.clone())
-                    .chain(extra.iter().map(|s| (*s).to_owned()))
-                    .collect(),
-            };
-            let choice = match (method.filter(|(key, _)| *key == a.profile), &a.analysis) {
-                (None, None) => return Ok(()),
-                (None, Some(_)) => return Err(refused("proposal_analysis_unexpected", &[])),
-                (Some(_), None) => return Err(refused("proposal_analysis_missing", &[])),
-                (Some(_), Some(choice)) => choice,
-            };
-            if a.code.is_some() || a.settings.is_some() || a.sql.is_some() {
-                return Err(refused("proposal_analysis_unexpected", &[]));
-            }
-            let catalog = method.map_or(&Value::Null, |(_, c)| c);
-            let catalog_sha256 = catalog["catalog_sha256"]
-                .as_str()
-                .filter(|s| {
-                    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-                })
-                .ok_or_else(|| refused("proposal_analysis_unavailable", &[]))?;
-            let feature = catalog["features"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .find(|f| f["id"] == choice.feature.as_str())
-                .ok_or_else(|| refused("proposal_analysis_feature_unknown", &[&choice.feature]))?;
-            if !shown_ids.contains(choice.feature.as_str()) {
-                return Err(if listed_ids.contains(choice.feature.as_str()) {
-                    refused(analysis_view::CONTRACT_NOT_SHOWN, &[&choice.feature])
-                } else {
-                    refused("proposal_analysis_feature_unknown", &[&choice.feature])
-                });
-            }
-            // From here the lead has read this analysis's contract: a refusal names it, so the next call shows it first.
-            *shown_feature = Some(choice.feature.clone());
-            let step = context["analyses"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .find(|s| s["key"] == choice.source.as_str())
-                .ok_or_else(|| refused("proposal_analysis_source_unknown", &[&choice.source]))?;
-            let task = step["analysis_id"]
-                .as_str()
-                .ok_or_else(|| refused("proposal_analysis_source_unknown", &[&choice.source]))?;
-            // The plan shows a step awaiting review as completed; the commit needs the analysis itself completed.
-            if step["status"] != "completed" || step["record"]["status"] != "completed" {
-                return Err(refused(
-                    "proposal_analysis_source_not_finished",
-                    &[&choice.source],
-                ));
-            }
-            if rejected.contains(task) {
-                return Err(refused(
-                    "proposal_analysis_source_rejected",
-                    &[&choice.source],
-                ));
-            }
-            // The dedicated input list is authoritative when present. Its result reference pins the artifact without
-            // requiring the output excerpt to fit too; older recorded contexts still resolve the result they showed.
-            let input = analysis_source_table(context, &choice.source, &choice.table);
-            let result = result_table(step, task, &choice.table);
-            if context.get("analysis_source_tables").is_some() && input.is_none() {
+        let refused = |code: &'static str, extra: &[&str]| CodeRefused {
+            code,
+            names: std::iter::once(a.action_key.clone())
+                .chain(extra.iter().map(|s| (*s).to_owned()))
+                .collect(),
+        };
+        let choice = match (method.filter(|(key, _)| *key == a.profile), &a.analysis) {
+            (None, None) => continue,
+            (None, Some(_)) => return Err(refused("proposal_analysis_unexpected", &[])),
+            (Some(_), None) => return Err(refused("proposal_analysis_missing", &[])),
+            (Some(_), Some(choice)) => choice,
+        };
+        if a.code.is_some() || a.settings.is_some() || a.sql.is_some() {
+            return Err(refused("proposal_analysis_unexpected", &[]));
+        }
+        let catalog = method.map_or(&Value::Null, |(_, c)| c);
+        let catalog_sha256 = catalog["catalog_sha256"]
+            .as_str()
+            .filter(|s| s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+            .ok_or_else(|| refused("proposal_analysis_unavailable", &[]))?;
+        let feature = catalog["features"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|f| f["id"] == choice.feature.as_str())
+            .ok_or_else(|| refused("proposal_analysis_feature_unknown", &[&choice.feature]))?;
+        if !shown_ids.contains(choice.feature.as_str()) {
+            return Err(if listed_ids.contains(choice.feature.as_str()) {
+                refused(analysis_view::CONTRACT_NOT_SHOWN, &[&choice.feature])
+            } else {
+                refused("proposal_analysis_feature_unknown", &[&choice.feature])
+            });
+        }
+        let step = context["analyses"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|s| s["key"] == choice.source.as_str())
+            .ok_or_else(|| refused("proposal_analysis_source_unknown", &[&choice.source]))?;
+        let task = step["analysis_id"]
+            .as_str()
+            .ok_or_else(|| refused("proposal_analysis_source_unknown", &[&choice.source]))?;
+        // The plan shows a step awaiting review as completed; the commit needs the analysis itself completed.
+        if step["status"] != "completed" || step["record"]["status"] != "completed" {
+            return Err(refused(
+                "proposal_analysis_source_not_finished",
+                &[&choice.source],
+            ));
+        }
+        if rejected.contains(task) {
+            return Err(refused(
+                "proposal_analysis_source_rejected",
+                &[&choice.source],
+            ));
+        }
+        // The dedicated input list is authoritative when present. Its result reference pins the artifact without
+        // requiring the output excerpt to fit too; older recorded contexts still resolve the result they showed.
+        let input = analysis_source_table(context, &choice.source, &choice.table);
+        let result = result_table(step, task, &choice.table);
+        if context.get("analysis_source_tables").is_some() && input.is_none() {
+            let mut names = vec![
+                a.action_key.clone(),
+                choice.source.clone(),
+                choice.table.clone(),
+            ];
+            names.extend(available_table_faults(context, step, &choice.source));
+            return Err(CodeRefused {
+                code: "proposal_analysis_table_unknown",
+                names,
+            });
+        }
+        let table = input
+            .or_else(|| result.as_ref().map(|(_, table)| *table))
+            .ok_or_else(|| {
                 let mut names = vec![
                     a.action_key.clone(),
                     choice.source.clone(),
                     choice.table.clone(),
                 ];
                 names.extend(available_table_faults(context, step, &choice.source));
-                return Err(CodeRefused {
+                CodeRefused {
                     code: "proposal_analysis_table_unknown",
+                    names,
+                }
+            })?;
+        let artifact = input
+            .and_then(|shown| shown["result"].as_str())
+            .and_then(|reference| result_artifact(reference, task))
+            .or_else(|| result.as_ref().map(|(artifact, _)| artifact.clone()))
+            .ok_or_else(|| {
+                refused(
+                    "proposal_analysis_table_unknown",
+                    &[&choice.source, &choice.table],
+                )
+            })?;
+        let columns = table_columns(table);
+        let result_shape = result.as_ref().map(|(_, table)| *table);
+        let rows = table["rows"]
+            .as_u64()
+            .or_else(|| result_shape.and_then(|shown| shown["rows"].as_u64()));
+        let columns_omitted = table
+            .get("columns_omitted")
+            .or_else(|| result_shape.and_then(|shown| shown.get("columns_omitted")));
+        if !rows.is_some_and(|n| (1..=TABLE_ROWS_MAX).contains(&n))
+            || !(1..=TABLE_COLUMNS_MAX).contains(&columns.len())
+            || columns_omitted.is_some()
+        {
+            return Err(refused(
+                "proposal_analysis_table_unsuitable",
+                &[&choice.table],
+            ));
+        }
+        // Measured as the commit measures it, in PostgreSQL's text for jsonb, which holds no NUL character.
+        let settings = Value::Object(choice.settings.clone());
+        if choice.settings.len() > SETTINGS_MAX
+            || jsonb_text_bytes(&settings).is_none_or(|n| n > SETTINGS_BYTES)
+        {
+            return Err(refused("proposal_analysis_settings_invalid", &[]));
+        }
+        let params = &feature["params"];
+        for (name, value) in &choice.settings {
+            let Some(p) = params.get(name) else {
+                // The analysis's own setting names, as `available tables` does for a table, so the next call can correct it.
+                let available = params
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .map(|(n, _)| n.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(refused(
+                    "proposal_analysis_setting_unknown",
+                    &[name, &format!("available settings: {available}")],
+                ));
+            };
+            if let Some(column) = unknown_column(p, value, &columns) {
+                let mut names = vec![a.action_key.clone(), name.clone(), column.to_owned()];
+                names.extend(available_table_faults(context, step, &choice.source));
+                return Err(CodeRefused {
+                    code: "proposal_analysis_column_unknown",
                     names,
                 });
             }
-            let table = input
-                .or_else(|| result.as_ref().map(|(_, table)| *table))
-                .ok_or_else(|| {
-                    let mut names = vec![
-                        a.action_key.clone(),
-                        choice.source.clone(),
-                        choice.table.clone(),
-                    ];
-                    names.extend(available_table_faults(context, step, &choice.source));
-                    CodeRefused {
-                        code: "proposal_analysis_table_unknown",
-                        names,
-                    }
-                })?;
-            let artifact = input
-                .and_then(|shown| shown["result"].as_str())
-                .and_then(|reference| result_artifact(reference, task))
-                .or_else(|| result.as_ref().map(|(artifact, _)| artifact.clone()))
-                .ok_or_else(|| {
-                    refused(
-                        "proposal_analysis_table_unknown",
-                        &[&choice.source, &choice.table],
-                    )
-                })?;
-            let columns = table_columns(table);
-            let result_shape = result.as_ref().map(|(_, table)| *table);
-            let rows = table["rows"]
-                .as_u64()
-                .or_else(|| result_shape.and_then(|shown| shown["rows"].as_u64()));
-            let columns_omitted = table
-                .get("columns_omitted")
-                .or_else(|| result_shape.and_then(|shown| shown.get("columns_omitted")));
-            if !rows.is_some_and(|n| (1..=TABLE_ROWS_MAX).contains(&n))
-                || !(1..=TABLE_COLUMNS_MAX).contains(&columns.len())
-                || columns_omitted.is_some()
-            {
-                return Err(refused(
-                    "proposal_analysis_table_unsuitable",
-                    &[&choice.table],
-                ));
+            if !setting_fits(p, value, &columns) {
+                return Err(refused("proposal_analysis_setting_invalid", &[name]));
             }
-            // Measured as the commit measures it, in PostgreSQL's text for jsonb, which holds no NUL character.
-            let settings = Value::Object(choice.settings.clone());
-            if choice.settings.len() > SETTINGS_MAX
-                || jsonb_text_bytes(&settings).is_none_or(|n| n > SETTINGS_BYTES)
-            {
-                return Err(refused("proposal_analysis_settings_invalid", &[]));
-            }
-            let params = &feature["params"];
-            for (name, value) in &choice.settings {
-                let Some(p) = params.get(name) else {
-                    // The analysis's own setting names, as `available tables` does for a table, so the next call can correct it.
-                    let available = params
-                        .as_object()
-                        .into_iter()
-                        .flatten()
-                        .map(|(n, _)| n.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    return Err(refused(
-                        "proposal_analysis_setting_unknown",
-                        &[name, &format!("available settings: {available}")],
-                    ));
-                };
-                if let Some(column) = unknown_column(p, value, &columns) {
-                    let mut names = vec![a.action_key.clone(), name.clone(), column.to_owned()];
-                    names.extend(available_table_faults(context, step, &choice.source));
-                    return Err(CodeRefused {
-                        code: "proposal_analysis_column_unknown",
-                        names,
-                    });
-                }
-                if !setting_fits(p, value, &columns) {
-                    return Err(refused("proposal_analysis_setting_invalid", &[name]));
-                }
-            }
-            for (name, p) in params.as_object().into_iter().flatten() {
-                let column = matches!(p["type"].as_str(), Some("column" | "columns"));
-                if p["required"] == true && column && !choice.settings.contains_key(name) {
-                    return Err(refused("proposal_analysis_setting_missing", &[name]));
-                }
-            }
-            admitted.insert(
-                a.action_key.clone(),
-                AdmittedAnalysis {
-                    source_task: task.to_owned(),
-                    artifact,
-                    table_path: choice.table.clone(),
-                    feature: choice.feature.clone(),
-                    settings,
-                    title: figure_run::cut(a.title.trim(), TITLE_CHARS),
-                    catalog_sha256: catalog_sha256.to_owned(),
-                },
-            );
-            Ok(())
-        })(&mut shown_feature);
-        if let Err(mut refusal) = checked {
-            if let Some(feature) = shown_feature {
-                refusal
-                    .names
-                    .push(format!("{}{feature}", analysis_view::FOCUS_NAME));
-            }
-            return Err(refusal);
         }
+        for (name, p) in params.as_object().into_iter().flatten() {
+            let column = matches!(p["type"].as_str(), Some("column" | "columns"));
+            if p["required"] == true && column && !choice.settings.contains_key(name) {
+                return Err(refused("proposal_analysis_setting_missing", &[name]));
+            }
+        }
+        admitted.insert(
+            a.action_key.clone(),
+            AdmittedAnalysis {
+                source_task: task.to_owned(),
+                artifact,
+                table_path: choice.table.clone(),
+                feature: choice.feature.clone(),
+                settings,
+                title: figure_run::cut(a.title.trim(), TITLE_CHARS),
+                catalog_sha256: catalog_sha256.to_owned(),
+            },
+        );
     }
     Ok(admitted)
 }
@@ -679,90 +663,90 @@ mod tests {
             ),
             (
                 action("template-analysis", with("source", json!("absent"))),
-                "proposal_analysis_source_unknown per-animal,absent,analysis: animal_window_summary",
+                "proposal_analysis_source_unknown per-animal,absent",
             ),
             (
                 action("template-analysis", with("source", json!("running"))),
-                "proposal_analysis_source_not_finished per-animal,running,analysis: animal_window_summary",
+                "proposal_analysis_source_not_finished per-animal,running",
             ),
             (
                 action("template-analysis", with("source", json!("rejected"))),
-                "proposal_analysis_source_rejected per-animal,rejected,analysis: animal_window_summary",
+                "proposal_analysis_source_rejected per-animal,rejected",
             ),
             (
                 action("template-analysis", with("source", json!("in-review"))),
-                "proposal_analysis_source_not_finished per-animal,in-review,analysis: animal_window_summary",
+                "proposal_analysis_source_not_finished per-animal,in-review",
             ),
             (
                 action(
                     "template-analysis",
                     with("table", json!("results/elsewhere.csv")),
                 ),
-                "proposal_analysis_table_unknown per-animal,hours,results/elsewhere.csv,available tables: results/query_result.csv, results/wide.csv,available columns: mouse, diet, hour, ee,analysis: animal_window_summary",
+                "proposal_analysis_table_unknown per-animal,hours,results/elsewhere.csv,available tables: results/query_result.csv, results/wide.csv,available columns: mouse, diet, hour, ee",
             ),
             (
                 action(
                     "template-analysis",
                     with("table", json!("results/other.csv")),
                 ),
-                "proposal_analysis_table_unknown per-animal,hours,results/other.csv,available tables: results/query_result.csv, results/wide.csv,available columns: mouse, diet, hour, ee,analysis: animal_window_summary",
+                "proposal_analysis_table_unknown per-animal,hours,results/other.csv,available tables: results/query_result.csv, results/wide.csv,available columns: mouse, diet, hour, ee",
             ),
             (
                 action(
                     "template-analysis",
                     with("table", json!("results/wide.csv")),
                 ),
-                "proposal_analysis_table_unsuitable per-animal,results/wide.csv,analysis: animal_window_summary",
+                "proposal_analysis_table_unsuitable per-animal,results/wide.csv",
             ),
             (
                 action(
                     "template-analysis",
                     s(json!({"id": "mouse", "values": ["ee"], "bins": 3})),
                 ),
-                "proposal_analysis_setting_unknown per-animal,bins,available settings: from, id, phase_value, upper, values,analysis: animal_window_summary",
+                "proposal_analysis_setting_unknown per-animal,bins,available settings: from, id, phase_value, upper, values",
             ),
             (
                 action(
                     "template-analysis",
                     s(json!({"id": "animal", "values": ["ee"]})),
                 ),
-                "proposal_analysis_column_unknown per-animal,id,animal,available tables: results/query_result.csv, results/wide.csv,available columns: mouse, diet, hour, ee,analysis: animal_window_summary",
+                "proposal_analysis_column_unknown per-animal,id,animal,available tables: results/query_result.csv, results/wide.csv,available columns: mouse, diet, hour, ee",
             ),
             (
                 action(
                     "template-analysis",
                     s(json!({"id": "mouse", "values": ["ee", "vo2"]})),
                 ),
-                "proposal_analysis_column_unknown per-animal,values,vo2,available tables: results/query_result.csv, results/wide.csv,available columns: mouse, diet, hour, ee,analysis: animal_window_summary",
+                "proposal_analysis_column_unknown per-animal,values,vo2,available tables: results/query_result.csv, results/wide.csv,available columns: mouse, diet, hour, ee",
             ),
             (
                 action("template-analysis", s(json!({"id": "mouse", "values": []}))),
-                "proposal_analysis_setting_invalid per-animal,values,analysis: animal_window_summary",
+                "proposal_analysis_setting_invalid per-animal,values",
             ),
             (
                 action(
                     "template-analysis",
                     s(json!({"id": "mouse", "values": ["ee"], "from": "12"})),
                 ),
-                "proposal_analysis_setting_invalid per-animal,from,analysis: animal_window_summary",
+                "proposal_analysis_setting_invalid per-animal,from",
             ),
             (
                 action(
                     "template-analysis",
                     s(json!({"id": "mouse", "values": ["ee"], "upper": 601})),
                 ),
-                "proposal_analysis_setting_invalid per-animal,upper,analysis: animal_window_summary",
+                "proposal_analysis_setting_invalid per-animal,upper",
             ),
             (
                 action(
                     "template-analysis",
                     s(json!({"id": "mouse", "values": ["ee"], "phase_value": "d".repeat(41)})),
                 ),
-                "proposal_analysis_setting_invalid per-animal,phase_value,analysis: animal_window_summary",
+                "proposal_analysis_setting_invalid per-animal,phase_value",
             ),
             (
                 action("template-analysis", s(json!({"values": ["ee"]}))),
-                "proposal_analysis_setting_missing per-animal,id,analysis: animal_window_summary",
+                "proposal_analysis_setting_missing per-animal,id",
             ),
         ] {
             assert_eq!(code(&[step], &m).unwrap_err(), expected);
@@ -803,6 +787,7 @@ mod tests {
         let refused = Refusal {
             reason: error.code,
             names: error.names,
+            focus: Vec::new(),
         };
         let mut next = json!({});
         with_prior_attempt(&mut next, Some(&refused), 1);
@@ -818,7 +803,6 @@ mod tests {
                 "results/results.csv",
                 "available tables: results/query_result.csv, results/wide.csv",
                 "available columns: mouse, diet, hour, ee",
-                "analysis: animal_window_summary",
             ])
         );
     }
@@ -832,7 +816,7 @@ mod tests {
         c["settings"]["test"] = json!("anova");
         assert_eq!(
             code(&[action("template-analysis", Some(c))], &m).unwrap_err(),
-            "proposal_analysis_setting_invalid per-animal,test,analysis: group_compare"
+            "proposal_analysis_setting_invalid per-animal,test"
         );
     }
 
@@ -867,7 +851,7 @@ mod tests {
         c["settings"]["test"] = json!("t\u{0}");
         assert_eq!(
             code(&[action("template-analysis", Some(c))], &m).unwrap_err(),
-            "proposal_analysis_settings_invalid per-animal,analysis: group_compare"
+            "proposal_analysis_settings_invalid per-animal"
         );
     }
 
@@ -912,6 +896,7 @@ mod tests {
         let focus = analysis_view::focus_of(
             analysis_view::CONTRACT_NOT_SHOWN,
             &["per-animal".to_owned(), first_listed.clone()],
+            &[],
         );
         let next = analysis_view::analyses_view(
             &json!({"features": (0..200).map(|n| json!({"id": format!("analysis_{n:03}"), "label": "x".repeat(100),

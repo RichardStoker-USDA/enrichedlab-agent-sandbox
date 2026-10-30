@@ -274,10 +274,7 @@ fn a_result_that_failed_its_step_check_is_no_analysis_source() {
     assert!(!sources(&failed).contains(&TABLE.to_owned()));
     let refused = failed.check(&lead_reply(TABLE, welch())).err().unwrap();
     assert_eq!(refusal(&refused).reason, "proposal_analysis_table_unknown");
-    assert_eq!(
-        refusal(&refused).names,
-        ["compare", "rank-foods", TABLE, "analysis: group_compare"]
-    );
+    assert_eq!(refusal(&refused).names, ["compare", "rank-foods", TABLE]);
 }
 
 #[test]
@@ -353,10 +350,7 @@ fn the_lead_sees_the_analyses_and_its_choice_is_checked_as_the_coordinator_check
         .err()
         .unwrap();
     assert_eq!(wide.to_string(), "proposal_analysis_table_unsuitable");
-    assert_eq!(
-        refusal(&wide).names,
-        ["compare", "results/wide.csv", "analysis: group_compare"]
-    );
+    assert_eq!(refusal(&wide).names, ["compare", "results/wide.csv"]);
 
     // The step carries the analysis, and its request digest names it, so another analysis under the same step is
     // another request.
@@ -396,6 +390,7 @@ fn the_lead_sees_the_analyses_and_its_choice_is_checked_as_the_coordinator_check
             &Refusal {
                 reason: rejection_reason(code),
                 names: vec![],
+                focus: Vec::new(),
             },
             2,
         );

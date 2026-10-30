@@ -161,6 +161,7 @@ fn every_name_keeps_its_whole_fix_through_the_note_the_next_call_reads() {
         Some(&Refusal {
             reason: "proposal_evidence_unknown",
             names: names.clone(),
+            focus: Vec::new(),
         }),
         1,
     );

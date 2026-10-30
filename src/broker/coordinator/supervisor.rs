@@ -197,6 +197,7 @@ pub fn decide(counts: &Counts) -> Option<Action> {
         let refusal = Refusal {
             reason: interned(reason),
             names: Vec::new(),
+            focus: Vec::new(),
         };
         if let Some(redirect) = Redirect::after(&refusal, 2) {
             return Some(Action::Narrow(Reason::RepeatedRefusal, redirect));

@@ -13,6 +13,7 @@ fn a_kept_refusal_steers_only_the_call_after_it() {
         refusal: Refusal {
             reason: "proposal_sql_missing",
             names: vec![],
+            focus: Vec::new(),
         },
     };
     // Generation 10 recorded the first failure of turn 5; generation 11 claims turn 5 with one failure and uses it.
@@ -1319,6 +1320,7 @@ fn a_kept_refused_reply_keeps_the_refusal_it_wraps() {
         super::Refusal {
             reason: super::rejection_reason("proposal_action_invalid"),
             names: vec!["steps.a1".into()],
+            focus: Vec::new()
         }
     );
     let reply = kept.downcast_ref::<super::RefusedReply>().unwrap();
@@ -3722,6 +3724,7 @@ async fn a_refused_methods_reply_is_asked_once_more_with_its_faults_named() {
     assert_eq!(
         asked(&bodies, 1)["prior_attempt"],
         serde_json::json!({"refused": "method_review_prose_number",
+            "fix": super::statements::NUMBER_FIX,
             "names": ["finding 1: 42", "where finding 1: The table shows Gene<<42>> foods."]})
     );
 
@@ -3896,9 +3899,25 @@ fn a_schema_refusal_names_the_fields_its_object_allows() {
     assert_eq!(
         proposal_schema_names(&reply),
         vec![
-            "allowed:actions.expect.rows: min, max".to_owned(),
             "unexpected:actions.expect.rows.basis".to_owned(),
+            "allowed:actions.expect.rows: min, max".to_owned(),
         ]
+    );
+    // Guidance follows the faults and never displaces one: twelve unexpected fields stay twelve faults within the bound.
+    let mut wide = reply.clone();
+    for i in 0..12 {
+        wide[format!("extra_{i:02}")] = json!(1);
+    }
+    let names = proposal_schema_names(&wide);
+    assert_eq!(names.len(), 14);
+    assert!(names[..12].iter().all(|n| n.starts_with("unexpected:")));
+    assert!(names[12..].iter().all(|n| n.starts_with("allowed:")));
+    // An objects step's fields are named too (r37 refused them without saying which).
+    let mut objects = reply.clone();
+    objects["actions"][0]["objects"] =
+        json!({"collection": "c", "files": ["a.csv"], "colums": ["x"]});
+    assert!(
+        proposal_schema_names(&objects).contains(&"unexpected:actions.objects.colums".to_owned())
     );
     // A reply that fits names nothing, so the fixed reason stays alone.
     let mut fits = reply.clone();
@@ -3917,6 +3936,7 @@ fn a_number_refusal_tells_the_next_call_what_it_may_do() {
             Some(&Refusal {
                 reason,
                 names: vec!["summary: 3".into()],
+                focus: Vec::new(),
             }),
             1,
         );
@@ -3928,8 +3948,63 @@ fn a_number_refusal_tells_the_next_call_what_it_may_do() {
         Some(&Refusal {
             reason: "proposal_schema_invalid",
             names: vec![],
+            focus: Vec::new(),
         }),
         1,
     );
     assert!(other["prior_attempt"].get("fix").is_none());
+}
+
+#[test]
+fn a_refused_replys_chosen_analyses_travel_beside_its_names() {
+    use super::replies::{CodeRefused, refusal, with_chosen_analyses};
+    let reply = serde_json::json!({"actions": [
+        {"action_key": "a", "analysis": {"feature": "group_compare"}},
+        {"action_key": "b", "analysis": {"feature": "group_compare"}},
+        {"action_key": "c", "analysis": {"feature": "x".repeat(129)}},
+        {"action_key": "d"}]});
+    let refused = anyhow::Error::new(CodeRefused {
+        code: "proposal_expect_invalid",
+        names: vec!["a".into(), "analysis: other".into()],
+    });
+    let wrapped = with_chosen_analyses(refused, &reply);
+    // The code, the names and the display are the refusal's own; the focus is the reply's choices, once each.
+    assert_eq!(wrapped.to_string(), "proposal_expect_invalid");
+    let r = refusal(&wrapped);
+    assert_eq!(r.names, ["a", "analysis: other"]);
+    assert_eq!(r.focus, ["group_compare"]);
+    // A reply that chose no analysis leaves the error as it was.
+    let plain = with_chosen_analyses(
+        anyhow::anyhow!("proposal_action_reused"),
+        &serde_json::json!({}),
+    );
+    assert!(refusal(&plain).focus.is_empty());
+}
+
+#[test]
+fn guidance_names_leave_the_fault_count_only_for_the_reasons_that_write_them() {
+    use super::replies::fault_count;
+    let names = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    assert_eq!(
+        fault_count(
+            "proposal_prose_number",
+            &names(&["summary: 3", "where summary: <<3>>"])
+        ),
+        1
+    );
+    assert_eq!(
+        fault_count(
+            "proposal_schema_invalid",
+            &names(&["unexpected:x", "allowed:reply: a"])
+        ),
+        1
+    );
+    // A lead-written name that happens to begin like guidance still counts under any other reason.
+    assert_eq!(
+        fault_count(
+            "proposal_analysis_setting_unknown",
+            &names(&["step", "where x", "allowed:y"])
+        ),
+        3
+    );
 }

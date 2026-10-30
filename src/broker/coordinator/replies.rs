@@ -9,6 +9,9 @@ use super::*;
 pub struct Refusal {
     pub reason: &'static str,
     pub names: Vec<String>,
+    /// The analyses the refused reply's template steps chose (`ChosenAnalyses`), which the next call shows first
+    /// (`analysis_view::focus_of`). Kept apart from `names` so no refused name can steer it; never logged.
+    pub focus: Vec<String>,
 }
 
 /// A run's last recorded refusal, with the lease generation that recorded it, the run's turn and its failure count
@@ -54,13 +57,60 @@ impl std::fmt::Display for CodeRefused {
 
 impl std::error::Error for CodeRefused {}
 
-/// The faults a refusal names, without the names that only guide the next call: where a refused number stood (`where `)
-/// and the fields an object allows (`allowed:`), both added in r38. Counts recorded before r38 stay comparable.
-pub fn fault_count(names: &[String]) -> usize {
-    names
-        .iter()
-        .filter(|n| !n.starts_with("where ") && !n.starts_with("allowed:"))
-        .count()
+/// The faults a refusal names, without the names r38 added only to guide the next call: where a refused number stood
+/// (`where `, number refusals) and the fields an object allows (`allowed:`, schema refusals). Each is excluded only for
+/// the reasons that write it, where no fault name can begin that way, so counts recorded before r38 stay comparable.
+pub fn fault_count(reason: &str, names: &[String]) -> usize {
+    let guidance: &str = match reason {
+        "proposal_prose_number" | "method_review_prose_number" => "where ",
+        "proposal_schema_invalid" => "allowed:",
+        _ => return names.len(),
+    };
+    names.iter().filter(|n| !n.starts_with(guidance)).count()
+}
+
+/// A refused lead reply's error with the analyses its template steps chose, by catalog id as written, deduplicated and
+/// bounded. It displays as the refusal it wraps, so the reason code and logs are unchanged; `refusal` reads it into
+/// `Refusal::focus`.
+#[derive(Debug)]
+pub struct ChosenAnalyses {
+    pub error: anyhow::Error,
+    pub analyses: Vec<String>,
+}
+
+impl std::fmt::Display for ChosenAnalyses {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.error, f)
+    }
+}
+
+impl std::error::Error for ChosenAnalyses {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.error.as_ref())
+    }
+}
+
+/// The longest analysis id a refused reply's choice may carry into the next call's focus.
+const CHOSEN_ID_BYTES: usize = 128;
+
+/// `error` with the analyses `reply`'s steps chose (`actions[].analysis.feature`), when it chose any.
+pub(super) fn with_chosen_analyses(error: anyhow::Error, reply: &Value) -> anyhow::Error {
+    let mut analyses: Vec<String> = Vec::new();
+    for action in reply["actions"].as_array().into_iter().flatten() {
+        if let Some(id) = action["analysis"]["feature"]
+            .as_str()
+            .filter(|id| (1..=CHOSEN_ID_BYTES).contains(&id.len()))
+            && !analyses.iter().any(|a| a == id)
+            && analyses.len() < analysis_view::FOCUS_MAX
+        {
+            analyses.push(id.to_owned());
+        }
+    }
+    if analyses.is_empty() {
+        error
+    } else {
+        anyhow::Error::new(ChosenAnalyses { error, analyses })
+    }
 }
 
 /// What the next lead call learns from a deferred turn: the fixed reason, and the
@@ -72,6 +122,11 @@ pub fn refusal(error: &anyhow::Error) -> Refusal {
             .chain()
             .find_map(|cause| cause.downcast_ref::<CodeRefused>())
             .map(|refused| refused.names.clone())
+            .unwrap_or_default(),
+        focus: error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<ChosenAnalyses>())
+            .map(|chosen| chosen.analyses.clone())
             .unwrap_or_default(),
     }
 }

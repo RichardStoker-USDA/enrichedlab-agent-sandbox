@@ -248,8 +248,10 @@ fn a_step_may_keep_named_columns_and_records_them_only_when_named() {
     for (columns, name) in [
         (
             json!(too_many),
-            format!("columns: {} of at most {COLUMNS_MAX}", COLUMNS_MAX + 1),
+            format!("columns: {} of 1 to {COLUMNS_MAX}", COLUMNS_MAX + 1),
         ),
+        // Named but empty is refused, never read as absent (r38 review): absent is the only way to keep every column.
+        (json!([]), format!("columns: 0 of 1 to {COLUMNS_MAX}")),
         (json!(["a", "a"]), "column 2: named twice".to_owned()),
         (
             json!(["a", ""]),
@@ -270,4 +272,9 @@ fn a_step_may_keep_named_columns_and_records_them_only_when_named() {
         assert_eq!(refused.names.last().unwrap(), &name);
     }
     assert!(column_name(&"x".repeat(COLUMN_BYTES)));
+    // A written null is not absent either.
+    let null: Result<ObjectsChoice, _> = serde_json::from_value(
+        json!({"collection": collection, "files": ["dir/c.tsv"], "columns": null}),
+    );
+    assert!(null.is_err());
 }

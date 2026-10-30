@@ -59,6 +59,16 @@ pub(super) const ACTION_FIELDS: Fields = &[
     ("expect", true, Shape::Map),
 ];
 
+/// A lab objects step's files (migration 083) and the columns its tables keep (084).
+pub(super) const OBJECTS_FIELDS: Fields = &[
+    ("collection", true, Shape::Text),
+    ("files", true, Shape::TextList),
+    ("columns", false, Shape::TextList),
+];
+
+/// The fields-allowed guidance names a schema refusal carries after its faults, at most.
+const ALLOWED_NAMES_MAX: usize = 4;
+
 /// A step's expectation and its parts.
 pub(super) const EXPECT_FIELDS: Fields = &[
     ("table", false, Shape::Text),
@@ -243,6 +253,11 @@ pub fn proposal_schema_names(value: &Value) -> Vec<String> {
                 );
             }
             if list == "actions"
+                && let Some(objects) = item.get("objects")
+            {
+                check_fields(objects, OBJECTS_FIELDS, "actions.objects", &mut names);
+            }
+            if list == "actions"
                 && let Some(expect) = item.get("expect")
             {
                 check_fields(expect, EXPECT_FIELDS, "actions.expect", &mut names);
@@ -269,5 +284,12 @@ pub fn proposal_schema_names(value: &Value) -> Vec<String> {
             }
         }
     }
-    names.into_iter().take(SCHEMA_NAMES_MAX).collect()
+    // Faults first, within their bound; the fields-allowed guidance follows and never displaces a fault.
+    let (allowed, faults): (Vec<String>, Vec<String>) =
+        names.into_iter().partition(|n| n.starts_with("allowed:"));
+    faults
+        .into_iter()
+        .take(SCHEMA_NAMES_MAX)
+        .chain(allowed.into_iter().take(ALLOWED_NAMES_MAX))
+        .collect()
 }

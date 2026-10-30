@@ -998,7 +998,7 @@ if [ "$mode" = lab-objects ]; then
         --file=/workspace/migrations/postgres/grant_broker_coordinator.psql
     BROKER_QUALIFICATION_MIGRATION_DSN_FILE="$dsn_file" \
         cargo test --locked --test broker_lab_objects -- --ignored
-    printf '%s\n' "Lab objects: the coordinator and worker ready only with migration 083 and their grants, the run's objects methods read under its lease, every other step shape refused with nothing recorded, the admitted step committed with its request, the request read under the worker's own lease only, one receipt per attempt, a request-only route, and the lab tools list naming the kind."
+    printf '%s\n' "Lab objects: the coordinator and worker ready only with migrations 083 and 084 and their grants, the run's objects methods read under its lease, every other step shape refused with nothing recorded, the admitted step committed with its request, the request read under the worker's own lease only, one receipt per attempt, a request-only route, and the lab tools list naming the kind."
     exit 0
 fi
 if [ "$mode" = configured-methods ]; then

@@ -44,9 +44,21 @@ pub const NOTE: &str = "A step for this method names one collection by its ref a
 pub struct ObjectsChoice {
     pub collection: String,
     pub files: Vec<String>,
-    /// The columns each table keeps, in this order; empty keeps every column.
-    #[serde(default)]
-    pub columns: Vec<String>,
+    /// The columns each table keeps, in this order; absent keeps every column. Present, it names 1 to 64: an empty list
+    /// is refused, never read as absent.
+    #[serde(
+        default,
+        deserialize_with = "present_columns",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub columns: Option<Vec<String>>,
+}
+
+/// `columns` when the reply writes it: a list, never `null` (absent is the only way to keep every column).
+fn present_columns<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Vec<String>>, D::Error> {
+    Vec::<String>::deserialize(d).map(Some)
 }
 
 /// A step's files as the checks admitted them, in the terms the turn commit stores (`objects`).
@@ -279,16 +291,14 @@ pub fn admit(
             }
         }
         let mut kept = HashSet::new();
-        if choice.columns.len() > COLUMNS_MAX {
+        let columns = choice.columns.as_deref().unwrap_or_default();
+        if choice.columns.is_some() && (columns.is_empty() || columns.len() > COLUMNS_MAX) {
             return Err(refused(
                 "proposal_objects_columns_invalid",
-                &[&format!(
-                    "columns: {} of at most {COLUMNS_MAX}",
-                    choice.columns.len()
-                )],
+                &[&format!("columns: {} of 1 to {COLUMNS_MAX}", columns.len())],
             ));
         }
-        for (i, column) in choice.columns.iter().enumerate() {
+        for (i, column) in columns.iter().enumerate() {
             if !column_name(column) {
                 return Err(refused(
                     "proposal_objects_columns_invalid",
@@ -320,7 +330,7 @@ pub fn admit(
                 generation: text("generation"),
                 manifest_sha256: text("manifest_sha256"),
                 files: choice.files.clone(),
-                columns: choice.columns.clone(),
+                columns: columns.to_vec(),
             },
         );
     }

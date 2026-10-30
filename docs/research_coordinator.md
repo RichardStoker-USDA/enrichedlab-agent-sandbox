@@ -575,7 +575,17 @@ name its actions. A number refusal (`proposal_prose_number`, `method_review_pros
 at fault, such as `summary: 10` or `reason: 20`, at most 8, and a query step without its query, or with one it may not
 have, is named by its key. A number in prose may be a result value, so those names reach only the next call's
 `prior_attempt`, never a log line or run event. Test runs lost retries to both refusals without knowing what
-to change. The third call after two refused replies in a row is narrowed instead of repeated
+to change. Since r38 a number refusal also says where each number stood, as `where <field>: …<words> <<n>> <words>…`
+(up to 24 characters of the lead's own words on each side, taken from the text and span that refused it, whitespace
+collapsed, control and direction characters dropped), and `prior_attempt.fix` states what the lead may do instead:
+bind the value to a result cell through a placeholder, write a name exactly as shown, or leave it out. The methods
+specialist's immediate retry gets the same fix. A schema refusal names the fields its object allows, as
+`allowed:<object>: <fields>`, after its faults (at most 4, never displacing a fault). These guidance names are left out
+of the recorded fault count for the reasons that write them, so counts stay comparable with earlier runs. After any
+refusal of a reply whose template-analysis steps chose analyses, the next call shows those analyses' contracts first
+(`analysis_focus`); the choices travel beside the refusal's names, never among them. Before r38 only
+`proposal_analysis_contract_not_shown` did this, so a step refused for its table lost its analysis's contract and the
+next reply was refused for not having seen it. The third call after two refused replies in a row is narrowed instead of repeated
 where the narrowing cannot forbid the repair: its context carries `redirect` (`kind` and the refusal it follows),
 chosen in code from the last refusal's code. `one_step` (after a step, query or code fault of the lead's own) allows at
 most one step; `fewer_findings` (after too many findings or a proposal too large to review) allows at most 8 findings
@@ -636,6 +646,24 @@ record. `proposal_settings_missing` and `proposal_settings_invalid` refuse a pro
 `configured_block_rejected` means the recipe itself failed admission and `configured_method_invalid` that its configuration does not load, both catalog defects. Migration 022 renders the block
 again at commit from the template row and the settings and refuses any difference, stores the configuration with the
 labels read from the template row, and classes the task `configured` in lineage.
+
+## Lab files
+
+A lab objects method (migration 083, route `server-objects`) reads files from the lab's object store. The claim shows
+the lab's file collections found for the goal, each with a sample of file names; the lead proposes `objects`: the
+`collection` it was shown and up to 20 `files` from that sample. The coordinator refuses any other shape with a
+`proposal_objects_*` code and commits the request with the collection's bucket, prefix, copy generation and manifest
+digest. A worker reads the request only under its own lease, copies the named files, checks each against the manifest
+and records one receipt per attempt; it never shows the lead a file's contents. Each delimited file becomes a table a
+template analysis may read by reference, when it has 1 to 64 columns and at most 50,000 rows.
+
+A file wider than 64 columns (the October 30 canary's table had 96) is read again with `columns`: 1 to 64 distinct
+names, each 1 to 128 bytes without control characters, written exactly as the step's tables listed them (migration
+084). Each table the step makes keeps only those columns, in that order; a table missing one, or holding one twice, stays
+a file only. An absent `columns` keeps every column; an empty list or `null` is refused
+(`proposal_objects_columns_invalid`), never read as absent. The coordinator records `columns` only when named, so a
+step without it digests exactly as before 084. A worker older than 084 refuses a request that names columns with a
+fixed store error, before it reads any object.
 
 ## Step checks
 

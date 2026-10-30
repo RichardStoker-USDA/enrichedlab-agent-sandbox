@@ -584,9 +584,7 @@ impl Proposal {
                     .iter()
                     .map(|t| ("tables.lead_in", t.lead_in.as_str(), None)),
             );
-        let texts: Vec<_> = texts.collect();
-        let plain: Vec<(&str, &str)> = texts.iter().map(|(f, t, _)| (*f, *t)).collect();
-        let mut names = refused_numbers_with(index, texts);
+        let (mut names, places) = refused_numbers_placed(index, texts);
         // Where each bound value would stand: joined to anything that makes it part of another value, it is refused.
         for f in &self.findings {
             let field = match f.composed_from {
@@ -603,7 +601,6 @@ impl Proposal {
         if names.is_empty() {
             Ok(())
         } else {
-            let places = refused_number_places(&names, &plain);
             names.extend(places);
             Err(CodeRefused {
                 code: "proposal_prose_number",

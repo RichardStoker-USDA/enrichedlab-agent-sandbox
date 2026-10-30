@@ -311,27 +311,27 @@ fn result_path(word: &str) -> bool {
             .is_some_and(|(_, name)| name.contains('.'))
 }
 
-/// The name a refused template step adds once its analysis's contract was shown, so the next call shows it again.
-pub const FOCUS_NAME: &str = "analysis: ";
-
 /// The analyses the next call shows first after a refusal: those a reply named for `CONTRACT_NOT_SHOWN` (the names
-/// after the step's key), or, for any other template-step refusal, the analysis whose contract the step had read.
-/// Before r38 only the first kind counted, so an analysis refused for its table dropped back to `other_analyses` and the
-/// next reply was refused for not having seen it (October 30 objects canary, generations 7 to 9).
-pub fn focus_of(reason: &str, names: &[String]) -> Vec<String> {
+/// after the step's key), then the analyses the refused reply's own template steps chose (`chosen`), whatever refused
+/// it. Before r38 only the first kind counted, so an analysis refused for its table, or a template step refused later
+/// for its expectation, dropped back to `other_analyses` and the next reply was refused for not having seen it (October
+/// 30 objects canary, generations 7 to 9). `chosen` travels beside the refusal's names, never among them, so no
+/// refused name can steer it. An id the catalog does not hold matches no analysis and changes nothing.
+pub fn focus_of(reason: &str, names: &[String], chosen: &[String]) -> Vec<String> {
+    let mut focus: Vec<String> = Vec::new();
     if reason == CONTRACT_NOT_SHOWN {
-        return names.iter().skip(1).take(4).cloned().collect();
+        focus.extend(names.iter().skip(1).take(FOCUS_MAX).cloned());
     }
-    if reason.starts_with("proposal_analysis_") {
-        return names
-            .iter()
-            .filter_map(|n| n.strip_prefix(FOCUS_NAME))
-            .take(4)
-            .map(str::to_owned)
-            .collect();
+    for id in chosen {
+        if !focus.contains(id) && focus.len() < FOCUS_MAX {
+            focus.push(id.clone());
+        }
     }
-    Vec::new()
+    focus
 }
+
+/// The analyses one refusal may put first.
+pub const FOCUS_MAX: usize = 4;
 
 #[cfg(test)]
 mod tests {
@@ -497,10 +497,10 @@ mod tests {
     fn a_contract_not_shown_refusal_names_the_next_calls_focus() {
         let names = ["step-a".to_owned(), "fdc_nutrient_normalize".to_owned()];
         assert_eq!(
-            focus_of(CONTRACT_NOT_SHOWN, &names),
+            focus_of(CONTRACT_NOT_SHOWN, &names, &[]),
             ["fdc_nutrient_normalize"]
         );
-        assert!(focus_of("proposal_analysis_setting_unknown", &names).is_empty());
+        assert!(focus_of("proposal_analysis_setting_unknown", &names, &[]).is_empty());
     }
 
     #[test]
@@ -514,27 +514,38 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_step_keeps_its_analysis_in_focus_whatever_the_refusal() {
+    fn a_refused_reply_keeps_its_chosen_analyses_in_focus_whatever_the_refusal() {
         let names = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
-        assert_eq!(
-            focus_of(CONTRACT_NOT_SHOWN, &names(&["step", "summary_stats"])),
-            names(&["summary_stats"])
-        );
+        // The analyses named for an unseen contract come first, then the reply's own choices, without repeats.
         assert_eq!(
             focus_of(
-                "proposal_analysis_table_unsuitable",
-                &names(&["step", "results/wide.csv", "analysis: summary_stats"])
+                CONTRACT_NOT_SHOWN,
+                &names(&["step", "summary_stats"]),
+                &names(&["group_compare", "summary_stats"])
             ),
-            names(&["summary_stats"])
+            names(&["summary_stats", "group_compare"])
         );
-        // A refusal before the contract was read names no analysis, and other codes never focus.
-        assert!(focus_of("proposal_analysis_feature_unknown", &names(&["step", "x"])).is_empty());
-        assert!(
-            focus_of(
-                "proposal_schema_invalid",
-                &names(&["analysis: summary_stats"])
-            )
-            .is_empty()
+        // Any other refusal keeps the reply's choices, and a refused name never becomes focus (r38 review: a setting
+        // named `analysis: other` once could).
+        for reason in [
+            "proposal_analysis_table_unsuitable",
+            "proposal_expect_invalid",
+            "proposal_prose_number",
+        ] {
+            assert_eq!(
+                focus_of(
+                    reason,
+                    &names(&["step", "analysis: other"]),
+                    &names(&["summary_stats"])
+                ),
+                names(&["summary_stats"])
+            );
+        }
+        assert!(focus_of("proposal_schema_invalid", &names(&["analysis: x"]), &[]).is_empty());
+        let many: Vec<String> = (0..9).map(|i| format!("a{i}")).collect();
+        assert_eq!(
+            focus_of("proposal_schema_invalid", &[], &many).len(),
+            FOCUS_MAX
         );
     }
 }

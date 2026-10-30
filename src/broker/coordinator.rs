@@ -427,7 +427,7 @@ async fn advance(
     };
     // An analysis the previous reply named without having seen its contract comes first in this call's view.
     if let Some(refusal) = refused.as_ref() {
-        let focus = analysis_view::focus_of(refusal.reason, &refusal.names);
+        let focus = analysis_view::focus_of(refusal.reason, &refusal.names, &refusal.focus);
         if !focus.is_empty() {
             results["analysis_focus"] = json!(focus);
         }
@@ -632,6 +632,8 @@ async fn advance(
     } = match checked {
         Ok(checked) => checked,
         Err(error) => {
+            // The next call shows first the analyses this reply's template steps chose, whatever refused it.
+            let error = with_chosen_analyses(error, &lead.value);
             return Err(keep_refused_reply(store, run, worker, generation, &lead, error).await);
         }
     };

@@ -199,32 +199,18 @@ pub fn check_method_review_with_parts(
             f.detail = detail;
         }
     }
-    let mut numbers = refused_numbers(index, [("reason", method.reason.as_str())]);
-    for (i, f) in method.findings.iter().enumerate() {
-        for number in index.step_prose_refused(&f.detail) {
-            let name = format!(
-                "finding {}: {}",
-                i + 1,
-                number.chars().take(24).collect::<String>()
-            );
-            if !numbers.contains(&name) && numbers.len() < REFUSED_NUMBERS_MAX {
-                numbers.push(name);
-            }
-        }
-    }
+    // The reason and each finding's detail are read as step prose (a shown analysis's setting numbers may stand).
+    let labels: Vec<String> = (1..=method.findings.len())
+        .map(|n| format!("finding {n}"))
+        .collect();
+    let texts = std::iter::once(("reason", method.reason.as_str(), true, None)).chain(
+        labels
+            .iter()
+            .zip(&method.findings)
+            .map(|(label, f)| (label.as_str(), f.detail.as_str(), true, None)),
+    );
+    let (mut numbers, places) = super::statements::refused_numbers_at(index, texts);
     if !numbers.is_empty() {
-        let labels: Vec<String> = (1..=method.findings.len())
-            .map(|n| format!("finding {n}"))
-            .collect();
-        let texts: Vec<(&str, &str)> = std::iter::once(("reason", method.reason.as_str()))
-            .chain(
-                labels
-                    .iter()
-                    .zip(&method.findings)
-                    .map(|(label, f)| (label.as_str(), f.detail.as_str())),
-            )
-            .collect();
-        let places = super::statements::refused_number_places(&numbers, &texts);
         numbers.extend(places);
         return Err(CodeRefused {
             code: "method_review_prose_number",
@@ -541,11 +527,8 @@ impl Redirect {
 pub fn with_prior_attempt(context: &mut Value, refused: Option<&Refusal>, failures: i64) {
     if let Some(refusal) = refused.filter(|_| failures > 0) {
         context["prior_attempt"] = json!({"refused": refusal.reason, "failures": failures});
-        if matches!(
-            refusal.reason,
-            "proposal_prose_number" | "method_review_prose_number"
-        ) {
-            context["prior_attempt"]["fix"] = json!(super::statements::NUMBER_FIX);
+        if let Some(fix) = super::statements::fix_for(refusal.reason) {
+            context["prior_attempt"]["fix"] = json!(fix);
         }
         name_faults(
             &mut context["prior_attempt"],
@@ -785,6 +768,9 @@ pub(super) async fn methods_review(
     };
     let mut asked = context.clone();
     asked["prior_attempt"] = json!({"refused": code});
+    if let Some(fix) = super::statements::fix_for(code) {
+        asked["prior_attempt"]["fix"] = json!(fix);
+    }
     name_faults(
         &mut asked["prior_attempt"],
         &names,

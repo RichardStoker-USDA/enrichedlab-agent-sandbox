@@ -247,15 +247,12 @@ impl ResultIndex {
         self.refused_in(text, true, None)
     }
 
-    /// `step_prose_refused` for one step's own title and rationale: a number that step's SQL sets in a comparison or an
-    /// `IN` list (`step_literals`) may also stand where its whole token writes that literal exactly
+    /// The numbers `text` may not hold, as prose or with `step` as step prose. With `own` (one step's own title and
+    /// rationale), a number that step's SQL sets in a comparison or an `IN` list (`step_literals`) may also stand
+    /// where its whole token writes that literal exactly
     /// (`literal_occurrence`: everything up to whitespace or a prose separator, a letter, a mark, an invisible
     /// character, `^`, `_`, `/`, a sign or a point included, only a sentence-final `.` or `:` dropped). So literals
     /// cannot compose a number or a name the SQL never wrote, such as `1e-9`, `10^-9`, `A7/B3`, `.7` or `-7` for `7`.
-    pub(super) fn step_prose_refused_own(&self, text: &str, own: &HashSet<String>) -> Vec<String> {
-        self.refused_in(text, true, Some(own))
-    }
-
     pub(super) fn refused_in(
         &self,
         text: &str,
@@ -275,12 +272,24 @@ impl ResultIndex {
             .iter()
             .filter(|&&c| directs_text(c))
             .map(|&c| format!("U+{:04X}", u32::from(c)));
-        number_spans(&chars)
+        self.refused_spans(&chars, step, own)
             .into_iter()
-            .filter(|&(start, end)| self.number_refused(&chars, start, end, step, own))
             .map(|(start, end)| chars[start..end].iter().collect())
             .chain(other_numerals)
             .chain(directions)
+            .collect()
+    }
+
+    /// Where each refused number in `chars` stands, in characters: `refused_in`'s numbers written as digits, in order.
+    pub(super) fn refused_spans(
+        &self,
+        chars: &[char],
+        step: bool,
+        own: Option<&HashSet<String>>,
+    ) -> Vec<(usize, usize)> {
+        number_spans(chars)
+            .into_iter()
+            .filter(|&(start, end)| self.number_refused(chars, start, end, step, own))
             .collect()
     }
 

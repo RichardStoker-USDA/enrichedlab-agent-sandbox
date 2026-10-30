@@ -3042,6 +3042,7 @@ fn a_third_call_after_two_refusals_is_narrowed_and_held_to_it() {
             &Refusal {
                 reason,
                 names: names.iter().map(|n| n.to_string()).collect(),
+                focus: Vec::new(),
             },
             failures,
         )
@@ -3117,6 +3118,7 @@ fn a_third_call_after_two_refusals_is_narrowed_and_held_to_it() {
     let refused = |reason: &'static str| Refusal {
         reason,
         names: vec![],
+        focus: Vec::new(),
     };
     let mut plain = compiled.value.clone();
     assert_eq!(
@@ -3355,6 +3357,7 @@ fn the_answer_follows_from_the_answerability_ledger() {
         Some(&Refusal {
             reason: "sql_refused_unordered",
             names: vec![],
+            focus: Vec::new(),
         }),
         2,
     )
@@ -3741,6 +3744,7 @@ fn restored_titles_and_refusal_names_stay_within_their_allowances() {
         Some(&Refusal {
             reason: "sql_refused_function",
             names,
+            focus: Vec::new(),
         }),
         1,
     );
@@ -3756,6 +3760,7 @@ fn restored_titles_and_refusal_names_stay_within_their_allowances() {
         Some(&Refusal {
             reason: "sql_refused_syntax",
             names: vec!["e".repeat(1000)],
+            focus: Vec::new(),
         }),
         1,
     );
@@ -3925,7 +3930,8 @@ fn a_retry_tells_the_lead_why_its_proposal_was_refused() {
         named,
         Refusal {
             reason: "code_name_not_allowed",
-            names: vec!["replicate".into()]
+            names: vec!["replicate".into()],
+            focus: Vec::new()
         }
     );
     let mut renamed = context();
@@ -4002,7 +4008,8 @@ fn an_unreadable_reply_names_whose_it_was_and_what_was_wrong() {
         refusal(&error),
         Refusal {
             reason: "model_content_not_json",
-            names: vec!["lead: text_after_object".into()]
+            names: vec!["lead: text_after_object".into()],
+            focus: Vec::new()
         }
     );
     assert_eq!(
@@ -4012,7 +4019,8 @@ fn an_unreadable_reply_names_whose_it_was_and_what_was_wrong() {
         ))),
         Refusal {
             reason: "model_content_missing",
-            names: vec!["methods_specialist: no_answer".into()]
+            names: vec!["methods_specialist: no_answer".into()],
+            focus: Vec::new()
         }
     );
     let error = anyhow::Error::new(unreadable_reply("lead", "out_of_room"));

@@ -184,3 +184,31 @@ fn a_number_refusal_says_where_each_number_stood() {
         ]
     );
 }
+
+#[test]
+fn each_place_comes_from_the_text_that_refused_its_number() {
+    // r38 review: places were looked up by field label, so a second action's refused number had no place, or borrowed
+    // the first action's allowed occurrence of the same number.
+    let p = proposal(
+        vec![
+            action(
+                "a",
+                Some("SELECT description FROM food WHERE fdc_id > 42"),
+                "Keep ids above 42.",
+            ),
+            action("b", None, "Then compare 42 foods."),
+        ],
+        "Done.",
+    );
+    let names = match p.validate_prose(&ResultIndex::default()) {
+        Ok(()) => Vec::new(),
+        Err(e) => e.downcast_ref::<CodeRefused>().unwrap().names.clone(),
+    };
+    assert_eq!(
+        names,
+        [
+            "actions.rationale: 42",
+            "where actions.rationale: Then compare <<42>> foods."
+        ]
+    );
+}
