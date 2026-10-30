@@ -260,6 +260,24 @@ async fn a_lab_objects_step_is_committed_read_by_its_lease_and_receipted() {
             "lab-objects",
             Some(bad("manifest_sha256", json!({ "sha": MANIFEST }))),
         ),
+        // Migration 084: kept columns are 1 to 64 distinct names of 1 to 128 bytes without control characters.
+        ("lab-objects", Some(bad("columns", json!([])))),
+        (
+            "lab-objects",
+            Some(bad(
+                "columns",
+                json!((0..65).map(|n| format!("c{n}")).collect::<Vec<_>>()),
+            )),
+        ),
+        ("lab-objects", Some(bad("columns", json!(["gene", "gene"])))),
+        ("lab-objects", Some(bad("columns", json!(["gene\tcount"])))),
+        ("lab-objects", Some(bad("columns", json!([""])))),
+        (
+            "lab-objects",
+            Some(bad("columns", json!(["x".repeat(129)]))),
+        ),
+        ("lab-objects", Some(bad("columns", json!([7])))),
+        ("lab-objects", Some(bad("columns", json!("gene")))),
     ] {
         let refused = coordinator
             .commit_research_turn(
@@ -294,7 +312,11 @@ async fn a_lab_objects_step_is_committed_read_by_its_lease_and_receipted() {
             generation,
             revision().await,
             &state(plan.clone()),
-            &json!([action("counts", "lab-objects", Some(objects()))]),
+            &json!([action(
+                "counts",
+                "lab-objects",
+                Some(bad("columns", json!(["count", "gene"])))
+            )]),
             &json!({"schema_version": 1, "test": "bounded metadata"}),
             "delegate",
         )
@@ -303,7 +325,7 @@ async fn a_lab_objects_step_is_committed_read_by_its_lease_and_receipted() {
     let task: Uuid = serde_json::from_value(committed["tasks"][0]["task_id"].clone()).unwrap();
     let row = owner
         .query_one(
-            "SELECT files, prefix, request->'origin'->>'action_key', request->>'schema'
+            "SELECT files, prefix, request->'origin'->>'action_key', request->>'schema', request->'columns'
                FROM enrichedlab_agent.broker_object_requests WHERE task_id=$1",
             &[&task],
         )
@@ -319,6 +341,7 @@ async fn a_lab_objects_step_is_committed_read_by_its_lease_and_receipted() {
         row.get::<_, String>(3),
         "enrichedlab.lab-objects-request.v1"
     );
+    assert_eq!(row.get::<_, Value>(4), json!(["count", "gene"]));
 
     // The worker reads the request under its own lease only, and records one receipt per attempt.
     assert!(
@@ -339,6 +362,7 @@ async fn a_lab_objects_step_is_committed_read_by_its_lease_and_receipted() {
     assert_eq!(read.bucket, "example-lab-objects");
     assert_eq!(read.manifest_sha256, MANIFEST);
     assert_eq!(read.files.len(), 2);
+    assert_eq!(read.columns, ["count", "gene"]);
     assert!(
         worker
             .task_objects(task, "worker-b", claimed.attempt, claimed.lease_generation)
