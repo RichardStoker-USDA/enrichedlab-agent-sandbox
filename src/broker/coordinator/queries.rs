@@ -210,6 +210,10 @@ pub(super) struct ReplyCheck {
     /// The model's input ceiling at that call (`max_input_bytes`); the historical ceiling when absent.
     #[serde(default = "legacy_replay_input")]
     pub(super) max_input_bytes: usize,
+    /// The byte length of the lead system text sent with that call: a candidate coordinator's own text
+    /// (`--lead-system-file`); the compiled text when absent.
+    #[serde(default)]
+    pub(super) system_bytes: Option<usize>,
     /// The project's archived action keys at that call; none when absent.
     #[serde(default)]
     pub(super) archived: HashSet<String>,
@@ -258,7 +262,13 @@ pub fn check_lead_replies(
         count += 1;
         let check: ReplyCheck =
             serde_json::from_str(line).map_err(|_| anyhow!("check_lead_replies_invalid"))?;
-        if check.id.is_empty() || check.id.chars().count() > 128 || check.parallel == 0 {
+        if check.id.is_empty()
+            || check.id.chars().count() > 128
+            || check.parallel == 0
+            || check
+                .system_bytes
+                .is_some_and(|bytes| !(1..=super::LEAD_SYSTEM_MAX).contains(&bytes))
+        {
             bail!("check_lead_replies_invalid");
         }
         let sources = query_sources(&check.sources)?;
@@ -267,17 +277,21 @@ pub fn check_lead_replies(
             &check.analysis_catalog,
         );
         let input_ceiling = check.max_input_bytes.min(MAX_INPUT_BYTES);
-        let (index, rejected) =
-            match ResultIndex::from_context_with_ceiling(&check.context, &methods, input_ceiling) {
-                Ok(rebuilt) => rebuilt,
-                Err(fault) => {
-                    let decision =
-                        json!({"id": check.id, "outcome": "context_invalid", "fault": fault});
-                    serde_json::to_writer(&mut output, &decision)?;
-                    output.write_all(b"\n")?;
-                    continue;
-                }
-            };
+        let (index, rejected) = match ResultIndex::from_context_with_ceiling(
+            &check.context,
+            &methods,
+            input_ceiling,
+            check.system_bytes.unwrap_or_else(super::lead_system_bytes),
+        ) {
+            Ok(rebuilt) => rebuilt,
+            Err(fault) => {
+                let decision =
+                    json!({"id": check.id, "outcome": "context_invalid", "fault": fault});
+                serde_json::to_writer(&mut output, &decision)?;
+                output.write_all(b"\n")?;
+                continue;
+            }
+        };
         let decision = match read_finished_reply(
             check.finish_reason.as_deref(),
             check.reply.as_deref(),

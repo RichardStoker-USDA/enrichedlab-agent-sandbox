@@ -641,6 +641,7 @@ pub(super) async fn read_or_make(
                                 context: String::new(),
                                 content: String::new(),
                                 reasoning: String::new(),
+                                system: String::new(),
                             },
                             checked,
                         )

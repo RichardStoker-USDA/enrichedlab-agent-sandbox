@@ -1145,10 +1145,21 @@ fn replay_context_uses_its_recorded_byte_ceiling_and_a_fixed_cell_limit() {
     let bytes = serde_json::to_vec(&context).unwrap().len();
     let recorded_ceiling = SYSTEM.len() + bytes;
     assert!(
-        super::ResultIndex::from_context_with_ceiling(&context, &methods, recorded_ceiling).is_ok()
+        super::ResultIndex::from_context_with_ceiling(
+            &context,
+            &methods,
+            recorded_ceiling,
+            SYSTEM.len()
+        )
+        .is_ok()
     );
     assert_eq!(
-        super::ResultIndex::from_context_with_ceiling(&context, &methods, recorded_ceiling - 1),
+        super::ResultIndex::from_context_with_ceiling(
+            &context,
+            &methods,
+            recorded_ceiling - 1,
+            SYSTEM.len()
+        ),
         Err("context_too_large")
     );
 
@@ -1182,6 +1193,7 @@ fn replay_context_uses_its_recorded_byte_ceiling_and_a_fixed_cell_limit() {
     }))
     .unwrap();
     assert_eq!(legacy.max_input_bytes, super::legacy_replay_input());
+    assert_eq!(legacy.system_bytes, None);
     let sized_context = |target: usize| {
         let overhead = serde_json::to_vec(&json!({"padding": ""})).unwrap().len();
         assert!(target >= overhead);
@@ -1198,7 +1210,8 @@ fn replay_context_uses_its_recorded_byte_ceiling_and_a_fixed_cell_limit() {
         super::ResultIndex::from_context_with_ceiling(
             &legacy_fits,
             &methods,
-            legacy.max_input_bytes
+            legacy.max_input_bytes,
+            SYSTEM.len()
         )
         .is_ok()
     );
@@ -1206,7 +1219,8 @@ fn replay_context_uses_its_recorded_byte_ceiling_and_a_fixed_cell_limit() {
         super::ResultIndex::from_context_with_ceiling(
             &legacy_exceeds,
             &methods,
-            legacy.max_input_bytes
+            legacy.max_input_bytes,
+            SYSTEM.len()
         ),
         Err("context_too_large")
     );
@@ -1236,6 +1250,7 @@ fn a_decision_keeps_each_reply_that_fits_a_kept_text() {
         context: "{}".into(),
         content,
         reasoning: String::new(),
+        system: SYSTEM.to_owned(),
     };
     let fits = call(format!("{{}}{}", " ".repeat(super::MAX_KEPT_TEXT - 2)));
     let over = call(format!("{{}}{}", " ".repeat(super::MAX_KEPT_TEXT - 1)));
@@ -2201,7 +2216,7 @@ fn a_larger_configured_ceiling_shows_more_relations_without_reordering_the_conte
             &json!([]),
             &results,
             1,
-            config.lead_budget(),
+            config.lead_budget(SYSTEM.len()),
             &config.section_budgets(),
         );
         assert_eq!(
@@ -4056,6 +4071,119 @@ fn only_a_candidate_coordinator_takes_a_lead_system_text_and_only_a_sound_one() 
             .to_string(),
         "lead_system_file_unreadable"
     );
-    // Without a file the process uses the compiled text.
-    assert_eq!(super::lead_system(), SYSTEM);
+}
+
+#[test]
+fn replay_checks_a_candidate_call_against_the_system_text_it_sent() {
+    use serde_json::json;
+    // A candidate call with a short system text and a context that fills the rest of its ceiling: the replay checker
+    // must reserve the recorded system size, not the compiled text's, or it calls a sound context too large.
+    let ceiling = 131_072;
+    let system_bytes = 100;
+    let overhead = serde_json::to_vec(&json!({"padding": ""})).unwrap().len();
+    let context = json!({"padding": "x".repeat(ceiling - system_bytes - overhead)});
+    assert!(serde_json::to_vec(&context).unwrap().len() + SYSTEM.len() > ceiling);
+    let line = |system: Option<usize>| {
+        let mut check = json!({
+            "id": "candidate",
+            "context": context,
+            "reply": null,
+            "finish_reason": null,
+            "state": {
+                "schema_version": 1, "goal": "Check the replay boundary.", "constraints": [], "plan": [],
+                "lessons": [], "next_action": "Check it.",
+                "workspace": {"schema_version": 1, "profile": "test", "image_digest": "sha256:test",
+                    "source_digest": "sha256:test", "input_refs": [], "tool_refs": [], "preparation_receipt": null}
+            },
+            "profiles": [], "parallel": 1, "methods": [], "sources": [], "max_input_bytes": ceiling
+        });
+        if let Some(bytes) = system {
+            check["system_bytes"] = json!(bytes);
+        }
+        format!("{check}\n")
+    };
+    let outcome = |system: Option<usize>| {
+        let mut out = Vec::new();
+        super::check_lead_replies(line(system).as_bytes(), &mut out).map(|_| {
+            let decision: serde_json::Value = serde_json::from_slice(&out).unwrap();
+            (decision["outcome"].clone(), decision["fault"].clone())
+        })
+    };
+    let (recorded, _) = outcome(Some(system_bytes)).unwrap();
+    assert_ne!(recorded, "context_invalid");
+    // Without the field the call was made with the compiled text, which this context does not fit beside.
+    assert_eq!(
+        outcome(None).unwrap(),
+        (json!("context_invalid"), json!("context_too_large"))
+    );
+    for bad in [0, super::LEAD_SYSTEM_MAX + 1] {
+        assert_eq!(
+            outcome(Some(bad)).unwrap_err().to_string(),
+            "check_lead_replies_invalid"
+        );
+    }
+}
+
+#[test]
+fn a_models_lead_text_sets_its_input_floor_and_its_lead_budget() {
+    use serde_json::json;
+    let dir = tempfile::tempdir().unwrap();
+    let write = |max_input: usize| {
+        let path = dir.path().join(format!("model-{max_input}.json"));
+        std::fs::write(
+            &path,
+            json!({"schema_version": 1, "endpoint": "https://model.example.invalid/v1/chat/completions",
+                "model": "reasoner", "max_input_bytes": max_input, "max_output_tokens": 1024,
+                "context_window_tokens": 262144, "timeout_seconds": 30})
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o600))
+            .unwrap();
+        path
+    };
+    let floor = |text: &str| text.len() + super::REVIEW_RESERVE + super::LEAD_BUDGET_MIN;
+    let long: &'static str = Box::leak("x".repeat(3 * SYSTEM.len()).into_boxed_str());
+    let short: &'static str = "You are a candidate research lead.";
+    // A ceiling at the compiled text's floor loads for that text and is refused for a longer one.
+    let compiled_floor = write(floor(SYSTEM));
+    assert!(super::Model::load(&compiled_floor).is_ok());
+    assert!(super::Model::load_with(&compiled_floor, long).is_err());
+    // At the long text's own floor the lead keeps exactly its minimum budget, one byte less is refused.
+    let long_floor = write(floor(long));
+    let model = super::Model::load_with(&long_floor, long).unwrap();
+    assert_eq!(model.lead_system, long);
+    assert_eq!(model.lead_budget(), super::LEAD_BUDGET_MIN);
+    assert!(super::Model::load_with(&write(floor(long) - 1), long).is_err());
+    // A short text leaves the lead the rest of the same ceiling.
+    let model = super::Model::load_with(&long_floor, short).unwrap();
+    assert_eq!(
+        model.lead_budget(),
+        floor(long) - short.len() - super::REVIEW_RESERVE
+    );
+}
+
+#[tokio::test]
+async fn a_call_keeps_the_system_text_it_sent_and_its_decision_keeps_that_text() {
+    use serde_json::json;
+    let (model, bodies, _dir) = replying_model(vec![json!({"x": 1}).to_string(); 2]).await;
+    let text = "You are a candidate research lead for this check.";
+    let context = json!({"question": "q"});
+    let lead = model.readable("lead", text, &context).await.unwrap();
+    assert_eq!(bodies.lock().unwrap()[0]["messages"][0]["content"], text);
+    assert_eq!(lead.system, text);
+    assert_eq!(
+        lead.receipt["system_sha256"],
+        json!(super::model::sha(text.as_bytes()))
+    );
+    let review = model
+        .readable("methods_specialist", super::REVIEW, &context)
+        .await
+        .unwrap();
+    let (texts, expected) = super::decision_texts(&lead, &review);
+    assert_eq!(texts[0], text.as_bytes());
+    assert_eq!(expected[0], &lead.receipt["system_sha256"]);
+    for (kept, digest) in texts.iter().zip(&expected) {
+        assert_eq!(&json!(super::model::sha(kept)), *digest);
+    }
 }

@@ -882,6 +882,97 @@ async fn a_runs_first_turn_orients_before_the_lead_plans_and_every_later_call_re
     assert_eq!(roles(&bodies), ["lead", "methods"]);
     assert!(turn_record(run).await.unwrap().get("orientation").is_none());
 
+    // 10. A candidate coordinator sends its own lead system text: the model receives it, the turn's lead receipt
+    // names its digest and the decision keeps it. The accepted lane refuses the file, and a text too long for the
+    // model's input ceiling is refused before any claim.
+    let lead_text =
+        "You are a candidate research lead for qualification. Return one JSON object only.";
+    let lead_file = dir.path().join("lead_system.txt");
+    fs::write(&lead_file, lead_text).unwrap();
+    let long_file = dir.path().join("lead_system_long.txt");
+    fs::write(&long_file, "x".repeat(60_000)).unwrap();
+    let candidate = |port: u16, lane: &'static str, file: std::path::PathBuf| {
+        let model = dir.path().join(format!("model-candidate-{port}.json"));
+        private(
+            &model,
+            &json!({"schema_version": 1, "endpoint": format!("http://127.0.0.1:{port}/v1/chat/completions"),
+                "model": "qualification-model", "allow_internal_http": true, "max_input_bytes": 65536,
+                "max_output_tokens": 1024, "context_window_tokens": 262144, "timeout_seconds": 30})
+            .to_string(),
+        );
+        enrichedlab_agent_sandbox::broker::coordinator::run(CoordinatorArgs {
+            database_dsn_file: database.clone(),
+            tenant: "research-site".into(),
+            model_config_file: model,
+            max_parallel: 1,
+            worker_id: Some("candidate-lead".into()),
+            once: true,
+            run_lane: lane.into(),
+            lead_system_file: Some(file),
+            library_config_file: None,
+            lead_text_labs: vec![],
+            lead_text_unreviewed_labs: vec![],
+            literature_claims_labs: vec![],
+            knowledge_config_file: None,
+            research_catalog_labs: vec![],
+            lead_reading_labs: vec![],
+            lead_reading_bytes: 0,
+            lead_study_fields: vec![],
+            literature_review_labs: vec![],
+            literature_review_bytes: 32768,
+            supervisor_labs: vec![],
+            orientation_labs: vec![],
+            ready_file: None,
+        })
+    };
+    let (bodies, port) = scenario(Scenario::Sound).await;
+    assert_eq!(
+        candidate(port, "accepted", lead_file.clone())
+            .await
+            .unwrap_err()
+            .to_string(),
+        "lead_system_file_accepted_lane"
+    );
+    assert_eq!(
+        candidate(port, "candidate", long_file)
+            .await
+            .unwrap_err()
+            .to_string(),
+        "model_config_invalid"
+    );
+    assert!(bodies.lock().unwrap().is_empty());
+    owner
+        .execute(
+            "INSERT INTO enrichedlab_agent.broker_candidate_grants(tenant_id,actor_id,until,note) \
+             VALUES ('research-site',$1,clock_timestamp()+interval '1 hour','qualification')",
+            &[&me],
+        )
+        .await
+        .unwrap();
+    let (project, run) = start("Candidate lead").await;
+    owner
+        .execute("DELETE FROM enrichedlab_agent.broker_candidate_grants", &[])
+        .await
+        .unwrap();
+    candidate(port, "candidate", lead_file).await.unwrap();
+    assert_eq!(roles(&bodies), ["lead", "methods"]);
+    assert_eq!(
+        bodies.lock().unwrap()[0]["messages"][0]["content"],
+        lead_text
+    );
+    let record = turn_record(run).await.expect("the candidate run's turn");
+    assert_eq!(record["proposal"]["action"], "paused", "{record}");
+    let digest = {
+        use sha2::{Digest, Sha256};
+        format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(lead_text.as_bytes()))
+        )
+    };
+    assert_eq!(record["lead"]["system_sha256"], json!(digest));
+    assert_eq!(kept(digest).await, 1);
+    assert_eq!(failures(project, run).await, 0);
+
     // No run of this test is left for another to claim: the two waiting on their profiling steps are paused.
     let open = owner
         .query(

@@ -281,17 +281,18 @@ impl ModelSections {
 }
 
 impl ModelConfig {
-    pub(super) fn lead_budget(&self) -> usize {
+    /// The bytes a lead context may use beside a lead system text `system_bytes` long and the review reserve.
+    pub(super) fn lead_budget(&self, system_bytes: usize) -> usize {
         self.max_input_bytes
-            .saturating_sub(super::lead_system().len() + REVIEW_RESERVE)
+            .saturating_sub(system_bytes + REVIEW_RESERVE)
     }
 
     pub(super) fn section_budgets(&self) -> SectionBudgets {
         self.sections.effective()
     }
 
-    pub(super) fn sections_valid(&self) -> bool {
-        self.sections.valid(self.lead_budget())
+    pub(super) fn sections_valid(&self, system_bytes: usize) -> bool {
+        self.sections.valid(self.lead_budget(system_bytes))
     }
 }
 

@@ -509,21 +509,22 @@ impl ResultIndex {
         context: &Value,
         methods: &Value,
     ) -> std::result::Result<(ResultIndex, HashSet<String>), &'static str> {
-        Self::from_context_with_ceiling(context, methods, MAX_INPUT_BYTES)
+        Self::from_context_with_ceiling(context, methods, MAX_INPUT_BYTES, lead_system_bytes())
     }
 
-    /// Rebuild an index under the input ceiling recorded for this lead call. The serialized context and the same
-    /// fixed lead system text sent by the live path must fit together. The standalone reply checker can read calls
+    /// Rebuild an index under the input ceiling recorded for this lead call. The serialized context and the lead
+    /// system text sent with it (`system_bytes` long) must fit together. The standalone reply checker can read calls
     /// made with any supported configuration, while callers without a recorded ceiling use the broker-wide maximum.
     pub(super) fn from_context_with_ceiling(
         context: &Value,
         methods: &Value,
         input_ceiling: usize,
+        system_bytes: usize,
     ) -> std::result::Result<(ResultIndex, HashSet<String>), &'static str> {
         let size = serde_json::to_vec(context).map_or(usize::MAX, |bytes| bytes.len());
         let context_ceiling = input_ceiling
             .min(MAX_INPUT_BYTES)
-            .saturating_sub(lead_system_bytes());
+            .saturating_sub(system_bytes);
         if size > context_ceiling {
             return Err("context_too_large");
         }

@@ -4244,7 +4244,22 @@ async fn atomic_turns_fence_restarts_recheck_delegation_and_keep_history() {
             .await
             .is_err()
     );
-    // An actor with an open candidate grant starts candidate runs: only the candidate claim takes one.
+    let claim = coordinator
+        .claim_research_run("lead-a", 90)
+        .await
+        .unwrap()
+        .unwrap();
+    let generation = claim["run"]["generation"].as_i64().unwrap();
+    assert!(
+        coordinator
+            .claim_research_run("lead-b", 90)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // An actor with an open candidate grant starts candidate runs. With the accepted run leased, the candidate run is
+    // the only claimable run: the three-argument claim a rolled-back coordinator calls and the accepted claim must
+    // both leave it, and only the candidate claim takes it.
     let candidate_project = Uuid::new_v4();
     api.create_project(
         actor,
@@ -4294,6 +4309,40 @@ async fn atomic_turns_fence_restarts_recheck_delegation_and_keep_history() {
         .execute("DELETE FROM enrichedlab_agent.broker_candidate_grants", &[])
         .await
         .unwrap();
+    assert!(
+        coordinator
+            .claim_research_run("lead-b", 90)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        coordinator
+            .claim_research_run_in("lead-b", 90, "accepted")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // The workspace API's run listing and project snapshot do not show the lane.
+    fn names_lane(value: &serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::Object(map) => {
+                map.contains_key("lane") || map.values().any(names_lane)
+            }
+            serde_json::Value::Array(items) => items.iter().any(names_lane),
+            _ => false,
+        }
+    }
+    let listed = api.research_runs(actor, candidate_project).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0]["run_id"], json!(candidate_run));
+    assert!(!listed.iter().any(names_lane));
+    let snapshot = api
+        .project_package_snapshot(actor, candidate_project)
+        .await
+        .unwrap();
+    assert!(snapshot.to_string().contains(&candidate_run.to_string()));
+    assert!(!names_lane(&snapshot));
     let candidate = coordinator
         .claim_research_run_in("cand-a", 90, "candidate")
         .await
@@ -4308,19 +4357,8 @@ async fn atomic_turns_fence_restarts_recheck_delegation_and_keep_history() {
             .unwrap()
             .is_none()
     );
-    let claim = coordinator
-        .claim_research_run("lead-a", 90)
-        .await
-        .unwrap()
-        .unwrap();
-    let generation = claim["run"]["generation"].as_i64().unwrap();
-    assert!(
-        coordinator
-            .claim_research_run("lead-b", 90)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    // End the candidate run's lease so it weighs on no later claim's fairness.
+    api.pause_research_run(actor, candidate_run).await.unwrap();
     let state = serde_json::to_value(planned()).unwrap();
     let actions = json!([{"action_key":"inspect-source","profile":"general-research","objective":"Inspect the retained public source.","request_sha256":"c".repeat(64)}]);
     // The proposal carries a ledger so the next call can read it back.

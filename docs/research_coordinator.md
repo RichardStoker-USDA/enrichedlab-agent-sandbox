@@ -651,12 +651,16 @@ labels read from the template row, and classes the task `configured` in lineage.
 
 Every run has a lane, `accepted` or `candidate`, fixed when it starts (migration 085): `candidate` when its actor holds
 an operator-written grant in `broker_candidate_grants` whose `until` is still ahead, otherwise `accepted`. No role can
-read or write that table, the workspace API never names a lane, and a trigger refuses any later change of a run's lane.
+read or write that table, the workspace API neither sets nor shows a lane (its run listing and project snapshot leave
+it out), and a trigger refuses any later change of a run's lane.
 A coordinator claims one lane (`--run-lane`, default `accepted`); the three-argument claim every earlier coordinator
 calls claims accepted runs only. A candidate coordinator runs the same image beside the accepted one and may take its
 own lead system text (`--lead-system-file`, read once at start, at most four times the compiled text's bytes; an
-accepted coordinator refuses the flag). Every lead call's receipt records the text's SHA-256 (`system_sha256`), so a
-result always names the text that produced it. A candidate's retrieval generation comes from its own knowledge
+accepted coordinator refuses the flag). The model configuration is checked against that text, the lead budget leaves
+room for it, and each call keeps the exact text it sent: its receipt records the SHA-256 (`system_sha256`) and the
+decision keeps the text under that digest, so a result always names the text that produced it. A replay record of a
+candidate call carries `system_bytes`, the text's length, so `check-lead-replies` reserves the same room; a record
+without it was made with the compiled text. A candidate's retrieval generation comes from its own knowledge
 configuration (`lab_retrieval_generations`). This lets a lead change be measured on a lab's real rows, paired with the
 accepted lane, before any release.
 

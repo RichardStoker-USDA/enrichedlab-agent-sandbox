@@ -165,12 +165,12 @@ pub(super) fn decision_texts<'a>(
     lead: &'a Call,
     review: &'a Call,
 ) -> (Vec<&'a [u8]>, Vec<&'a Value>) {
-    decision_texts_with(lead, lead_system(), review)
+    decision_texts_with(lead, &lead.system, review)
 }
 
 pub(super) fn decision_texts_with<'a>(
     lead: &'a Call,
-    system: &'static str,
+    system: &'a str,
     review: &'a Call,
 ) -> (Vec<&'a [u8]>, Vec<&'a Value>) {
     let mut texts: Vec<&[u8]> = vec![

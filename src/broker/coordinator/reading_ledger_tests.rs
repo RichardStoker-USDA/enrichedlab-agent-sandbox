@@ -18,6 +18,7 @@ async fn invalid_request_text_stays_in_private_context_not_the_ledger() {
             receipt: json!({}),
             context: String::new(),
             reasoning: String::new(),
+            system: String::new(),
         };
         reading
             .read(
@@ -64,6 +65,7 @@ async fn malformed_read_requests_record_only_the_reply_digest_and_bytes() {
         receipt: json!({}),
         context: String::new(),
         reasoning: String::new(),
+        system: String::new(),
     };
     reading
         .read(

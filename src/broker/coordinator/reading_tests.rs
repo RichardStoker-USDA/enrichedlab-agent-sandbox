@@ -566,6 +566,7 @@ async fn disabled_study_requests_keep_the_444f6e0_reading_context_bytes() {
             context: String::new(),
             content: String::new(),
             reasoning: String::new(),
+            system: String::new(),
         };
         reading
             .read(

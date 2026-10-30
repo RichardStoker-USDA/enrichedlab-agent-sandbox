@@ -46,6 +46,97 @@ DROP TRIGGER IF EXISTS research_run_lane ON enrichedlab_agent.broker_research_ru
 CREATE TRIGGER research_run_lane BEFORE INSERT OR UPDATE OF lane ON enrichedlab_agent.broker_research_runs
   FOR EACH ROW EXECUTE FUNCTION enrichedlab_agent.broker_research_run_lane();
 
+-- The workspace API's run listings stay as they were: the lane is the operator's measurement setting, not part of a
+-- person's view of a run. Migrations 011 and 014's bodies, with the lane left out.
+CREATE OR REPLACE FUNCTION enrichedlab_agent.broker_list_research_runs(p_tenant text,p_actor uuid,p_project uuid)
+RETURNS SETOF jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,enrichedlab_agent AS $$
+BEGIN
+  IF NOT enrichedlab_agent.broker_project_can(p_tenant,p_actor,p_project,'read') THEN
+    RAISE EXCEPTION USING ERRCODE='P0002',MESSAGE='broker:project_not_found'; END IF;
+  RETURN QUERY SELECT to_jsonb(r)-'tenant_id'-'lease_owner'-'lease_until'-'lane' FROM enrichedlab_agent.broker_research_runs r
+    WHERE tenant_id=p_tenant AND project_id=p_project ORDER BY created_at DESC LIMIT 100;
+END $$;
+
+CREATE OR REPLACE FUNCTION enrichedlab_agent.broker_project_package_snapshot(p_tenant text,p_actor uuid,p_project uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,enrichedlab_agent AS $$
+DECLARE record_bytes bigint; task_total bigint; event_total bigint; artifact_total bigint;
+BEGIN
+  IF NOT enrichedlab_agent.broker_project_can(p_tenant,p_actor,p_project,'read') THEN
+    RAISE EXCEPTION USING ERRCODE='P0002',MESSAGE='broker:project_not_found'; END IF;
+  SELECT coalesce((SELECT sum(octet_length(c.state::text)) FROM enrichedlab_agent.broker_project_checkpoints c
+      WHERE c.tenant_id=p_tenant AND c.project_id=p_project),0)
+    + coalesce((SELECT sum(octet_length(t.record::text)) FROM enrichedlab_agent.broker_research_turns t
+      JOIN enrichedlab_agent.broker_research_runs r ON r.tenant_id=t.tenant_id AND r.run_id=t.run_id
+      WHERE r.tenant_id=p_tenant AND r.project_id=p_project),0)
+    INTO record_bytes;
+  SELECT count(*) INTO task_total FROM enrichedlab_agent.broker_project_tasks WHERE tenant_id=p_tenant AND project_id=p_project;
+  SELECT count(*) INTO event_total FROM enrichedlab_agent.broker_task_events e
+    JOIN enrichedlab_agent.broker_project_tasks pt ON pt.tenant_id=e.tenant_id AND pt.task_id=e.task_id
+    WHERE pt.tenant_id=p_tenant AND pt.project_id=p_project;
+  SELECT count(*) INTO artifact_total FROM enrichedlab_agent.broker_artifacts a
+    JOIN enrichedlab_agent.broker_project_tasks pt ON pt.tenant_id=a.tenant_id AND pt.task_id=a.task_id
+    WHERE pt.tenant_id=p_tenant AND pt.project_id=p_project AND a.visibility='researcher';
+  -- A package is complete or refused. It never silently truncates a record class.
+  IF record_bytes > 48*1024*1024 OR task_total > 2000 OR event_total > 200000 OR artifact_total > 20000 THEN
+    RAISE EXCEPTION USING ERRCODE='54000',MESSAGE='broker:project_package_too_large'; END IF;
+  RETURN jsonb_build_object(
+    'schema','enrichedlab.project-package-snapshot.v1',
+    'snapshot_at',now(),
+    'requester',jsonb_build_object(
+      'principal_id',p_actor,
+      'capabilities',(SELECT coalesce(jsonb_agg(c),'[]'::jsonb) FROM unnest(ARRAY['read','review','contribute','steer','cancel','manage']) c
+        WHERE enrichedlab_agent.broker_project_can(p_tenant,p_actor,p_project,c)),
+      'inspection_expires_at',(SELECT i.expires_at FROM enrichedlab_agent.broker_project_inspections i
+        WHERE i.tenant_id=p_tenant AND i.project_id=p_project AND i.principal_id=p_actor AND i.expires_at>clock_timestamp())),
+    'project',(SELECT jsonb_build_object('project_id',p.project_id,'title',p.title,'group_key',p.group_key,'group_name',g.name,
+        'visibility',p.visibility,'owner_id',p.owner_id,'revision',p.revision,'created_at',p.created_at,'updated_at',p.updated_at)
+      FROM enrichedlab_agent.broker_projects p
+      JOIN enrichedlab_agent.broker_research_groups g ON g.tenant_id=p.tenant_id AND g.group_key=p.group_key
+      WHERE p.tenant_id=p_tenant AND p.project_id=p_project),
+    'checkpoints',(SELECT coalesce(jsonb_agg(jsonb_build_object('revision',c.revision,'author_id',c.author_id,'request_id',c.request_id,
+        'created_at',c.created_at,'state',c.state) ORDER BY c.revision),'[]'::jsonb)
+      FROM enrichedlab_agent.broker_project_checkpoints c WHERE c.tenant_id=p_tenant AND c.project_id=p_project),
+    'research_runs',(SELECT coalesce(jsonb_agg(jsonb_build_object(
+        'run',to_jsonb(r)-'tenant_id'-'lease_owner'-'lease_until'-'lane',
+        'turns',(SELECT coalesce(jsonb_agg(to_jsonb(t)-'tenant_id' ORDER BY t.turn),'[]'::jsonb)
+          FROM enrichedlab_agent.broker_research_turns t WHERE t.tenant_id=r.tenant_id AND t.run_id=r.run_id),
+        'events',(SELECT coalesce(jsonb_agg(to_jsonb(e)-'tenant_id' ORDER BY e.sequence),'[]'::jsonb)
+          FROM enrichedlab_agent.broker_research_run_events e WHERE e.tenant_id=r.tenant_id AND e.run_id=r.run_id))
+        ORDER BY r.created_at,r.run_id),'[]'::jsonb)
+      FROM enrichedlab_agent.broker_research_runs r WHERE r.tenant_id=p_tenant AND r.project_id=p_project),
+    'access_history',(SELECT coalesce(jsonb_agg(to_jsonb(a)-'tenant_id' ORDER BY a.occurred_at,a.event_id),'[]'::jsonb)
+      FROM enrichedlab_agent.broker_project_audit a WHERE a.tenant_id=p_tenant AND a.project_id=p_project),
+    'tasks',(SELECT coalesce(jsonb_agg(jsonb_build_object(
+        'task_id',t.task_id,'action_key',pt.action_key,'parent_task_id',pt.parent_task_id,'principal_id',t.principal_id,
+        'group_key',t.group_key,'profile',t.profile_key,'objective',t.objective,'status',t.status,'attempt',t.attempt,
+        'max_task_attempts',t.max_task_attempts,'lease_generation',t.lease_generation,'result_class',t.result_class,
+        'error_code',t.error_code,'submitted_at',t.submitted_at,'started_at',t.started_at,'finished_at',t.finished_at,
+        'updated_at',t.updated_at,'request_sha256',t.request_sha256,
+        'execution',jsonb_build_object('image_ref',t.profile_snapshot->'image_ref','cpu_limit',t.profile_snapshot->'cpu_limit',
+          'memory_limit',t.profile_snapshot->'memory_limit','max_run_seconds',t.profile_snapshot->'max_run_seconds',
+          'role',t.profile_snapshot->'role','tool_bundle',t.profile_snapshot->'tool_bundle','harness',t.profile_snapshot->'harness'),
+        'events',(SELECT coalesce(jsonb_agg(jsonb_build_object('sequence',e.sequence,'kind',e.kind,'state',e.state,'code',e.code,
+            'metadata',e.metadata,'occurred_at',e.occurred_at) ORDER BY e.sequence),'[]'::jsonb)
+          FROM enrichedlab_agent.broker_task_events e WHERE e.tenant_id=t.tenant_id AND e.task_id=t.task_id),
+        'artifacts',(SELECT coalesce(jsonb_agg(jsonb_build_object('artifact_id',a.artifact_id,'role',a.role,'label',a.label,
+            'relative_path',a.relative_path,'media_type',a.media_type,'size_bytes',a.size_bytes,'sha256',a.sha256,
+            'created_at',a.created_at) ORDER BY a.created_at,a.artifact_id),'[]'::jsonb)
+          FROM enrichedlab_agent.broker_artifacts a WHERE a.tenant_id=t.tenant_id AND a.task_id=t.task_id AND a.visibility='researcher'),
+        'recoveries',(SELECT coalesce(jsonb_agg(jsonb_build_object('recovery_id',v.recovery_id,'recovered_at',v.recovered_at,
+            'receipt',v.receipt) ORDER BY v.recovered_at,v.recovery_id),'[]'::jsonb)
+          FROM enrichedlab_agent.broker_artifact_recoveries v WHERE v.tenant_id=t.tenant_id AND v.task_id=t.task_id),
+        'scientific_history',(SELECT coalesce(jsonb_agg(jsonb_build_object('attempt',h.attempt,'lease_generation',h.lease_generation,
+            'first_segment',h.first_segment,'last_segment',h.last_segment,'bound_at',h.bound_at,
+            'retained',EXISTS(SELECT 1 FROM enrichedlab_agent.provenance_runs pr WHERE pr.tenant_id=h.tenant_id
+              AND pr.run_id=h.state_run_id AND pr.subject=h.subject)) ORDER BY h.attempt,h.lease_generation),'[]'::jsonb)
+          FROM enrichedlab_agent.broker_task_scientific_history h WHERE h.tenant_id=t.tenant_id AND h.task_id=t.task_id))
+        ORDER BY t.submitted_at,t.task_id),'[]'::jsonb)
+      FROM enrichedlab_agent.broker_project_tasks pt
+      JOIN enrichedlab_agent.broker_tasks t ON t.tenant_id=pt.tenant_id AND t.task_id=pt.task_id
+      WHERE pt.tenant_id=p_tenant AND pt.project_id=p_project),
+    'counts',jsonb_build_object('tasks',task_total,'task_events',event_total,'artifacts',artifact_total));
+END $$;
+
 -- Migration 048's claim, for one lane.
 CREATE OR REPLACE FUNCTION enrichedlab_agent.broker_claim_research_run(p_tenant text,p_worker text,p_seconds integer,p_lane text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,enrichedlab_agent AS $$

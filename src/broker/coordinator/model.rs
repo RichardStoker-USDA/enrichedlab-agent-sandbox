@@ -8,6 +8,9 @@ pub(crate) struct Model {
     pub(super) client: Client,
     pub(super) config: ModelConfig,
     pub(super) url: Url,
+    /// The lead's system text for this model: the compiled text, or a candidate coordinator's own. Every lead call,
+    /// the lead budget and the configuration check use this one text.
+    pub(super) lead_system: &'static str,
 }
 
 pub(crate) struct Call {
@@ -21,6 +24,8 @@ pub(crate) struct Call {
     /// The model's reasoning text, at most `MAX_KEPT_TEXT` bytes, kept beside the reply; the receipt
     /// names it as `reasoning_sha256`. Empty when the model gave none.
     pub(super) reasoning: String,
+    /// The system text sent with the call, whose SHA-256 the receipt names as `system_sha256`, kept with the decision.
+    pub(super) system: String,
 }
 
 /// The exact request body a model call sends. The turn keeps its SHA-256 and the texts it is built
@@ -53,7 +58,13 @@ pub fn request_body_with(
 }
 
 impl Model {
+    /// Load a model configuration for the compiled lead system text.
     pub(crate) fn load(path: &PathBuf) -> Result<Self> {
+        Self::load_with(path, super::SYSTEM)
+    }
+
+    /// Load a model configuration for `lead_system`: the input ceiling must leave the lead budget's floor after it.
+    pub(crate) fn load_with(path: &PathBuf, lead_system: &'static str) -> Result<Self> {
         let config: ModelConfig = serde_json::from_slice(&private_bytes(path, 16384)?)
             .map_err(|_| anyhow!("model_config_invalid"))?;
         let url = Url::parse(&config.endpoint).map_err(|_| anyhow!("model_config_invalid"))?;
@@ -72,12 +83,12 @@ impl Model {
             || url.host_str().is_none()
             || !(url.scheme() == "https"
                 || (url.scheme() == "http" && internal && config.allow_internal_http))
-            || !(super::lead_system().len() + REVIEW_RESERVE + LEAD_BUDGET_MIN..=MAX_INPUT_BYTES)
+            || !(lead_system.len() + REVIEW_RESERVE + LEAD_BUDGET_MIN..=MAX_INPUT_BYTES)
                 .contains(&config.max_input_bytes)
             || !(512..=65536).contains(&config.max_output_tokens)
             || config.max_input_bytes + config.max_output_tokens + 1024
                 > config.context_window_tokens
-            || !config.sections_valid()
+            || !config.sections_valid(lead_system.len())
             || !(10..=900).contains(&config.timeout_seconds)
             || !settings_valid(&config.settings)
         {
@@ -93,7 +104,13 @@ impl Model {
             client,
             config,
             url,
+            lead_system,
         })
+    }
+
+    /// The bytes a lead context may use: the input ceiling less this model's lead system text and the review reserve.
+    pub(super) fn lead_budget(&self) -> usize {
+        self.config.lead_budget(self.lead_system.len())
     }
     /// A call that asks again when the reply cannot be read (`READ_ATTEMPTS`). The receipt of the
     /// reply that was read names the faults of the replies before it.
@@ -281,6 +298,7 @@ impl Model {
             context,
             content: content.to_owned(),
             reasoning,
+            system: system.to_owned(),
         })
     }
 }

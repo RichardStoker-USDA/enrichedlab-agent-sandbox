@@ -148,6 +148,7 @@ fn each_read_call_keeps_its_context_reply_and_reasoning_once() {
         context: format!("context {n}"),
         content: format!("reply {n}"),
         reasoning: reasoning.into(),
+        system: String::new(),
     };
     let calls = vec![call(1, "thinking"), call(2, ""), call(1, "thinking")];
     let (texts, expected) = call_texts(&calls);
