@@ -3,8 +3,8 @@ set -eu
 
 mode=${1:-all}
 case "$mode" in
-    all|campaigns|runtime-events|direct-readiness|custodian-role|evidence|evidence-service|projects|project-stream|project-list|research-runs|review|generated-code|lineage|attempt-lineage|lineage-upstream|result-digests|configured-methods|person-review|lab-notes|lab-library|lead-library|tool-groups|knowledge-person|decision-contexts|working-copies|plan-ledger|plan-pages|methods-revision|specialist-texts|query-facts|lab-methods|inbox|reference-sql|figure-versions|answer-documents|workspace-reads|table-reads|result-kinds|figure-kinds|figure-previews|template-analyses|lab-datasets|lead-analyses|change-feed|live-output|identity-enrollment|artifact-recovery|orientation) ;;
-    *) printf '%s\n' 'Usage: qualify_remote_broker.sh [all|campaigns|runtime-events|direct-readiness|custodian-role|evidence|evidence-service|projects|project-stream|project-list|research-runs|review|generated-code|lineage|attempt-lineage|lineage-upstream|result-digests|configured-methods|person-review|lab-notes|lab-library|lead-library|tool-groups|knowledge-person|decision-contexts|working-copies|plan-ledger|plan-pages|methods-revision|specialist-texts|query-facts|lab-methods|inbox|reference-sql|figure-versions|answer-documents|workspace-reads|table-reads|result-kinds|figure-kinds|figure-previews|template-analyses|lab-datasets|lead-analyses|change-feed|live-output|identity-enrollment|artifact-recovery|orientation]' >&2; exit 2 ;;
+    all|campaigns|runtime-events|direct-readiness|custodian-role|evidence|evidence-service|projects|project-stream|project-list|research-runs|review|generated-code|lineage|attempt-lineage|lineage-upstream|result-digests|configured-methods|person-review|lab-notes|lab-library|lead-library|tool-groups|knowledge-person|decision-contexts|working-copies|plan-ledger|plan-pages|methods-revision|specialist-texts|query-facts|lab-methods|inbox|reference-sql|figure-versions|answer-documents|workspace-reads|table-reads|result-kinds|figure-kinds|figure-previews|template-analyses|lab-datasets|lead-analyses|lab-objects|change-feed|live-output|identity-enrollment|artifact-recovery|orientation) ;;
+    *) printf '%s\n' 'Usage: qualify_remote_broker.sh [all|campaigns|runtime-events|direct-readiness|custodian-role|evidence|evidence-service|projects|project-stream|project-list|research-runs|review|generated-code|lineage|attempt-lineage|lineage-upstream|result-digests|configured-methods|person-review|lab-notes|lab-library|lead-library|tool-groups|knowledge-person|decision-contexts|working-copies|plan-ledger|plan-pages|methods-revision|specialist-texts|query-facts|lab-methods|inbox|reference-sql|figure-versions|answer-documents|workspace-reads|table-reads|result-kinds|figure-kinds|figure-previews|template-analyses|lab-datasets|lead-analyses|lab-objects|change-feed|live-output|identity-enrollment|artifact-recovery|orientation]' >&2; exit 2 ;;
 esac
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
@@ -987,6 +987,18 @@ if [ "$mode" = lead-analyses ]; then
     BROKER_QUALIFICATION_MIGRATION_DSN_FILE="$dsn_file" \
         cargo test --locked --test broker_lead_analyses -- --ignored
     printf '%s\n' "Lead analyses: the coordinator ready only with migration 060's catalog read, a run that may list the template-analysis method while figure and dataset methods stay request-only, the method and newest catalog under the run's lease, a person's request checks on the analysis the lead chose, every other shape refused, the request's origin and parent, the worker's run of it, and a lab dataset's tasks holding none of a run's places PostgreSQL checks passed."
+    exit 0
+fi
+if [ "$mode" = lab-objects ]; then
+    # Migration 083 must apply twice without change before its behavior is checked.
+    "$broker_bin" migrate --migration-dsn-file "$dsn_file"
+    docker exec "$container" psql --username postgres --dbname "$database" --set=ON_ERROR_STOP=on \
+        --command='CREATE ROLE broker_coordinator_qual LOGIN;'
+    docker exec "$container" psql --username postgres --dbname "$database" --set=coordinator_role=broker_coordinator_qual --set=api_role=broker_api_qual --set=worker_role=broker_worker_qual \
+        --file=/workspace/migrations/postgres/grant_broker_coordinator.psql
+    BROKER_QUALIFICATION_MIGRATION_DSN_FILE="$dsn_file" \
+        cargo test --locked --test broker_lab_objects -- --ignored
+    printf '%s\n' "Lab objects: the coordinator and worker ready only with migration 083 and their grants, the run's objects methods read under its lease, every other step shape refused with nothing recorded, the admitted step committed with its request, the request read under the worker's own lease only, one receipt per attempt, a request-only route, and the lab tools list naming the kind."
     exit 0
 fi
 if [ "$mode" = configured-methods ]; then

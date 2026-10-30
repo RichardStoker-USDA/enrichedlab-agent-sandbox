@@ -2239,6 +2239,9 @@ fn database_error(error: tokio_postgres::Error) -> StoreError {
             (StoreErrorKind::Invalid, &message[7..])
         }
         "broker:query_invalid" => (StoreErrorKind::Invalid, "query_invalid"),
+        // Migration 083: lab objects.
+        "broker:objects_invalid" => (StoreErrorKind::Invalid, "objects_invalid"),
+        "broker:object_receipt_invalid" => (StoreErrorKind::Invalid, "object_receipt_invalid"),
         "broker:reviewed_query_invalid" => (StoreErrorKind::Invalid, "reviewed_query_invalid"),
         // Migration 061: the change feed.
         "broker:change_cursor_invalid" => (StoreErrorKind::Invalid, "change_cursor_invalid"),
@@ -2403,6 +2406,8 @@ fn static_code(code: &str) -> &'static str {
         "look_revision_invalid" => "look_revision_invalid",
         "analyses_cursor_invalid" => "analyses_cursor_invalid",
         "query_invalid" => "query_invalid",
+        "objects_invalid" => "objects_invalid",
+        "object_receipt_invalid" => "object_receipt_invalid",
         "reviewed_query_invalid" => "reviewed_query_invalid",
         "change_cursor_invalid" => "change_cursor_invalid",
         "template_analysis_invalid" => "template_analysis_invalid",
