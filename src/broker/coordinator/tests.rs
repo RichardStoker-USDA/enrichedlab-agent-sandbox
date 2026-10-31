@@ -3634,6 +3634,259 @@ async fn a_methods_finding_may_rest_on_a_read_part_it_was_shown() {
     );
 }
 
+// A detail a little over the stated 300 characters is kept whole: four second replies in eight measured runs held
+// 302 to 332 characters after being told the limit, and each refusal cost the lead its turn. Over the hard limit the
+// fault still names the stated one.
+#[test]
+fn a_methods_detail_up_to_its_hard_limit_is_kept_whole() {
+    use super::{CodeRefused, ResultIndex, check_method_review_with_parts};
+    let proposal: super::Proposal = serde_json::from_value(serde_json::json!({"action": "delegate",
+            "summary": "s", "actions": [{"action_key": "q-1", "title": "Vitamin C by food",
+                "profile": "reference-sql-fdc", "objective": "o", "rationale": "r", "sql": "SELECT 1"}]}))
+        .unwrap();
+    let reply = |detail: &str| {
+        serde_json::json!({"decision": "revise", "reason": "The step reads the wrong rows.", "findings": [
+            {"about": "step q-1", "problem": "wrong_rows", "detail": detail}]})
+    };
+    let check = |detail: &str| {
+        check_method_review_with_parts(
+            &reply(detail),
+            &proposal,
+            &ResultIndex::default(),
+            &Default::default(),
+        )
+    };
+    for length in [301, 332, 360] {
+        let detail = "x".repeat(length);
+        let method = check(&detail).unwrap();
+        assert_eq!(method.findings[0].detail, detail, "{length}");
+    }
+    // A standalone number in such a detail is masked as in a shorter one, not left to refuse the reply, even when the
+    // mark takes the detail past the hard limit.
+    for numbered in [
+        format!("{} The step keeps 42 foods.", "x".repeat(300)),
+        format!("{} 1", "x".repeat(351)),
+    ] {
+        let method = check(&numbered).unwrap();
+        let detail = &method.findings[0].detail;
+        assert!(
+            detail.ne(&numbered) && !detail.ends_with(" 1") && !detail.contains("42"),
+            "{detail}"
+        );
+    }
+    let error = check(&"x".repeat(361)).err().unwrap();
+    let refused = error.downcast_ref::<CodeRefused>().unwrap();
+    assert_eq!(
+        (refused.code, refused.names.clone()),
+        (
+            "method_review_findings_invalid",
+            vec!["finding 1: detail 361 characters, at most 300".to_owned()]
+        )
+    );
+}
+
+// The methods check is given the refs it may cite, in a fixed order, and a ref it was not shown is named by what it
+// names: three second replies in eight measured runs cited a ref the check was not shown, and the fault said only
+// that.
+#[test]
+fn a_methods_check_is_told_its_citable_refs_and_what_an_unshown_ref_names() {
+    use super::{CodeRefused, ResultIndex, check_method_review_in, method_review_context};
+    let proposal: super::Proposal = serde_json::from_value(serde_json::json!({"action": "delegate",
+            "summary": "s", "actions": [{"action_key": "q-1", "title": "Vitamin C by food",
+                "profile": "reference-sql-fdc", "objective": "o", "rationale": "r", "sql": "SELECT 1"}]}))
+        .unwrap();
+    let mut index = ResultIndex::default();
+    for r in ["result://b", "result://a"] {
+        index.add(r, &serde_json::json!({}));
+    }
+    index.listed.insert("result://left-out".to_owned());
+    // Many refs come out sorted whatever order the index holds them in.
+    let mut many = ResultIndex::default();
+    let refs = ["e", "b", "h", "a", "g", "c", "f", "d"].map(|r| format!("result://{r}"));
+    for r in &refs {
+        many.add(r, &serde_json::json!({}));
+    }
+    let mut sorted = refs.to_vec();
+    sorted.sort();
+    assert_eq!(
+        super::citable_refs(&many).unwrap().0["refs"],
+        serde_json::json!(sorted)
+    );
+    let lead = serde_json::json!({"question": "Which foods keep vitamin C after boiling?",
+        "literature": [{"ref": "library://p1/section/1", "text": "t"}],
+        "literature_claims": [{"claim": "c", "passage_ref": "library://p2/section/2"}],
+        "past_research": [{"ref": "knowledge://r1"}]});
+    let fitted = |index: &ResultIndex, ceiling: usize| {
+        super::method_review_with_query_facts(
+            &lead,
+            &proposal,
+            index,
+            &Default::default(),
+            &Default::default(),
+            ceiling,
+        )
+        .0
+    };
+    let context = fitted(&index, 262_144);
+    assert_eq!(
+        context["citable_refs"],
+        serde_json::json!({"refs": ["result://a", "result://b"], "rule": super::CITABLE_RULE})
+    );
+    // The proposal check measures the base context, which holds no citable refs, so they never refuse a proposal; a
+    // call whose room is short leaves them out.
+    assert!(
+        method_review_context(&lead, &proposal, &index)
+            .get("citable_refs")
+            .is_none()
+    );
+    assert!(
+        fitted(&ResultIndex::default(), 262_144)
+            .get("citable_refs")
+            .is_none()
+    );
+    let base = super::review_input_bytes(&method_review_context(&lead, &proposal, &index)).unwrap()
+        + super::REVIEW_NOTE_RESERVE
+        + super::REVIEW_RETRY_RESERVE;
+    let (_, bytes) = super::citable_refs(&index).unwrap();
+    assert_eq!(
+        bytes,
+        r#","citable_refs":{"refs":["result://a","result://b"],"rule":""}"#.len()
+            + super::CITABLE_RULE.len()
+    );
+    assert!(
+        fitted(&index, base + bytes - 1)
+            .get("citable_refs")
+            .is_none()
+    );
+    let tight = fitted(&index, base + bytes);
+    assert!(tight.get("citable_refs").is_some());
+    assert!(
+        super::review_input_bytes(&tight).unwrap()
+            + super::REVIEW_NOTE_RESERVE
+            + super::REVIEW_RETRY_RESERVE
+            <= base + bytes
+    );
+    let reply = |reference: &str| {
+        serde_json::json!({"decision": "revise", "reason": "The step reads the wrong rows.", "findings": [
+            {"about": "step q-1", "problem": "wrong_rows", "detail": "The step reads raw foods.", "refs": [reference]}]})
+    };
+    assert!(check_method_review_in(&reply("result://a"), &proposal, &index, &context).is_ok());
+    for (reference, name) in [
+        (
+            "result://left-out",
+            "finding 1: ref 1 names a result left out for room, not a shown result",
+        ),
+        (
+            "library://p1/section/1",
+            "finding 1: ref 1 names a literature passage, not a shown result",
+        ),
+        (
+            "library://p2/section/2",
+            "finding 1: ref 1 names a literature passage, not a shown result",
+        ),
+        (
+            "knowledge://r1",
+            "finding 1: ref 1 names a past research record, not a shown result",
+        ),
+        ("result://unknown", "finding 1: ref 1 is not a shown result"),
+    ] {
+        let error = check_method_review_in(&reply(reference), &proposal, &index, &context)
+            .err()
+            .unwrap();
+        let refused = error.downcast_ref::<CodeRefused>().unwrap();
+        assert_eq!(
+            (refused.code, refused.names.clone()),
+            ("method_review_findings_invalid", vec![name.to_owned()]),
+            "{reference}"
+        );
+        assert!(super::names_loggable(refused.code));
+    }
+    // With read parts shown, the fault names both kinds it may cite.
+    let mut read = context.clone();
+    read["reading_cited"] =
+        serde_json::json!([{"ref": "library://p9/section/9", "part": "section"}]);
+    let error = check_method_review_in(&reply("knowledge://r1"), &proposal, &index, &read)
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.downcast_ref::<CodeRefused>().unwrap().names,
+        vec![
+            "finding 1: ref 1 names a past research record, not a shown result or read part"
+                .to_owned()
+        ]
+    );
+}
+
+// The citable refs take their exact bytes before the query facts and the read parts are fitted, so a call whose facts
+// or parts would fill the room without them still stays within its ceiling with them.
+#[test]
+fn citable_refs_take_their_room_before_query_facts_and_read_parts() {
+    use super::{
+        REVIEW_NOTE_RESERVE, REVIEW_RETRY_RESERVE, ResultIndex, citable_refs,
+        method_review_context, method_review_with_query_facts, query_sources, review_input_bytes,
+    };
+    use serde_json::json;
+    let mut source = instruction_card_source();
+    source["card"]["values"] = json!([]);
+    source["card"]["lookups"][0]["columns"] = json!(["id", "name", INSTRUCTION_COLUMN]);
+    source["card"]["lookups"][0]["entries"] = json!([
+        [1, "orchid leaf", "ordinary"],
+        [2, "orchid root", "ordinary"]
+    ]);
+    let sources = query_sources(&json!([source])).unwrap();
+    let sql = "SELECT name FROM measure WHERE name ILIKE '%orchid%' ORDER BY 1";
+    let part = "library://p/section/a";
+    let proposal: super::Proposal = serde_json::from_value(json!({"action": "delegate", "summary": "Read measurements.",
+            "actions": [{"action_key": "query-orchid", "title": "Read orchids", "profile": "lab-query",
+                "objective": "Read measurements.", "rationale": "Check names.", "sql": sql,
+                "literature_refs": [part]}]})).unwrap();
+    let queries = [(
+        "query-orchid".to_owned(),
+        super::AdmittedQuery {
+            source: "example-lab".into(),
+            proposed: sql.into(),
+            admitted: sources["lab-query"].admit(sql).unwrap(),
+            places_cast: 0,
+            reviewed: None,
+        },
+    )]
+    .into();
+    let mut index = ResultIndex::default();
+    for r in ["result://a", "result://b"] {
+        index.add(r, &json!({}));
+    }
+    let size = |v: &serde_json::Value| serde_json::to_vec(v).unwrap().len();
+    let total = |v: &serde_json::Value| {
+        review_input_bytes(v).unwrap() + REVIEW_NOTE_RESERVE + REVIEW_RETRY_RESERVE
+    };
+    let (_, citable) = citable_refs(&index).unwrap();
+    // Query facts: at a ceiling they would fill exactly without the citable refs' bytes, they are left out and the refs
+    // go in.
+    let plain = json!({"question": "Which orchid records exist?"});
+    let base = total(&method_review_context(&plain, &proposal, &index));
+    let fit = |lead: &serde_json::Value, ceiling: usize, queries| {
+        method_review_with_query_facts(lead, &proposal, &index, queries, &sources, ceiling).0
+    };
+    let roomy = fit(&plain, 262_144, &queries);
+    let facts = r#","query_facts":"#.len() + size(&roomy["query_facts"]);
+    assert!(citable < facts, "{citable} {facts}");
+    let tight = fit(&plain, base + facts, &queries);
+    assert!(tight.get("query_facts").is_none() && tight.get("citable_refs").is_some());
+    assert!(total(&tight) <= base + facts);
+    // Read parts: at a ceiling one byte short of the part and the refs together, the part is left out and the refs go
+    // in (the part needs a little more room than its own bytes, so the ceiling holds the refs' bytes less one).
+    let lead = json!({"question": "Which orchid records exist?", "reading": {"parts": [
+        {"ref": part, "part": "section", "paper": "A", "heading": "Methods", "text": "y".repeat(600)}]}});
+    let empty = std::collections::HashMap::new();
+    let base = total(&method_review_context(&lead, &proposal, &index));
+    let roomy = fit(&lead, 262_144, &empty);
+    let parts = r#","reading_cited":"#.len() + size(&roomy["reading_cited"]);
+    assert!(citable < parts, "{citable} {parts}");
+    let tight = fit(&lead, base + parts + citable - 1, &empty);
+    assert!(tight.get("reading_cited").is_none() && tight.get("citable_refs").is_some());
+    assert!(total(&tight) < base + parts + citable);
+}
+
 // Every findings fault of a methods reply is fixed words, a position and a count, so the deferred turn's log line may
 // carry them: no word or number the reply wrote reaches a name. Other refusals keep their names out of logs.
 #[test]
@@ -3688,7 +3941,7 @@ async fn a_refused_methods_reply_is_asked_once_more_with_its_faults_named() {
                 {"about": "step q-1", "problem": "wrong_rows", "detail": detail}]})
             .to_string()
     };
-    let long = review(&"x".repeat(301));
+    let long = review(&"x".repeat(361));
     let fine = review("The step reads raw foods where the question asks for boiled ones.");
     // A standalone number is masked; a number inside a name the context does not show is still refused.
     let number = review("The table shows Gene42 foods.");
@@ -3722,7 +3975,7 @@ async fn a_refused_methods_reply_is_asked_once_more_with_its_faults_named() {
     assert_eq!(
         asked(&bodies, 1)["prior_attempt"],
         serde_json::json!({"refused": "method_review_findings_invalid",
-                "names": ["finding 1: detail 301 characters, at most 300"]})
+                "names": ["finding 1: detail 361 characters, at most 300"]})
     );
     assert_eq!(asked(&bodies, 1)["question"], context["question"]);
     // The refused call's texts are kept beside the decision's, named by its receipt.
@@ -3798,6 +4051,13 @@ async fn a_refused_methods_reply_is_asked_once_more_with_its_faults_named() {
 // check.
 #[test]
 fn the_system_text_is_the_one_the_suite_accepted() {
+    // The methods prompt is part of what the lead's proposal check measures (`proposal_too_large`): it stays r39's to
+    // the byte, and the citable refs carry their own rule in the reserved room of the call that sends them.
+    assert_eq!(super::REVIEW.len(), 10_100);
+    assert_eq!(
+        super::model::sha(super::REVIEW.as_bytes()),
+        "sha256:7e46a9ed475266bf1f146d4c7278526f85ef2725e789e45eaa7db973c8a12f2c"
+    );
     assert_eq!(SYSTEM.len(), 26_293);
     assert_eq!(
         super::model::sha(SYSTEM.as_bytes()),

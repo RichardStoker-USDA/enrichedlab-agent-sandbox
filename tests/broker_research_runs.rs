@@ -6581,7 +6581,7 @@ fn a_methods_check_sends_a_proposal_back_with_checked_findings_within_the_budget
             json!({"decision":"revise","reason":"Several mistakes.","findings":[
             {"about":"finding 2","problem":"wrong_rows","detail":"There is no second finding."},
             {"about":"summary","problem":"typo","detail":"An unknown kind."},
-            {"about":"part 1","problem":"other","detail":"x".repeat(301)},
+            {"about":"part 1","problem":"other","detail":"x".repeat(361)},
             {"about":"step missing","problem":"repeated_work","detail":"No such step."},
             {"about":"answer","problem":"unsupported_statement","detail":"An unshown result.",
                 "refs":[refs[1].clone(), unknown.clone()]},
@@ -6592,7 +6592,7 @@ fn a_methods_check_sends_a_proposal_back_with_checked_findings_within_the_budget
             [
                 "finding 1: about names no part of this proposal",
                 "finding 2: problem is not one of the listed kinds",
-                "finding 3: detail 301 characters, at most 300",
+                "finding 3: detail 361 characters, at most 300",
                 "finding 4: about names no part of this proposal",
                 "finding 5: ref 2 is not a shown result",
                 "finding 6: detail empty",
@@ -6602,11 +6602,21 @@ fn a_methods_check_sends_a_proposal_back_with_checked_findings_within_the_budget
             .to_vec()
         )
     );
+    // A detail over the stated limit and within the hard one is kept whole.
+    assert!(
+        check_method_review(
+            &json!({"decision":"revise","reason":"Wrong rows.","findings":[
+                {"about":"summary","problem":"wrong_rows","detail":"x".repeat(301)}]}),
+            &proposal,
+            &compiled.index
+        )
+        .is_ok()
+    );
     // A detail at the limit in characters passes whatever its bytes.
     assert!(
         check_method_review(
             &json!({"decision":"revise","reason":"Wrong rows.","findings":[
-                {"about":"summary","problem":"wrong_rows","detail":"é".repeat(300)}]}),
+                {"about":"summary","problem":"wrong_rows","detail":"é".repeat(360)}]}),
             &proposal,
             &compiled.index
         )

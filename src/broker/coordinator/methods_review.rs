@@ -31,7 +31,14 @@ pub struct ReviewFinding {
 /// A revision lists one to six findings; each detail is at most 300 characters and rests on at most four shown results.
 pub const REVIEW_FINDINGS_MAX: usize = 6;
 
+/// The detail length the methods check is asked for (`REVIEW` states it) and told when a detail is over the hard limit.
 pub(super) const REVIEW_DETAIL_CHARS: usize = 300;
+
+/// The detail length a reply is held to. The check counts characters loosely: in eight measured runs on October
+/// 31 four second replies still held details of 302 to 332 characters after the first was refused for its length, and
+/// each refusal cost the lead its turn. A detail up to this length is kept whole; the lead's view of a revision still
+/// fits every text to its room (`fit_methods_review`).
+pub(super) const REVIEW_DETAIL_HARD_CHARS: usize = 360;
 
 pub(super) const REVIEW_REFS_MAX: usize = 4;
 
@@ -105,11 +112,12 @@ pub fn check_method_review_in(
     index: &ResultIndex,
     context: &Value,
 ) -> Result<MethodReview> {
-    check_method_review_with_parts(
+    check_method_review_against(
         value,
         proposal,
         &index.with_names_from(context),
         &cited_part_refs(context),
+        context,
     )
 }
 
@@ -121,6 +129,44 @@ pub fn check_method_review_with_parts(
     proposal: &Proposal,
     index: &ResultIndex,
     parts: &HashSet<String>,
+) -> Result<MethodReview> {
+    check_method_review_against(value, proposal, index, parts, &Value::Null)
+}
+
+/// What a ref a methods check was not shown names, in fixed words, from where its context holds it: a result an
+/// analysis names but the call left out for room, a passage from the lab's papers (`literature`, or the passage a
+/// `literature_claims` claim rests on) or a record of earlier research (`past_research`). None for any other ref. In eight
+/// measured runs on October 31 three second replies cited a ref the check was not shown, and the fault said only
+/// that.
+pub(super) fn unshown_ref_kind(
+    reference: &str,
+    index: &ResultIndex,
+    context: &Value,
+) -> Option<&'static str> {
+    let held = |list: &str, field: &str| {
+        context[list]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|item| item[field].as_str() == Some(reference))
+    };
+    if index.listed.contains(reference) {
+        Some("a result left out for room")
+    } else if held("literature", "ref") || held("literature_claims", "passage_ref") {
+        Some("a literature passage")
+    } else if held("past_research", "ref") {
+        Some("a past research record")
+    } else {
+        None
+    }
+}
+
+fn check_method_review_against(
+    value: &Value,
+    proposal: &Proposal,
+    index: &ResultIndex,
+    parts: &HashSet<String>,
+    context: &Value,
 ) -> Result<MethodReview> {
     let mut method: MethodReview =
         serde_json::from_value(value.clone()).map_err(|_| anyhow!("method_review_invalid"))?;
@@ -157,7 +203,12 @@ pub fn check_method_review_with_parts(
                 "finding {n}: problem is not one of the listed kinds"
             ));
         }
-        if let Some(fault) = text_fault(Some(&f.detail), REVIEW_DETAIL_CHARS) {
+        let length = f.detail.chars().count();
+        if length > REVIEW_DETAIL_HARD_CHARS {
+            faults.push(format!(
+                "finding {n}: detail {length} characters, at most {REVIEW_DETAIL_CHARS}"
+            ));
+        } else if let Some(fault) = text_fault(Some(&f.detail), REVIEW_DETAIL_HARD_CHARS) {
             faults.push(format!("finding {n}: detail {fault}"));
         }
         if f.refs.len() > REVIEW_REFS_MAX {
@@ -167,15 +218,22 @@ pub fn check_method_review_with_parts(
             ));
         } else {
             for (j, r) in f.refs.iter().enumerate() {
+                if index.shows(r) || parts.contains(r) {
+                    continue;
+                }
                 // A check shown no read part names the fault as before, so runs without reading are asked again with
-                // the earlier words.
-                if parts.is_empty() && !index.shows(r) {
-                    faults.push(format!("finding {n}: ref {} is not a shown result", j + 1));
-                } else if !index.shows(r) && !parts.contains(r) {
-                    faults.push(format!(
-                        "finding {n}: ref {} is not a shown result or read part",
+                // the earlier words; a ref the context holds as something other than a result says what it named.
+                let allowed = if parts.is_empty() {
+                    "a shown result"
+                } else {
+                    "a shown result or read part"
+                };
+                match unshown_ref_kind(r, index, context) {
+                    Some(kind) => faults.push(format!(
+                        "finding {n}: ref {} names {kind}, not {allowed}",
                         j + 1
-                    ));
+                    )),
+                    None => faults.push(format!("finding {n}: ref {} is not {allowed}", j + 1)),
                 }
             }
         }
@@ -193,11 +251,10 @@ pub fn check_method_review_with_parts(
     if reason.len() <= 2048 {
         method.reason = reason;
     }
+    // A masked detail is kept whatever its length: a mark is longer than the number it replaces, and the lead's view of
+    // a revision fits every text to its room (`fit_methods_review`).
     for f in &mut method.findings {
-        let (detail, _) = index.mask_step_numbers(&f.detail, None);
-        if detail.chars().count() <= REVIEW_DETAIL_CHARS {
-            f.detail = detail;
-        }
+        f.detail = index.mask_step_numbers(&f.detail, None).0;
     }
     // The reason and each finding's detail are read as step prose (a shown analysis's setting numbers may stand).
     let labels: Vec<String> = (1..=method.findings.len())
@@ -613,6 +670,25 @@ pub fn method_review_context(
     context
 }
 
+/// The rule the citable refs carry. It travels in the call's context, not in `REVIEW`, so the proposal check's measure
+/// of `REVIEW` and the base context stays the previous release's to the byte.
+pub(super) const CITABLE_RULE: &str = "A finding's refs name only refs listed here or a cited part's ref in reading_cited; a finding that rests on no shown result gives no refs.";
+
+/// The refs a finding may rest on, listed by code in a fixed order so the check need not infer which refs are results
+/// it was shown, with their rule: `"citable_refs":{...}` as the context writes it, and its bytes with the comma before
+/// it. None when the call was shown no result.
+pub(super) fn citable_refs(index: &ResultIndex) -> Option<(Value, usize)> {
+    let mut citable: Vec<&str> = index.shown.iter().map(String::as_str).collect();
+    if citable.is_empty() {
+        return None;
+    }
+    citable.sort_unstable();
+    let list = json!({"refs": citable, "rule": CITABLE_RULE});
+    let bytes =
+        r#","citable_refs":"#.len() + serde_json::to_vec(&list).map_or(usize::MAX, |b| b.len());
+    Some((list, bytes))
+}
+
 /// The bytes the lead's context gives the query facts of a proposal the methods check sent back, at
 /// most an eighth of its budget.
 pub(super) const QUERY_FACTS_BYTES: usize = 3072;
@@ -700,13 +776,17 @@ pub(super) fn method_review_with_query_facts(
 ) -> (Value, Value) {
     let mut context = method_review_context(lead_context, proposal, index);
     let (facts, withheld) = proposal_query_facts_recorded(proposal, queries, sources);
-    let room = input_ceiling.saturating_sub(
-        REVIEW.len()
-            + serde_json::to_vec(&context).map_or(usize::MAX, |b| b.len())
-            + REVIEW_NOTE_RESERVE
-            + REVIEW_RETRY_RESERVE
-            + r#","query_facts":"#.len(),
-    );
+    // The lead's proposal check measures the base context alone (`lead_check`), so the citable refs never refuse a
+    // proposal: they take their exact bytes from the room left after it, before the query facts and read parts, and are
+    // left out when that room is short.
+    let base = REVIEW.len()
+        + serde_json::to_vec(&context).map_or(usize::MAX, |b| b.len())
+        + REVIEW_NOTE_RESERVE
+        + REVIEW_RETRY_RESERVE;
+    let citable =
+        citable_refs(index).filter(|(_, bytes)| base.saturating_add(*bytes) <= input_ceiling);
+    let citable_bytes = citable.as_ref().map_or(0, |(_, bytes)| *bytes);
+    let room = input_ceiling.saturating_sub(base + citable_bytes + r#","query_facts":"#.len());
     let (shown, left) = fit_query_facts(&facts, room);
     if !shown.is_empty() {
         context["query_facts"] = json!(shown);
@@ -721,6 +801,7 @@ pub(super) fn method_review_with_query_facts(
             + serde_json::to_vec(&context).map_or(usize::MAX, |b| b.len())
             + REVIEW_NOTE_RESERVE
             + REVIEW_RETRY_RESERVE
+            + citable_bytes
             + r#","reading_cited":"#.len();
         if let Some(cited) = super::reading::cited(
             &lead_context["reading"],
@@ -729,6 +810,9 @@ pub(super) fn method_review_with_query_facts(
         ) {
             context["reading_cited"] = cited;
         }
+    }
+    if let Some((list, _)) = citable {
+        context["citable_refs"] = list;
     }
     (context, record)
 }
