@@ -4480,12 +4480,12 @@ fn profile_file(dir: &std::path::Path, value: &serde_json::Value) -> (std::path:
     (path, super::sha(&bytes))
 }
 
-fn glm_profile() -> serde_json::Value {
-    serde_json::json!({"schema_version": 1, "name": "glm-5.3-flash-v1",
-        "model_identity": {"name": "GLM-5.3-Flash", "quant": "NVFP4", "engine": "vllm", "context_window_tokens": 131072},
+fn example_profile() -> serde_json::Value {
+    serde_json::json!({"schema_version": 1, "name": "example-model-v1",
+        "model_identity": {"name": "Example-Model", "quant": "int8", "engine": "vllm", "context_window_tokens": 131072},
         "roles": {"methods_specialist": {"settings": {"temperature": 0.6, "reasoning_effort": "medium"}},
                   "orientation": {"route": "workhorse"}},
-        "known_weaknesses": [{"mechanism": "incomplete_read_before_decision", "source": "Self-Harness GLM-5 edits",
+        "known_weaknesses": [{"mechanism": "incomplete_read_before_decision", "source": "Self-Harness model edits",
                               "status": "hypothesis"}],
         "evidence": {"rounds": [], "lineage_parent": null}})
 }
@@ -4496,7 +4496,7 @@ fn glm_profile() -> serde_json::Value {
 async fn a_profile_sets_each_role_and_names_itself_on_every_receipt() {
     let reply = r#"{"ok": true}"#.to_owned();
     let (model, bodies, dir) = replying_model(vec![reply.clone(), reply.clone(), reply]).await;
-    let (path, digest) = profile_file(dir.path(), &glm_profile());
+    let (path, digest) = profile_file(dir.path(), &example_profile());
     let model = model.with_profile(Some(&path)).unwrap();
     let context = serde_json::json!({"goal": "g"});
     let lead = model.call("lead", "s", &context).await.unwrap();
@@ -4517,7 +4517,7 @@ async fn a_profile_sets_each_role_and_names_itself_on_every_receipt() {
     assert_eq!(bodies[1], tuned);
     assert_eq!(bodies[2], plain("workhorse"));
     for call in [&lead, &methods, &orientation] {
-        assert_eq!(call.receipt["profile"], "glm-5.3-flash-v1");
+        assert_eq!(call.receipt["profile"], "example-model-v1");
         assert_eq!(call.receipt["profile_sha256"], digest);
     }
     assert!(lead.receipt.get("settings").is_none());
@@ -4555,7 +4555,7 @@ async fn a_profile_out_of_contract_is_refused() {
     type Change = Box<dyn Fn(&mut serde_json::Value)>;
     let cases: Vec<(&str, Change)> = vec![
         ("schema", Box::new(|p| p["schema_version"] = 2.into())),
-        ("name", Box::new(|p| p["name"] = "GLM 5.3".into())),
+        ("name", Box::new(|p| p["name"] = "Example 5.3".into())),
         (
             "unknown role",
             Box::new(|p| p["roles"]["campaign_planner"] = serde_json::json!({"route": "reasoner"})),
@@ -4605,7 +4605,7 @@ async fn a_profile_out_of_contract_is_refused() {
     ];
     drop(model);
     for (name, change) in cases {
-        let mut value = glm_profile();
+        let mut value = example_profile();
         change(&mut value);
         let (path, _) = profile_file(dir.path(), &value);
         let result = super::Model::load(&config)
@@ -4617,7 +4617,7 @@ async fn a_profile_out_of_contract_is_refused() {
             "{name}"
         );
     }
-    let (path, _) = profile_file(dir.path(), &glm_profile());
+    let (path, _) = profile_file(dir.path(), &example_profile());
     assert!(
         super::Model::load(&config)
             .unwrap()

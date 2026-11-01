@@ -210,7 +210,7 @@ fn a_retrieved_section_reads_as_its_matching_passage_once() {
         "title": "Results", "summary": null, "source_uri": "parsenriched://lab-a/document/x/section/1"})
     };
     let passage = |body: &str| json!({"ordinal": 2, "context": "Paper › Results", "body": body, "char_from": 3700, "char_to": 4800});
-    let answer = json!({"query_sha256": "b".repeat(64), "dense_profile": "nemotron-embed-vl-1b-v2", "generation": "g",
+    let answer = json!({"query_sha256": "b".repeat(64), "dense_profile": "example-embed-v1", "generation": "g",
         "rerank_profile": null, "hits": [
         {"resource": resource(a), "paper": null, "passage": passage("deep words"), "score": 0.1,
          "ranks": {"lexical": 1, "dense": 3, "graph": null, "rerank": null}},
@@ -254,12 +254,12 @@ fn a_retrieval_generation_name_is_checked_where_the_config_is_read() {
     };
     assert!(write(json!({})).unwrap().unwrap().generation.is_none());
     assert_eq!(
-        write(json!({"retrieval_generation": "v2-nemotron-bm25-graph-1"}))
+        write(json!({"retrieval_generation": "v2-example-bm25-graph-1"}))
             .unwrap()
             .unwrap()
             .generation
             .as_deref(),
-        Some("v2-nemotron-bm25-graph-1")
+        Some("v2-example-bm25-graph-1")
     );
     assert!(write(json!({"retrieval_generation": "V2 bad"})).is_err());
     assert!(write(json!({"retrieval_generation": ""})).is_err());
@@ -270,7 +270,7 @@ fn a_retrieval_generation_name_is_checked_where_the_config_is_read() {
         write(extra)
     };
     let service =
-        two_labs(json!({"lab_retrieval_generations": {"example-lab": "v2-nemotron-bm25-graph-1"}}))
+        two_labs(json!({"lab_retrieval_generations": {"example-lab": "v2-example-bm25-graph-1"}}))
             .unwrap()
             .unwrap();
     assert_eq!(
@@ -278,9 +278,9 @@ fn a_retrieval_generation_name_is_checked_where_the_config_is_read() {
             service.generation_for("example-lab"),
             service.generation_for("other-lab")
         ),
-        (Some("v2-nemotron-bm25-graph-1"), None)
+        (Some("v2-example-bm25-graph-1"), None)
     );
-    let service = two_labs(json!({"retrieval_generation": "v2-nemotron-bm25-graph-1",
+    let service = two_labs(json!({"retrieval_generation": "v2-example-bm25-graph-1",
         "lab_retrieval_generations": {"other-lab": null}}))
     .unwrap()
     .unwrap();
@@ -289,11 +289,11 @@ fn a_retrieval_generation_name_is_checked_where_the_config_is_read() {
             service.generation_for("example-lab"),
             service.generation_for("other-lab")
         ),
-        (Some("v2-nemotron-bm25-graph-1"), None)
+        (Some("v2-example-bm25-graph-1"), None)
     );
     // A lab the file does not serve, or a bad name, refuses the whole file.
     assert!(
-        two_labs(json!({"lab_retrieval_generations": {"third-lab": "v2-nemotron-bm25-graph-1"}}))
+        two_labs(json!({"lab_retrieval_generations": {"third-lab": "v2-example-bm25-graph-1"}}))
             .is_err()
     );
     assert!(two_labs(json!({"lab_retrieval_generations": {"example-lab": "V2 bad"}})).is_err());
@@ -348,7 +348,7 @@ fn retrieval_service(dir: &std::path::Path, url: &str) -> KnowledgeService {
     std::fs::write(
         &config,
         json!({"schema": SCHEMA, "service_url": url, "token_file": token, "labs": ["pilot-lab"],
-        "retrieval_generation": "v2-nemotron-bm25-graph-1"})
+        "retrieval_generation": "v2-example-bm25-graph-1"})
         .to_string(),
     )
     .unwrap();
@@ -362,7 +362,7 @@ fn retrieval_service(dir: &std::path::Path, url: &str) -> KnowledgeService {
 async fn a_configured_generation_retrieves_sections_under_the_runs_delegation() {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let (run, section) = (Uuid::new_v4(), Uuid::new_v4());
-    let answer = json!({"query_sha256": "c".repeat(64), "dense_profile": null, "generation": "v2-nemotron-bm25-graph-1",
+    let answer = json!({"query_sha256": "c".repeat(64), "dense_profile": null, "generation": "v2-example-bm25-graph-1",
         "rerank_profile": null, "hits": [{"resource": {"resource_id": section, "kind": "section", "scope": "pilot-lab",
             "data_class": "paper", "title": "Results", "summary": null,
             "source_uri": "parsenriched://lab-pilot-lab/document/x/section/1"},
@@ -388,7 +388,7 @@ async fn a_configured_generation_retrieves_sections_under_the_runs_delegation() 
     let (body, header) = seen.lock().unwrap()[0].clone();
     assert_eq!(
         body,
-        json!({"text": "a question", "kinds": ["section"], "limit": 12, "generation": "v2-nemotron-bm25-graph-1"})
+        json!({"text": "a question", "kinds": ["section"], "limit": 12, "generation": "v2-example-bm25-graph-1"})
     );
     assert_eq!(header, Some(run.to_string()));
 
@@ -423,7 +423,7 @@ async fn a_configured_generation_retrieves_sections_under_the_runs_delegation() 
     std::fs::write(
         &config,
         json!({"schema": SCHEMA, "service_url": url, "token_file": token, "labs": ["pilot-lab"],
-        "retrieval_generation": "v2-nemotron-bm25-graph-1", "lab_retrieval_generations": {"pilot-lab": null}})
+        "retrieval_generation": "v2-example-bm25-graph-1", "lab_retrieval_generations": {"pilot-lab": null}})
         .to_string(),
     )
     .unwrap();

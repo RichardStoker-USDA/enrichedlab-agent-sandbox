@@ -1007,7 +1007,7 @@ local/Kubernetes service route; otherwise HTTPS is required. Operator network po
 
 `--model-profile-file` names an optional private model profile: what the served model is and how each call role uses
 it. It is a closed object read once at start (at most 16 KiB, owner-only, like the model configuration):
-`schema_version: 1`; `name` (lowercase letters, digits, dots and hyphens, for example `glm-5.3-flash-v1`);
+`schema_version: 1`; `name` (lowercase letters, digits, dots and hyphens, for example `example-model-v1`);
 `model_identity` (`name`, optional `quant`, `engine`, `engine_version`, and `context_window_tokens`, which must equal
 the model configuration's); `roles`, keyed by `lead`, `methods_specialist`, `literature_specialist`,
 `literature_review` or `orientation`, each with a `route` (a model name the gateway serves) and/or `settings` (checked

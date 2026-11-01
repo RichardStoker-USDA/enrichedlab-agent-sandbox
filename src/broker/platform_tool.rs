@@ -508,7 +508,7 @@ mod tests {
         let release_ready: CatalogResponse = serde_json::from_value(json!({
             "api_version": API_VERSION,
             "catalog_version": "2026-09-10.1",
-            "release_registry": "registry.enrichedlab.internal",
+            "release_registry": "registry.example.internal",
             "deployable": true,
             "release_blockers": [],
             "runtime": {"unconsumed": true},
