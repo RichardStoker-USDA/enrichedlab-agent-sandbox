@@ -127,8 +127,8 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    `context_too_large` before any model call, instead of retrying a context that cannot fit. A model call writes the
    context's top-level sections in a fixed order (`context::stable_prefix_text`), most stable first: the guidance,
    schema version, question, constraints, scientist instructions, starting data and parallel limit, which never change
-   within a run; then the orientation (it changes as its profiling steps finish), data cards (with a data release),
-   methods (when finished queries reorder their relations), tool card, plan pages and earlier readings; then any other
+   within a run; then the orientation (it changes as its profiling steps finish), methods (when finished queries reorder
+   their relations), data cards (they take the room results leave), tool card, plan pages and earlier readings; then any other
    section; then those that change each turn (the analyses and their results, the state revision, earlier answers,
    shared and library text, the refusal, the methods check's request and the redirect). Consecutive calls of one run
    share a prefix through the last of these sections that did not change, which the model server can cache. The text holds the same keys and values in the same bytes

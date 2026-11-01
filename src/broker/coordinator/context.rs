@@ -51,8 +51,8 @@ pub(super) const INSTRUCTION_PREFIX: &str = "Scientist's instruction: ";
 
 /// The lead context's sections written first, most stable first, so consecutive calls of a run share the longest prefix
 /// the model server can cache: the guidance, the question and what bounds it, the starting data and the parallel limit
-/// never change within a run; the orientation changes only as its profiling steps finish, the data cards with a data
-/// release, the methods when finished queries reorder their relations, and the rest more often.
+/// never change within a run; the orientation changes only as its profiling steps finish, the methods when finished
+/// queries reorder their relations, the data cards with the room results leave them, and the rest more often.
 pub(super) const STABLE_SECTIONS: [&str; 14] = [
     "guidance",
     "context_schema_version",
@@ -63,8 +63,8 @@ pub(super) const STABLE_SECTIONS: [&str; 14] = [
     "max_parallel",
     "orientation",
     "working_memory",
-    "data_cards",
     "methods",
+    "data_cards",
     "tool_card",
     "plan_pages",
     "earlier_readings",
