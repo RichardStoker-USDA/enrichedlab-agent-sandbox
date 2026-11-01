@@ -454,6 +454,16 @@ pub(super) fn section(record: &Value, statuses: &HashMap<String, String>) -> Val
             .collect::<Vec<_>>()})
 }
 
+/// The bytes a read orientation's section adds to the lead's context, its key included; none for one that is not read.
+/// The context is compiled within the budget less these bytes, so `place` fits it.
+pub(super) fn reserve(record: &Value, statuses: &HashMap<String, String>) -> usize {
+    if record["status"] != "read" {
+        return 0;
+    }
+    serde_json::to_vec(&section(record, statuses))
+        .map_or(usize::MAX, |b| b.len() + r#","orientation":"#.len())
+}
+
 /// Places a read orientation in the lead's context when the context still fits `budget`.
 pub(super) fn place(
     context: &mut Value,

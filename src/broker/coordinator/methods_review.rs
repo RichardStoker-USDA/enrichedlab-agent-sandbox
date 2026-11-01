@@ -51,9 +51,6 @@ pub const REVIEW_PROBLEMS: [&str; 10] = [
     "other",
 ];
 
-/// The lead's view of a revision request stays within these bytes; six findings at their limits fit with the reason.
-pub(super) const METHODS_REVIEW_BYTES: usize = 6144;
-
 /// Whether a finding's `about` names a part the proposal holds: summary, answer, parts, part N, finding N or table
 /// statement N (counted from 1 in the proposal's lists), or step KEY for one of its steps.
 pub(super) fn review_about(about: &str, proposal: &Proposal) -> bool {
@@ -294,122 +291,6 @@ pub fn review_targets(findings: &[ReviewFinding], proposal: &Proposal) -> Vec<Va
             json!(cut(text))
         })
         .collect()
-}
-
-/// The fewest bytes a shortened target or detail of a revision request keeps: enough
-/// at the smallest lead budget to name the part and the mistake.
-pub(super) const REVIEW_TEXT_FLOOR: usize = 32;
-
-/// The bytes JSON takes to write `c` inside a string.
-pub(super) fn json_char_len(c: char) -> usize {
-    match c {
-        '"' | '\\' | '\u{8}' | '\u{c}' | '\n' | '\r' | '\t' => 2,
-        c if u32::from(c) < 0x20 => 6,
-        c => c.len_utf8(),
-    }
-}
-
-/// The bytes JSON takes to write `text` inside a string.
-pub(super) fn json_text_len(text: &str) -> usize {
-    text.chars().map(json_char_len).sum()
-}
-
-/// `text` within `bytes` bytes as JSON writes it inside a string; a shortened text ends with `…`.
-pub(super) fn cut_json_text(text: &str, bytes: usize) -> String {
-    if json_text_len(text) <= bytes {
-        return text.to_owned();
-    }
-    let mut used = '…'.len_utf8();
-    let mut kept = String::new();
-    for c in text.chars() {
-        used += json_char_len(c);
-        if used > bytes {
-            break;
-        }
-        kept.push(c);
-    }
-    kept.push('…');
-    kept
-}
-
-/// The findings' targets and details sharing what `room` leaves after the rest of `shown`, in equal parts with a
-/// shorter text keeping its whole length, or `None` when a shortened text would keep fewer than `REVIEW_TEXT_FLOOR`
-/// bytes as written, its `…` included (a cut ends at a character, so it can keep less than its share).
-pub(super) fn share_review_texts(mut shown: Value, room: usize) -> Option<Value> {
-    let size = |v: &Value| serde_json::to_vec(v).map_or(usize::MAX, |b| b.len());
-    let mut texts: Vec<(usize, &str, String)> = Vec::new();
-    for (i, finding) in shown["findings"].as_array()?.iter().enumerate() {
-        for field in ["target", "detail"] {
-            if let Some(text) = finding[field].as_str() {
-                texts.push((i, field, text.to_owned()));
-            }
-        }
-    }
-    for (i, field, _) in &texts {
-        shown["findings"][*i][*field] = json!("");
-    }
-    let mut left = room.checked_sub(size(&shown))?;
-    let mut order: Vec<usize> = (0..texts.len()).collect();
-    order.sort_by_key(|&k| json_text_len(&texts[k].2));
-    for (n, &k) in order.iter().enumerate() {
-        let (i, field, text) = &texts[k];
-        let share = left / (order.len() - n);
-        let cut = cut_json_text(text, share);
-        let written = json_text_len(&cut);
-        // A share under the `…` mark's three bytes returns the mark alone, which can exceed it.
-        if written > share || (cut != *text && written < REVIEW_TEXT_FLOOR) {
-            return None;
-        }
-        left -= written;
-        shown["findings"][*i][*field] = json!(cut);
-    }
-    (size(&shown) <= room).then_some(shown)
-}
-
-/// A revision request as the lead and the methods check are shown it, within `room` bytes.
-/// Each finding's part, kind, target and detail are what the lead corrects from; its refs and the
-/// request's reason are optional. So the refs go first; the reason then takes only the room the findings leave, and is
-/// left out when that is under `REVIEW_TEXT_FLOOR` bytes; then the targets and details share the room; then only the
-/// leading findings that fit are shown, with the rest counted. A shortened text ends with `…`.
-pub fn fit_methods_review(mut shown: Value, room: usize) -> Value {
-    let size = |v: &Value| serde_json::to_vec(v).map_or(usize::MAX, |b| b.len());
-    if size(&shown) <= room {
-        return shown;
-    }
-    for finding in shown["findings"].as_array_mut().into_iter().flatten() {
-        if let Some(f) = finding.as_object_mut() {
-            f.remove("refs");
-        }
-    }
-    shown["refs_omitted"] = json!(true);
-    if size(&shown) <= room {
-        return shown;
-    }
-    let reason = shown["reason"].as_str().unwrap_or_default().to_owned();
-    shown["reason"] = json!("");
-    if let Some(give) = room.checked_sub(size(&shown)) {
-        let cut = cut_json_text(&reason, give);
-        if json_text_len(&cut) >= REVIEW_TEXT_FLOOR && json_text_len(&cut) <= give {
-            shown["reason"] = json!(cut);
-            return shown;
-        }
-    }
-    if let Some(s) = shown.as_object_mut() {
-        s.remove("reason");
-    }
-    shown["reason_omitted"] = json!(true);
-    let findings: Vec<Value> = shown["findings"].as_array().cloned().unwrap_or_default();
-    for kept in (1..=findings.len()).rev() {
-        let mut probe = shown.clone();
-        probe["findings"] = Value::Array(findings[..kept].to_vec());
-        if kept < findings.len() {
-            probe["findings_omitted"] = json!(findings.len() - kept);
-        }
-        if let Some(fitted) = share_review_texts(probe, room) {
-            return fitted;
-        }
-    }
-    json!({"turn": shown["turn"], "findings_omitted": findings.len(), "revisions_left": shown["revisions_left"]})
 }
 
 /// What a reviewed proposal commits as: a person's review for `needs_review`; a revision while the

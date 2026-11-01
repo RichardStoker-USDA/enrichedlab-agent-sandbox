@@ -458,6 +458,30 @@ async fn advance(
     // Each stored result of a step that states what it must look like is checked against it before the lead reads it:
     // a failed check withholds the result's cells, so nothing later builds on it.
     results["step_checks"] = json!(step_checks::checks_for(&state.plan, &results["results"]));
+    // Each plan step's status, as the orientation section shows its profiling steps.
+    let statuses: HashMap<String, String> = state
+        .plan
+        .iter()
+        .filter_map(|s| {
+            serde_json::to_value(&s.status)
+                .ok()
+                .and_then(|v| v.as_str().map(|t| (s.action_key.clone(), t.to_owned())))
+        })
+        .collect();
+    // A kept orientation is pinned: its section's bytes are set aside before the sections that share the budget, so
+    // the context is compiled within what it leaves (`orientation::reserve`).
+    let kept_orientation = if lab_text.orientation.contains(lab) {
+        store
+            .orientation_for_run(run, worker, generation, None)
+            .await?
+    } else {
+        None
+    };
+    let room = budget.saturating_sub(
+        kept_orientation
+            .as_ref()
+            .map_or(0, |record| orientation::reserve(record, &statuses)),
+    );
     let compiled = compile_context_with_sections(
         &view,
         &titles,
@@ -465,13 +489,13 @@ async fn advance(
         &claim["task_facts"],
         &results,
         parallel,
-        budget,
+        room,
         &model.config.section_budgets(),
     );
-    // Parts a lead call must carry (the plan, people's review notes, this project's queries, the methods) that no
-    // longer fit its budget leave the run to a person instead of a call that cannot fit or a reply the methods review
-    // could not hold.
-    if !compiled.fits(budget) {
+    // Parts a lead call must carry (the plan, people's review notes, this project's queries, the methods, the pinned
+    // sections) that no longer fit its budget, once the optional sections have given way, leave the run to a person
+    // instead of a call that cannot fit or a reply the methods review could not hold.
+    if !compiled.fits(room) {
         return yield_context_too_large(store, run, worker, generation).await;
     }
     let mut context = compiled.value;
@@ -482,7 +506,7 @@ async fn advance(
             .is_some_and(|p| !p.is_empty())
     {
         let (record, calls) =
-            literature_reading(model, &lab_text.kept, run, &mut context, budget).await?;
+            literature_reading(model, &lab_text.kept, run, &mut context, room).await?;
         (Some(record), calls)
     } else {
         (None, Vec::new())
@@ -501,7 +525,7 @@ async fn advance(
                 lab,
                 &results,
                 &mut context,
-                budget,
+                room,
             )
             .await?,
         )
@@ -587,23 +611,23 @@ async fn advance(
         )
         .await?
         {
-            let statuses: HashMap<String, String> = state
-                .plan
-                .iter()
-                .filter_map(|s| {
-                    serde_json::to_value(&s.status)
-                        .ok()
-                        .and_then(|v| v.as_str().map(|t| (s.action_key.clone(), t.to_owned())))
-                })
-                .collect();
             placed = orientation::place(&mut context, &oriented.record, &statuses, budget);
             delegated = oriented.delegate;
             oriented_record = Some(oriented.record);
         }
     }
     // A turn that delegates the orientation's profiling steps has no lead call; the orientation's texts were kept when
-    // it was asked.
+    // it was asked. A lead call is never made without a read orientation: one that does not fit (a first turn's, made
+    // after the context was compiled) leaves the run to a person.
     let profiling_turn = delegated.is_some();
+    if !profiling_turn
+        && !placed
+        && oriented_record
+            .as_ref()
+            .is_some_and(|r| r["status"] == "read")
+    {
+        return yield_context_too_large(store, run, worker, generation).await;
+    }
     let (lead, checked, read_calls, reading, ceiling) = if let Some((call, checked)) = delegated {
         (
             call,

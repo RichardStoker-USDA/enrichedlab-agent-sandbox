@@ -4376,60 +4376,166 @@ async fn a_profile_out_of_contract_is_refused() {
     );
 }
 
-// The question, every constraint and scientist instruction, and the methods check's current findings are never cut to
-// make a lead context fit: at every lead budget from the floor to the ceiling, in 4 KiB steps, either all of them are
-// shown byte for byte or the context does not fit (and the run pauses for a person rather than plan without them).
+/// The pinned sections (the question, constraints, scientist instructions and the methods check's request at its
+/// schema limits, multibyte text included) are shown whole at every lead budget where the context fits. Where it does
+/// not fit, the same context without its optional sections does not fit either: shared lab notes and restored step
+/// titles gave way first (`YIELD_LEVELS`).
 #[test]
 fn pinned_sections_survive_every_budget() {
     use super::compile_context;
     use serde_json::{Value, json};
+    use std::collections::HashMap;
+    let keys: Vec<String> = (0..24).map(|i| format!("step-{i:02}")).collect();
     let view = json!({"goal": "Which samples were weighed, and how many in each batch?",
         "constraints": ["Use only the lab's own tables.", "Scientist's instruction: Report counts, not names.",
                         "Keep batch 7 out."],
-        "plan": [], "lessons": [], "next_action": "Query the data.", "revision": 3,
+        "plan": keys.iter().map(|k| json!({"action_key": k, "status": "succeeded", "evidence_refs": []}))
+            .collect::<Vec<_>>(),
+        "lessons": [], "next_action": "Query the data.", "revision": 3,
         "state_sha256": format!("sha256:{}", "d".repeat(64)), "workspace": {"input_refs": ["input://lab/example"]}});
-    let findings: Vec<Value> = (0..12)
-        .map(|i| json!({"about": format!("step q-{i}"), "problem": "wrong_rows",
-            "detail": format!("Finding {i}: the step reads the raw table where the design weighed dried samples {}.",
-                              "and names the batch".repeat(8)),
-            "refs": []}))
+    let titles: HashMap<String, String> = keys
+        .iter()
+        .map(|k| {
+            (
+                k.clone(),
+                format!(
+                    "{k}: weigh the dried samples of one batch again {}",
+                    "and count".repeat(12)
+                ),
+            )
+        })
         .collect();
-    let results = json!({"results": [], "revision_budget": 3, "revisions": 1,
-        "revision_request": {"turn": 2, "reason": "The plan departs from the design.", "findings": findings}});
-    let mut cut = vec![];
-    let mut fitted = 0;
+    // Six findings, each detail 300 characters of two- and three-byte letters, each target 240 four-byte letters, each
+    // with four refs.
+    let detail: String = "é".repeat(150) + &"测".repeat(150);
+    let findings: Vec<Value> = (0..super::REVIEW_FINDINGS_MAX)
+        .map(|i| {
+            json!({"about": format!("step step-{i:02}"), "problem": "wrong_rows", "detail": detail,
+            "refs": (0..4).map(|r| format!("result://tasks/{i}/{r}")).collect::<Vec<_>>()})
+        })
+        .collect();
+    let targets: Vec<String> = (0..super::REVIEW_FINDINGS_MAX)
+        .map(|_| "𝛽".repeat(240))
+        .collect();
+    let reason = "The plan departs from the design: ".to_owned() + &"ρ".repeat(600);
+    let notes: Vec<Value> = (0..8)
+        .map(|i| json!({"note_id": format!("note-{i}"), "statement_sha256": format!("sha256:{i:064}"),
+            "statement": format!("Batch {i} was weighed after drying overnight at 60 degrees. {}", "Noted.".repeat(70)),
+            "same_data": true, "matching_methods": [], "shared_at": "2026-10-30T12:00:00Z"}))
+        .collect();
+    let request = json!({"turn": 2, "reason": reason, "findings": findings, "targets": targets});
+    let full = json!({"results": [], "revision_budget": 3, "revisions": 1, "revision_request": request,
+        "lab_notes": notes});
+    let pinned_only =
+        json!({"results": [], "revision_budget": 3, "revisions": 1, "revision_request": request});
+    let expected: Vec<Value> = findings
+        .iter()
+        .zip(&targets)
+        .map(|(f, t)| {
+            let mut f = f.clone();
+            f["target"] = json!(t);
+            f
+        })
+        .collect();
+    let review = json!({"turn": 2, "reason": reason, "findings": expected, "revisions_left": 2});
+    let (mut fitted, mut refused, mut yielded) = (0, 0, 0);
     for budget in (super::LEAD_BUDGET_MIN..=super::MAX_INPUT_BYTES).step_by(4096) {
+        let c = compile_context(&view, &titles, &json!({}), &json!([]), &full, 2, budget);
+        if c.fits(budget) {
+            fitted += 1;
+            yielded += usize::from(c.inputs.get("optional_yield").is_some());
+            let v = &c.value;
+            assert_eq!(v["question"], view["goal"], "{budget}");
+            assert_eq!(
+                v["constraints"],
+                json!(["Use only the lab's own tables.", "Keep batch 7 out."]),
+                "{budget}"
+            );
+            assert_eq!(
+                v["scientist_instructions"],
+                json!(["Report counts, not names."]),
+                "{budget}"
+            );
+            assert_eq!(v["methods_review"], review, "{budget}");
+        } else {
+            refused += 1;
+            let bare = compile_context(
+                &view,
+                &HashMap::new(),
+                &json!({}),
+                &json!([]),
+                &pinned_only,
+                2,
+                budget,
+            );
+            assert!(
+                !bare.fits(budget),
+                "{budget}: the context did not fit although its pinned sections alone do"
+            );
+        }
+    }
+    assert!(
+        fitted > 0 && refused > 0 && yielded > 0,
+        "{fitted} {refused} {yielded}"
+    );
+}
+
+/// A kept orientation is pinned: compiled within the budget less its reserve, the context always takes it whole.
+#[test]
+fn a_kept_orientation_always_fits_its_reserve() {
+    use super::{compile_context, orientation};
+    use serde_json::json;
+    use std::collections::HashMap;
+    let text = |n: usize| "ö".repeat(n);
+    let named = |n: usize| {
+        (0..n)
+            .map(|i| json!({"key": format!("k{i}"), "why": text(300)}))
+            .collect::<Vec<_>>()
+    };
+    let record = json!({"status": "read", "step_keys": ["profile-a"], "orientation": {"question": text(300),
+        "sources": named(6), "tools": named(8), "papers": (0..6).map(|i| json!({"ref": format!("paper-{i}"),
+        "establishes": text(300)})).collect::<Vec<_>>(), "earlier": named(6), "unknowns": vec![text(300); 6],
+        "profiles": [{"action_key": "profile-a", "title": text(200)}]}});
+    let statuses = HashMap::from([("profile-a".to_owned(), "succeeded".to_owned())]);
+    let reserve = orientation::reserve(&record, &statuses);
+    assert!(reserve > 20_000, "{reserve}");
+    let notes: Vec<_> = (0..8)
+        .map(|i| {
+            json!({"note_id": format!("n{i}"), "statement_sha256": format!("sha256:{i:064}"),
+            "statement": "Dried overnight. ".repeat(25), "same_data": true, "matching_methods": []})
+        })
+        .collect();
+    let results = json!({"results": [], "lab_notes": notes});
+    let view = json!({"goal": "How many samples?", "constraints": [], "plan": [], "lessons": [],
+        "next_action": "Query.", "revision": 1, "state_sha256": format!("sha256:{}", "e".repeat(64)),
+        "workspace": {"input_refs": []}});
+    let mut placed = 0;
+    for budget in (super::LEAD_BUDGET_MIN..=super::MAX_INPUT_BYTES).step_by(4096) {
+        let room = budget.saturating_sub(reserve);
         let c = compile_context(
             &view,
-            &std::collections::HashMap::new(),
+            &HashMap::new(),
             &json!({}),
             &json!([]),
             &results,
-            2,
-            budget,
+            1,
+            room,
         );
-        if !c.fits(budget) {
+        if !c.fits(room) {
             continue;
         }
-        fitted += 1;
-        let v = &c.value;
-        let shown = v["methods_review"]["findings"].as_array();
-        let whole = v["question"] == view["goal"]
-            && v["constraints"] == json!(["Use only the lab's own tables.", "Keep batch 7 out."])
-            && v["scientist_instructions"] == json!(["Report counts, not names."])
-            && shown.is_some_and(|s| {
-                s.len() == findings.len()
-                    && s.iter()
-                        .zip(&findings)
-                        .all(|(a, b)| a["detail"] == b["detail"] && a["about"] == b["about"])
-            });
-        if !whole {
-            cut.push(budget);
-        }
+        let mut context = c.value;
+        assert!(
+            orientation::place(&mut context, &record, &statuses, budget),
+            "{budget}"
+        );
+        assert_eq!(
+            context["orientation"],
+            orientation::section(&record, &statuses)
+        );
+        placed += 1;
     }
-    assert!(fitted > 0);
-    assert!(
-        cut.is_empty(),
-        "budgets where a pinned section was cut while the context fit: {cut:?}"
-    );
+    assert!(placed > 0);
+    let refused = json!({"status": "refused", "faults": ["unknown_key"]});
+    assert_eq!(orientation::reserve(&refused, &statuses), 0);
 }

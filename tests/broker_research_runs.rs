@@ -5,11 +5,11 @@ use enrichedlab_agent_sandbox::broker::{
         READ_ATTEMPTS, Redirect, Refusal, ResultIndex, StartRun, UnreadRefs, ask_again,
         bound_tasks, check_lead_replies, check_lead_reply, check_method_review,
         check_method_review_in, code_request_digest, compile_context, context_evidence,
-        context_literature, finding_fault_counts, fit_methods_review, knowledge_hits,
-        lead_system_bytes, method_review_context, methods_view, newest_tasks, own_query_views,
-        past_research_tasks, plan_archive_keys, profile_configurations, profile_templates,
-        project_tasks, proposal_schema_names as schema_names_with_guidance, query_step_shape,
-        read_reply, reconcile, refusal as refusal_with_guidance, refused_numbers, rejection_reason,
+        context_literature, finding_fault_counts, knowledge_hits, lead_system_bytes,
+        method_review_context, methods_view, newest_tasks, own_query_views, past_research_tasks,
+        plan_archive_keys, profile_configurations, profile_templates, project_tasks,
+        proposal_schema_names as schema_names_with_guidance, query_step_shape, read_reply,
+        reconcile, refusal as refusal_with_guidance, refused_numbers, rejection_reason,
         repeated_queries, requires_execution_review, review_input_bytes, review_outcome,
         review_targets, unreadable_reply, with_archived_page, with_prior_attempt,
         with_unreadable_note,
@@ -6488,44 +6488,6 @@ fn the_tool_card_stays_within_its_bytes_with_the_omission_count_and_archived_ana
     assert!(newest_tasks(&json!({})).is_empty());
 }
 
-/// A shortened reason, target or detail keeps at least 32 bytes as JSON writes it, its
-/// `…` included, also when its characters are six-byte escapes or two-byte letters, at every room.
-#[test]
-fn a_shortened_revision_text_keeps_its_floor_at_every_room() {
-    let written = |t: &str| serde_json::to_string(t).unwrap().len() - 2;
-    for text in ["\u{1}".repeat(60), "\u{e9}".repeat(150)] {
-        for room in 200..1400 {
-            let finding =
-                json!({"about":"finding 1","problem":"other","detail": text, "target": text});
-            let fitted = fit_methods_review(
-                json!({"turn": 3, "reason": text, "findings": vec![finding; 6], "revisions_left": 1}),
-                room,
-            );
-            assert!(
-                serde_json::to_vec(&fitted).unwrap().len() <= room,
-                "{room}: {fitted}"
-            );
-            let mut shortened: Vec<&str> = fitted["reason"].as_str().into_iter().collect();
-            for f in fitted["findings"].as_array().into_iter().flatten() {
-                shortened.extend(["target", "detail"].iter().filter_map(|k| f[*k].as_str()));
-            }
-            for t in shortened.iter().filter(|t| t.ends_with('…')) {
-                assert!(written(t) >= 32, "{room}: {} bytes", written(t));
-            }
-        }
-    } // A text that is only the mark, with a share under its three bytes, never takes more than its share.
-    let about = format!("step {}", "k".repeat(94));
-    let tiny = json!({"about": about, "problem": "other", "detail": "…", "target": "x: y"});
-    let fitted = fit_methods_review(
-        json!({"turn": 3, "reason": "z".repeat(2048), "findings": vec![tiny; 6], "revisions_left": 1}),
-        1024,
-    );
-    assert!(
-        serde_json::to_vec(&fitted).unwrap().len() <= 1024,
-        "{fitted}"
-    );
-}
-
 /// The methods check sends a proposal back with typed findings the code checks, within the run's
 /// revision budget, and the lead's next context carries them with the words of the parts they name.
 #[test]
@@ -6765,135 +6727,52 @@ fn a_methods_check_sends_a_proposal_back_with_checked_findings_within_the_budget
         .as_object_mut()
         .unwrap()
         .remove("query_facts");
-    // A request too large for its room loses its refs first; the reason takes only what the findings leave; then the
-    // targets and details share the room in equal parts, each shortened text ending with ….
-    let bytes = |v: &serde_json::Value| serde_json::to_vec(v).unwrap().len();
-    let texts = |shown: &serde_json::Value| -> Vec<String> {
-        shown["findings"]
+    // The request is pinned: wherever the lead's context holds it, it is shown whole, its refs, reason, targets and
+    // details byte for byte; at a budget too small for it the context does not fit and the run pauses
+    // (`context_too_large`), never a shortened request.
+    let whole_or_refused = |request: serde_json::Value, budget: usize| {
+        let mut with = results.clone();
+        with["revision_request"] = request.clone();
+        let compiled = compile_context(&view, &HashMap::new(), &profiles, &facts, &with, 1, budget);
+        if !compiled.fits(budget) {
+            return false;
+        }
+        let shown = &compiled.value["methods_review"];
+        let findings: Vec<serde_json::Value> = request["findings"]
             .as_array()
             .unwrap()
             .iter()
-            .flat_map(|f| {
-                [
-                    f["target"].as_str().unwrap().to_owned(),
-                    f["detail"].as_str().unwrap().to_owned(),
-                ]
+            .zip(request["targets"].as_array().unwrap())
+            .map(|(f, t)| {
+                let mut f = f.clone();
+                f["target"] = t.clone();
+                f
             })
-            .collect()
+            .collect();
+        assert_eq!(shown["findings"], json!(findings), "{budget}");
+        assert_eq!(shown["reason"], request["reason"], "{budget}");
+        assert!(shown.get("refs_omitted").is_none() && shown.get("findings_omitted").is_none());
+        true
     };
     let long = json!({"about":"summary","problem":"other","detail":"y".repeat(300),
         "refs":[refs[0], refs[1], refs[2], refs[3]]});
-    results["revision_request"] = json!({"turn": 3, "reason": "z".repeat(2048), "findings": vec![long; 12],
-        "targets": vec!["t".repeat(240); 12]});
-    let compiled = compile_context(
-        &view,
-        &HashMap::new(),
-        &profiles,
-        &facts,
-        &results,
-        1,
-        32768,
-    );
-    let shown = &compiled.value["methods_review"];
-    assert_eq!(
-        (&shown["refs_omitted"], &shown["reason_omitted"]),
-        (&json!(true), &json!(true))
-    );
-    assert!(bytes(shown) <= 6144, "{shown}");
-    let cut = texts(shown);
-    assert_eq!(cut.len(), 24);
-    let lengths: Vec<usize> = cut.iter().map(String::len).collect();
-    assert!(
-        cut.iter().all(|t| t.ends_with('…'))
-            && lengths.iter().min().unwrap() >= &200
-            && lengths.iter().max().unwrap() - lengths.iter().min().unwrap() <= 1,
-        "{lengths:?}"
-    );
-    // At the smallest lead budget the request takes at most a quarter of it, and every one of six findings at their
-    // limits keeps its target and detail.
-    let six = json!({"about":"summary","problem":"other","detail":"y".repeat(300),"refs":[refs[0], refs[1]]});
-    results["revision_request"] = json!({"turn": 3, "reason": "z".repeat(2048), "findings": vec![six; 6],
+    let six_long = json!({"turn": 3, "reason": "z".repeat(2048), "findings": vec![long; 6],
         "targets": vec!["t".repeat(240); 6]});
-    let compiled = compile_context(&view, &HashMap::new(), &profiles, &facts, &results, 1, 4096);
-    let shown = &compiled.value["methods_review"];
-    assert!(bytes(shown) <= 1024, "{shown}");
-    assert_eq!(
-        (
-            &shown["refs_omitted"],
-            &shown["reason_omitted"],
-            &shown["findings_omitted"]
-        ),
-        (&json!(true), &json!(true), &serde_json::Value::Null)
-    );
-    let cut = texts(shown);
-    assert_eq!(cut.len(), 12);
-    assert!(
-        cut.iter().all(|t| t.ends_with('…') && t.len() >= 32),
-        "{cut:?}"
-    );
-    assert!(cut.iter().step_by(2).all(|t| t.starts_with("ttt")));
-    assert!(cut.iter().skip(1).step_by(2).all(|t| t.starts_with("yyy")));
-    // Findings in ordinary words keep a short target whole and share the rest among their details.
+    assert!(whole_or_refused(six_long.clone(), 32768));
+    assert!(!whole_or_refused(six_long, 4096));
     let plain = json!({"about":"finding 1","problem":"wrong_rows",
         "detail":"The finding reads the second run's table while the summary describes the first run, so its value is from the wrong rows.",
         "refs":[refs[0]]});
-    results["revision_request"] = json!({"turn": 3, "reason": "z".repeat(2048), "findings": vec![plain; 6],
+    let six_plain = json!({"turn": 3, "reason": "z".repeat(2048), "findings": vec![plain; 6],
         "targets": vec!["Orange juice gave a mean of {oj}."; 6]});
-    let compiled = compile_context(&view, &HashMap::new(), &profiles, &facts, &results, 1, 4096);
-    let shown = &compiled.value["methods_review"];
-    assert!(bytes(shown) <= 1024, "{shown}");
-    let cut = texts(shown);
-    assert!(
-        cut.iter()
-            .step_by(2)
-            .all(|t| t == "Orange juice gave a mean of {oj}.")
-    );
-    assert!(
-        cut.iter()
-            .skip(1)
-            .step_by(2)
-            .all(|t| t.starts_with("The finding reads the second run") && t.ends_with('…')),
-        "{cut:?}"
-    );
-    // When the findings fit whole, the reason takes what they leave.
-    let one = json!({"about":"finding 1","problem":"wrong_rows","detail":"The finding reads the second run's table."});
-    results["revision_request"] = json!({"turn": 3, "reason": "z".repeat(2048), "findings": [one],
-        "targets": ["Orange juice gave a mean of {oj}."]});
-    let compiled = compile_context(&view, &HashMap::new(), &profiles, &facts, &results, 1, 4096);
-    let shown = &compiled.value["methods_review"];
-    assert!(bytes(shown) <= 1024 && bytes(shown) >= 1000, "{shown}");
-    assert!(shown["reason"].as_str().unwrap().ends_with('…'));
-    assert_eq!(shown["reason_omitted"], serde_json::Value::Null);
-    assert_eq!(
-        shown["findings"][0]["detail"],
-        "The finding reads the second run's table."
-    );
-    // Findings that cannot all keep a usable text show the leading ones and count the rest; the bytes are measured as
-    // JSON writes them, escapes included.
+    assert!(whole_or_refused(six_plain.clone(), 32768));
+    assert!(!whole_or_refused(six_plain, 4096));
+    // Multibyte text is measured as JSON writes it and still shown whole.
     let wide = json!({"about": format!("step {}", "k".repeat(150)), "problem":"repeated_work",
-        "detail": "A \"quoted\"\nline\t".repeat(30), "target": "\u{1}".repeat(60)});
-    let fitted = fit_methods_review(
-        json!({"turn": 3, "reason": "z".repeat(400), "findings": vec![wide; 6], "revisions_left": 1}),
-        1024,
-    );
-    assert!(bytes(&fitted) <= 1024, "{fitted}");
-    let kept = fitted["findings"].as_array().unwrap().len();
-    assert!((1..6).contains(&kept), "{fitted}");
-    assert_eq!(fitted["findings_omitted"], json!(6 - kept));
-    assert!(
-        texts(&fitted)
-            .iter()
-            .all(|t| t.ends_with('…') && serde_json::to_string(t).unwrap().len() - 2 >= 32)
-    );
-    // Past that the request is counted alone.
-    let fitted = fit_methods_review(
-        json!({"turn": 3, "reason": "z", "findings": [{"about": "x".repeat(2000), "problem": "other"}], "revisions_left": 0}),
-        1024,
-    );
-    assert_eq!(
-        fitted,
-        json!({"turn": 3, "findings_omitted": 1, "revisions_left": 0})
-    );
+        "detail": "A \"quoted\"\nline\t".repeat(16), "refs": []});
+    let six_wide = json!({"turn": 3, "reason": "é".repeat(400), "findings": vec![wide; 6],
+        "targets": vec!["\u{1}".repeat(60); 6]});
+    assert!(whole_or_refused(six_wide, 32768));
     // A shown result with no table, such as a figure, may be cited.
     let figure = format!(
         "artifact://tasks/{}/{}",

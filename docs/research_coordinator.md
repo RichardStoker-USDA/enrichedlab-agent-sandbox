@@ -113,9 +113,13 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    added last, so the whole context stays within its budget. The checkpoint view leaves out finished steps' titles; they
    come back newest first within 4,096 bytes and an eighth of the budget, and an older finished step shows its key
    alone. Parts a lead call must carry whole (the plan, people's review notes, this project's queries, the methods) are
-   not cut: when they leave the compiled context over its budget, or the checkpoint view cannot fit its share, the run
-   stops for a person as `review_required` with reason `context_too_large` before any model call, instead of retrying a
-   context that cannot fit. The lead proposes a method. A separate
+   not cut. The pinned sections (the question, constraints, scientist instructions, the methods check's request and a
+   kept orientation) are never cut either: a kept orientation's bytes are set aside before the context is compiled, and
+   when a compiled context does not fit, the optional sections placed before the remainder (shared lab notes, query
+   relations and restored step titles) give way first, their shares halving at each of four levels and empty at the
+   last (the level is recorded as `optional_yield` in the context's inputs). When the context still does not fit, or the
+   checkpoint view cannot fit its share, the run stops for a person as `review_required` with reason
+   `context_too_large` before any model call, instead of retrying a context that cannot fit. The lead proposes a method. A separate
    methods-specialist call checks its fit using the same compiled context, the proposal and `finding_values` (the
    cell each of the lead's placeholders names). It does not rebuild context from the full checkpoint. Both roles must
    reassess prior interpretations; citing an artifact does not prove a claim about its contents. The original
@@ -796,7 +800,9 @@ keys, whether this turn committed them as its steps, whether the section fitted)
 and then failed before its commit leaves the steps to the next attempt, which admits them again and delegates them
 without asking for another orientation.
 
-Every later lead call of the run reads the orientation as one section, `orientation`, while the context fits: the
+Every later lead call of the run reads the orientation as one section, `orientation`. It is pinned: its bytes are set
+aside before the context is compiled, and a lead call is never made without it (a first turn's orientation that does not
+fit stops the run as `context_too_large`). The section holds the
 restated question, sources, tools, papers, earlier research (empty for a record kept before that field), unknowns and the
 profiling steps by key, title and the status the plan
 gives each (`not_run` when the plan has none), never their queries, with one sentence of instructions carried in the
@@ -942,7 +948,7 @@ bytes for the methods review and a 4,096-byte lead budget, at most 262,144), `ma
 `context_window_tokens`, `timeout_seconds` (10 to 900), optional `sections` and `settings`. Input bytes conservatively count as tokens, and
 startup requires `max_input_bytes + max_output_tokens + 1,024 <= context_window_tokens`. The lead-context budget is
 `max_input_bytes` minus the fixed lead prompt and 6,144-byte review reserve. Its relation quarter, restored-title
-eighth, revision-feedback quarter, query-facts eighth and remaining room for results therefore grow from the configured
+eighth, query-facts eighth and remaining room for results therefore grow from the configured
 ceiling up to their named caps.
 
 `sections` sets upper bounds for variable lead-context sections. It is a strict object: an unknown key refuses the
@@ -1097,13 +1103,9 @@ turn as one refusal did before. A reply that is no review at all
 kept as `revised_proposal` so no reader of answers takes it for one, its lessons wait, and the run returns to the
 queue. The turn record also keeps `revision.targets`, the words of the part each finding names, taken by code from that
 proposal (at most 240 characters each), because the lead's next call has no other copy of it. The lead's next context
-carries `methods_review` (the reason, each finding with its target, and `revisions_left`) within a quarter of the
-lead's budget and at most 6,144 bytes. Each finding's part, kind, target and detail are what the lead corrects from,
-so room is taken first from the refs, then from the reason (it keeps only what the findings leave), then the targets
-and details share what remains in equal parts, a shorter one keeping its whole length and each keeping at least 32
-bytes; past that only the leading findings are shown, with the rest counted. A shortened text ends with `…`. At the
-smallest lead budget (a 1,024-byte room) six findings at their limits keep about 47 bytes of each target and detail.
-The methods check reads its own earlier findings there. A run is
+carries `methods_review` (the reason, each finding with its target and refs, and `revisions_left`) whole: it is a pinned
+section, never shortened, and a lead budget too small for it stops the run as `context_too_large` rather than planning
+from part of the check's findings. The methods check reads its own earlier findings there. A run is
 sent back at most twice: the database refuses a third `revise`, and past the budget the coordinator records the review
 as one a person decides. Before that, every such review ended the run for a person; on the earlier suites that was the largest
 loss (five or six of eighteen goals per three runs, each on a lead mistake the review named).

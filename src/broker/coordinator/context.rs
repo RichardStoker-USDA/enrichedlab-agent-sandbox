@@ -594,6 +594,15 @@ pub fn compile_context(
     )
 }
 
+/// How far the sections placed before the budget's remainder and not pinned (shared lab notes, query relations and
+/// restored step titles) give way when a compiled context does not fit: their shares halve at each level and are empty
+/// at the last. The pinned sections (the question, constraints, scientist instructions and the methods check's
+/// request) never give way, so a context that does not fit at the last level is one its pinned sections fill.
+pub(super) const YIELD_LEVELS: u32 = 4;
+
+/// The lead's context within `budget` bytes. When it does not fit, it is compiled again at each yield level in turn;
+/// the first that fits is returned, else the last, which does not fit. A context compiled past level 0 records the
+/// level it fit at as `inputs.optional_yield`.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn compile_context_with_sections(
     view: &Value,
@@ -604,6 +613,42 @@ pub(super) fn compile_context_with_sections(
     parallel: usize,
     budget: usize,
     sections: &SectionBudgets,
+) -> CompiledContext {
+    let mut level = 0;
+    loop {
+        let mut compiled = compile_at_level(
+            view, titles, profiles, facts, results, parallel, budget, sections, level,
+        );
+        if compiled.fits(budget) || level == YIELD_LEVELS {
+            if level > 0 {
+                compiled.inputs["optional_yield"] = json!(level);
+            }
+            return compiled;
+        }
+        level += 1;
+    }
+}
+
+/// An optional section's share at a yield level: halved at each level, none at the last.
+fn yielded(share: usize, level: u32) -> usize {
+    if level >= YIELD_LEVELS {
+        0
+    } else {
+        share >> level
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_at_level(
+    view: &Value,
+    titles: &HashMap<String, String>,
+    profiles: &Value,
+    facts: &Value,
+    results: &Value,
+    parallel: usize,
+    budget: usize,
+    sections: &SectionBudgets,
+    level: u32,
 ) -> CompiledContext {
     let mut index = ResultIndex::default();
     // The run's template-analysis steps: the tasks run by the method that carries the analysis catalog.
@@ -677,7 +722,7 @@ pub(super) fn compile_context_with_sections(
     // titles once made a 52,045-byte context).
     let mut restored: HashSet<&str> = HashSet::new();
     let mut restored_bytes = 0_usize;
-    let allowance = RESTORED_TITLES_BYTES.min(budget / 8);
+    let allowance = yielded(RESTORED_TITLES_BYTES.min(budget / 8), level);
     for step in view["plan"].as_array().into_iter().flatten().rev() {
         let key = step["action_key"].as_str().unwrap_or_default();
         if step.get("title").is_some() {
@@ -792,7 +837,7 @@ pub(super) fn compile_context_with_sections(
         view["goal"].as_str().unwrap_or_default(),
         &all.join("\n"),
         &results["own_queries"],
-        sections.query_relations_bytes.min(budget / 4),
+        yielded(sections.query_relations_bytes.min(budget / 4), level),
     );
     // The template analyses shown describe methods too: a step's title and rationale may name their setting numbers.
     index.allow_settings(&value["methods"]);
@@ -833,7 +878,9 @@ pub(super) fn compile_context_with_sections(
         let n = serde_json::to_vec(&shown)
             .map(|b| b.len())
             .unwrap_or(usize::MAX);
-        if notes.len() == LAB_NOTES_MAX || notes_bytes + n > sections.lab_notes_bytes {
+        if notes.len() == LAB_NOTES_MAX
+            || notes_bytes + n > yielded(sections.lab_notes_bytes, level)
+        {
             break;
         }
         notes_bytes += n;
@@ -947,11 +994,10 @@ pub(super) fn compile_context_with_sections(
     }
     // The methods check's request for a revision of the previous proposal (migration 049): its reason
     // and typed findings, each with the words of the part it names, and how many more times the check may send this run
-    // back. It is pinned: it keeps its fixed room, `METHODS_REVIEW_BYTES`, at every budget, so a budget too small to
-    // carry it does not fit and the run pauses, rather than the lead planning without the check's findings
-    // (`pinned_sections_survive_every_budget`).
+    // back. It is pinned: it is shown whole at every budget (the check's reply is bounded when it is accepted), so a
+    // budget too small to carry it does not fit and the run pauses, rather than the lead planning without the check's
+    // findings (`pinned_sections_survive_every_budget`).
     if let Some(request) = results["revision_request"].as_object() {
-        let room = METHODS_REVIEW_BYTES;
         let left = results["revision_budget"]
             .as_u64()
             .unwrap_or(0)
@@ -975,11 +1021,8 @@ pub(super) fn compile_context_with_sections(
             })
             .collect();
         let count = findings.len();
-        let shown = fit_methods_review(
-            json!({"turn": request.get("turn"), "reason": request.get("reason"),
-                "findings": findings, "revisions_left": left}),
-            room,
-        );
+        let shown = json!({"turn": request.get("turn"), "reason": request.get("reason"),
+            "findings": findings, "revisions_left": left});
         inputs["methods_review"] = json!({"turn": request.get("turn"), "findings": count});
         value["methods_review"] = shown;
         // The facts code measured for the query steps sent back (migration 051), whole steps within an
