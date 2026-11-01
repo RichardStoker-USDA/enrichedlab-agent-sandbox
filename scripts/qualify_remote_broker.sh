@@ -456,6 +456,24 @@ run_evidence() {
         --command="SELECT pg_get_constraintdef(oid) LIKE '%tenant_disabled%' FROM pg_constraint
           WHERE conname = 'capture_gaps_reason_check'" | grep -qx t \
         || { printf '%s\n' 'migration 081 did not replace the gap reason list' >&2; exit 1; }
+    # 4b. Migration 086 after 081 runs again (as every migrate run does): the lab object tables keep their capture
+    # triggers through 081, are listed again, and a capture grant written before 086 gains their two event types.
+    pg --command="UPDATE evidence.producer_grants g SET event_types = array_remove(array_remove(g.event_types,
+          'broker.object_requests'), 'broker.object_receipts')
+        FROM evidence.producers p WHERE p.tenant_id = g.tenant_id AND p.producer_id = g.producer_id
+          AND p.identity = 'broker:capture'" >/dev/null
+    pg --file=/workspace/migrations/postgres/086_evidence_capture_lab_objects.sql >/dev/null 2>"$evidence_log" \
+        || { printf '%s\n' 'migration 086 did not run again' >&2; cat "$evidence_log" >&2; exit 1; }
+    pg --tuples-only --no-align --command="SELECT count(*) FILTER (WHERE NOT g.event_types @> ARRAY['broker.object_requests',
+          'broker.object_receipts']) || ' ' || count(*) || ' ' || max(cardinality(g.event_types))
+        FROM evidence.producer_grants g JOIN evidence.producers p ON p.tenant_id = g.tenant_id
+          AND p.producer_id = g.producer_id WHERE p.identity = 'broker:capture'" | grep -Eqx '0 [1-9][0-9]* 63' \
+        || { printf '%s\n' 'a capture grant written before migration 086 lacks the lab object event types' >&2; exit 1; }
+    pg --tuples-only --no-align --command="SELECT count(*) FROM evidence.capture_tables() ct
+        JOIN pg_class c ON c.relname = ct.table_name AND c.relnamespace = 'enrichedlab_agent'::regnamespace
+        JOIN pg_trigger x ON x.tgrelid = c.oid AND x.tgname = 'evidence_capture'
+        WHERE ct.table_name IN ('broker_object_requests', 'broker_object_receipts')" | grep -qx 2 \
+        || { printf '%s\n' 'the lab object tables are not captured after migrations 081 and 086' >&2; exit 1; }
     # An unpublished layout is rebuilt only while it holds no receipts: with records under an older layout name, the
     # evidence migration refuses and changes nothing.
     docker exec "$container" psql --username postgres --dbname "$database" --quiet --tuples-only \

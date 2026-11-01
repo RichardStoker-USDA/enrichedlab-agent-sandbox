@@ -334,6 +334,33 @@ broker_literature_reviews inputs_sha256 text copy
 broker_literature_reviews record jsonb model-text
 broker_literature_reviews run_id uuid copy
 broker_literature_reviews tenant_id text copy
+broker_object_receipts attempt integer copy
+broker_object_receipts bytes bigint copy
+broker_object_receipts error_code text copy
+broker_object_receipts files integer copy
+broker_object_receipts finished_at timestamp with time zone copy
+broker_object_receipts lease_generation bigint copy
+broker_object_receipts package_sha256 text copy
+broker_object_receipts recorded_at timestamp with time zone copy
+broker_object_receipts started_at timestamp with time zone copy
+broker_object_receipts status text copy
+broker_object_receipts tables jsonb content
+broker_object_receipts task_id uuid copy
+broker_object_receipts tenant_id text copy
+broker_object_requests bucket text content
+broker_object_requests collection_id uuid copy
+broker_object_requests created_at timestamp with time zone copy
+broker_object_requests files text[] content
+broker_object_requests generation text content
+broker_object_requests manifest_sha256 text copy
+broker_object_requests prefix text content
+broker_object_requests profile_key text copy
+broker_object_requests request jsonb content
+broker_object_requests request_sha256 text copy
+broker_object_requests run_id uuid copy
+broker_object_requests task_id uuid copy
+broker_object_requests tenant_id text copy
+broker_object_requests turn integer copy
 broker_plan_archived_keys action_key text copy
 broker_plan_archived_keys ordinal integer copy
 broker_plan_archived_keys page integer copy

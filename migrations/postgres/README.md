@@ -215,3 +215,10 @@ before migration 081), then `evidence.capture_missing(tenant)`, which must repor
 recorded counts as pending. Deleting the tenant's row in `evidence.capture_tenants` stops capture. A new
 append-guarded table, guard function or captured column fails the evidence check until it is reviewed and listed. Run
 `scripts/qualify_remote_broker.sh evidence`, and any mode with `QUALIFY_EVIDENCE_CAPTURE=1`.
+
+Migration 086 adds the lab object requests and receipts of migration 083 to the captured tables, gives each the insert
+trigger, and adds their two event types to every existing capture grant (a grant then lists 63 of its 64). After it
+commits, for each opted-in tenant, run `evidence.capture_catchup(tenant, ARRAY['broker_object_receipts',
+'broker_object_requests'])` for the rows written before it, then `evidence.capture_missing(tenant)`. Every migrate run
+applies 081 again before 086; a recorder batch that meets an object entry between the two rolls back whole and the next
+batch records it.
