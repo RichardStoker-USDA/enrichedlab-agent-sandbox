@@ -36,8 +36,9 @@ pub(super) const REVIEW_DETAIL_CHARS: usize = 300;
 
 /// The detail length a reply is held to. The check counts characters loosely: in eight measured runs on October
 /// 31 four second replies still held details of 302 to 332 characters after the first was refused for its length, and
-/// each refusal cost the lead its turn. A detail up to this length is kept whole; the lead's view of a revision still
-/// fits every text to its room (`fit_methods_review`).
+/// each refusal cost the lead its turn. A detail up to this length is kept whole; the lead's view of a revision shows
+/// the request whole, and a lead budget too small for it pauses the run (`context_too_large`) after the optional
+/// sections have given way.
 pub(super) const REVIEW_DETAIL_HARD_CHARS: usize = 360;
 
 pub(super) const REVIEW_REFS_MAX: usize = 4;
@@ -248,8 +249,8 @@ fn check_method_review_against(
     if reason.len() <= 2048 {
         method.reason = reason;
     }
-    // A masked detail is kept whatever its length: a mark is longer than the number it replaces, and the lead's view of
-    // a revision fits every text to its room (`fit_methods_review`).
+    // A masked detail is kept whatever its length: a mark is longer than the number it replaces. The lead's view of a
+    // revision shows it whole; a budget that cannot hold the request pauses the run rather than shortening it.
     for f in &mut method.findings {
         f.detail = index.mask_step_numbers(&f.detail, None).0;
     }
