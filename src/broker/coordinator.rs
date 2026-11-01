@@ -65,6 +65,7 @@ mod methods_review;
 mod model;
 mod orientation;
 mod plan;
+mod profile;
 mod proposal;
 mod proposal_checks;
 mod queries;
@@ -103,6 +104,7 @@ pub use methods::*;
 pub use methods_review::*;
 pub use model::*;
 pub use plan::*;
+use profile::Profile;
 pub use proposal::*;
 pub use queries::*;
 pub use ref_faults::{LessonTrim, UnreadRefs};
@@ -1038,7 +1040,13 @@ pub(super) async fn run_prepared(args: CoordinatorArgs, mut ready: ReadyFile) ->
     if !action_key(&worker) {
         bail!("coordinator_config_invalid")
     }
-    let model = Arc::new(Model::load_with(&args.model_config_file, lead_system)?);
+    let model = Arc::new(
+        Model::load_with(&args.model_config_file, lead_system)?
+            .with_profile(args.model_profile_file.as_ref())?,
+    );
+    if let Some(profile) = &model.profile {
+        tracing::info!(profile = %profile.name, profile_sha256 = %profile.sha256, "model profile from file");
+    }
     let library = library::load_optional(args.library_config_file.as_deref())?.map(Arc::new);
     let knowledge = knowledge::load_optional(args.knowledge_config_file.as_deref())?.map(Arc::new);
     let lab_text = Arc::new(LabText {

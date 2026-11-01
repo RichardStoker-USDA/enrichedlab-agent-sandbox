@@ -53,6 +53,11 @@ pub struct CoordinatorArgs {
     /// text's SHA-256 (`system_sha256`).
     #[arg(long)]
     pub lead_system_file: Option<PathBuf>,
+    /// Private, operator-owned model profile: per-role routes and request settings for the configured model, and its
+    /// known weaknesses. Every model call's receipt names it (`profile`, `profile_sha256`); a role it does not set uses
+    /// the model configuration's route and settings.
+    #[arg(long)]
+    pub model_profile_file: Option<PathBuf>,
     /// Publish readiness after all start checks; remove it when the coordinator exits.
     #[arg(long)]
     pub ready_file: Option<PathBuf>,

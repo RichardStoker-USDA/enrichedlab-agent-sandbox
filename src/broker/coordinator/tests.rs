@@ -4210,3 +4210,167 @@ async fn a_call_keeps_the_system_text_it_sent_and_its_decision_keeps_that_text()
         assert_eq!(&json!(super::model::sha(kept)), *digest);
     }
 }
+
+/// A private profile file in `dir` with `value`'s bytes, and its receipt digest.
+fn profile_file(dir: &std::path::Path, value: &serde_json::Value) -> (std::path::PathBuf, String) {
+    let path = dir.join("profile.json");
+    let bytes = serde_json::to_vec(value).unwrap();
+    std::fs::write(&path, &bytes).unwrap();
+    std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
+    (path, super::sha(&bytes))
+}
+
+fn glm_profile() -> serde_json::Value {
+    serde_json::json!({"schema_version": 1, "name": "glm-5.3-flash-v1",
+        "model_identity": {"name": "GLM-5.3-Flash", "quant": "NVFP4", "engine": "vllm", "context_window_tokens": 131072},
+        "roles": {"methods_specialist": {"settings": {"temperature": 0.6, "reasoning_effort": "medium"}},
+                  "orientation": {"route": "workhorse"}},
+        "known_weaknesses": [{"mechanism": "incomplete_read_before_decision", "source": "Self-Harness GLM-5 edits",
+                              "status": "hypothesis"}],
+        "evidence": {"rounds": [], "lineage_parent": null}})
+}
+
+// A profile sets a role's route and settings and nothing else: a role it does not set sends the body it sent without
+// a profile, and every receipt names the profile by name and digest.
+#[tokio::test]
+async fn a_profile_sets_each_role_and_names_itself_on_every_receipt() {
+    let reply = r#"{"ok": true}"#.to_owned();
+    let (model, bodies, dir) = replying_model(vec![reply.clone(), reply.clone(), reply]).await;
+    let (path, digest) = profile_file(dir.path(), &glm_profile());
+    let model = model.with_profile(Some(&path)).unwrap();
+    let context = serde_json::json!({"goal": "g"});
+    let lead = model.call("lead", "s", &context).await.unwrap();
+    let methods = model
+        .call("methods_specialist", "s", &context)
+        .await
+        .unwrap();
+    let orientation = model.call("orientation", "s", &context).await.unwrap();
+    let bodies = bodies.lock().unwrap().clone();
+    let plain = |route: &str| -> serde_json::Value {
+        serde_json::from_slice(&super::request_body(route, "s", r#"{"goal":"g"}"#, 4096).unwrap())
+            .unwrap()
+    };
+    assert_eq!(bodies[0], plain("reasoner"));
+    let mut tuned = plain("reasoner");
+    tuned["temperature"] = serde_json::json!(0.6);
+    tuned["reasoning_effort"] = serde_json::json!("medium");
+    assert_eq!(bodies[1], tuned);
+    assert_eq!(bodies[2], plain("workhorse"));
+    for call in [&lead, &methods, &orientation] {
+        assert_eq!(call.receipt["profile"], "glm-5.3-flash-v1");
+        assert_eq!(call.receipt["profile_sha256"], digest);
+    }
+    assert!(lead.receipt.get("settings").is_none());
+    assert_eq!(
+        methods.receipt["settings"],
+        serde_json::json!({"temperature": 0.6, "reasoning_effort": "medium"})
+    );
+    assert_eq!(orientation.receipt["model_role"], "workhorse");
+    assert_eq!(lead.receipt["model_role"], "reasoner");
+}
+
+// Without a profile nothing changes: no profile fields on the receipt and the original body.
+#[tokio::test]
+async fn without_a_profile_receipts_and_bodies_are_unchanged() {
+    let (model, bodies, _dir) = replying_model(vec![r#"{"ok": true}"#.to_owned()]).await;
+    let model = model.with_profile(None).unwrap();
+    let call = model
+        .call("lead", "s", &serde_json::json!({"goal": "g"}))
+        .await
+        .unwrap();
+    assert!(call.receipt.get("profile").is_none() && call.receipt.get("profile_sha256").is_none());
+    let sent = bodies.lock().unwrap()[0].clone();
+    let want: serde_json::Value = serde_json::from_slice(
+        &super::request_body("reasoner", "s", r#"{"goal":"g"}"#, 4096).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(sent, want);
+}
+
+// A profile that is not exactly a closed, checked description of this model refuses start.
+#[tokio::test]
+async fn a_profile_out_of_contract_is_refused() {
+    let (model, _bodies, dir) = replying_model(vec![]).await;
+    let config = dir.path().join("model.json");
+    let cases: Vec<(&str, Box<dyn Fn(&mut serde_json::Value)>)> = vec![
+        ("schema", Box::new(|p| p["schema_version"] = 2.into())),
+        ("name", Box::new(|p| p["name"] = "GLM 5.3".into())),
+        (
+            "unknown role",
+            Box::new(|p| p["roles"]["campaign_planner"] = serde_json::json!({"route": "reasoner"})),
+        ),
+        (
+            "empty role",
+            Box::new(|p| p["roles"]["lead"] = serde_json::json!({})),
+        ),
+        (
+            "route",
+            Box::new(|p| p["roles"]["lead"] = serde_json::json!({"route": "two words"})),
+        ),
+        (
+            "settings",
+            Box::new(|p| {
+                p["roles"]["lead"] = serde_json::json!({"settings": {"temperature": 3.0}})
+            }),
+        ),
+        (
+            "setting name",
+            Box::new(|p| p["roles"]["lead"] = serde_json::json!({"settings": {"seed": 1}})),
+        ),
+        (
+            "window",
+            Box::new(|p| p["model_identity"]["context_window_tokens"] = 262144.into()),
+        ),
+        (
+            "unknown field",
+            Box::new(|p| p["context"] = serde_json::json!({})),
+        ),
+        (
+            "identity field",
+            Box::new(|p| p["model_identity"]["gpu"] = "x".into()),
+        ),
+        (
+            "weakness status",
+            Box::new(|p| p["known_weaknesses"][0]["status"] = "suspected".into()),
+        ),
+        (
+            "weakness code",
+            Box::new(|p| p["known_weaknesses"][0]["mechanism"] = "Read first".into()),
+        ),
+        (
+            "parent",
+            Box::new(|p| p["evidence"]["lineage_parent"] = "Parent".into()),
+        ),
+    ];
+    drop(model);
+    for (name, change) in cases {
+        let mut value = glm_profile();
+        change(&mut value);
+        let (path, _) = profile_file(dir.path(), &value);
+        let result = super::Model::load(&config)
+            .unwrap()
+            .with_profile(Some(&path));
+        assert_eq!(
+            result.err().map(|e| e.to_string()).as_deref(),
+            Some("model_profile_invalid"),
+            "{name}"
+        );
+    }
+    let (path, _) = profile_file(dir.path(), &glm_profile());
+    assert!(
+        super::Model::load(&config)
+            .unwrap()
+            .with_profile(Some(&path))
+            .is_ok()
+    );
+    std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o644)).unwrap();
+    assert_eq!(
+        super::Model::load(&config)
+            .unwrap()
+            .with_profile(Some(&path))
+            .err()
+            .map(|e| e.to_string())
+            .as_deref(),
+        Some("private_file_invalid")
+    );
+}

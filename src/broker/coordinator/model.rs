@@ -11,6 +11,8 @@ pub(crate) struct Model {
     /// The lead's system text for this model: the compiled text, or a candidate coordinator's own. Every lead call,
     /// the lead budget and the configuration check use this one text.
     pub(super) lead_system: &'static str,
+    /// The model profile read at start, if any: per-role routes and settings, named on every receipt.
+    pub(super) profile: Option<Profile>,
 }
 
 pub(crate) struct Call {
@@ -105,7 +107,16 @@ impl Model {
             config,
             url,
             lead_system,
+            profile: None,
         })
+    }
+
+    /// The model with the profile at `path`, checked against this model configuration; without a path, unchanged.
+    pub(crate) fn with_profile(mut self, path: Option<&PathBuf>) -> Result<Self> {
+        if let Some(path) = path {
+            self.profile = Some(Profile::load(path, &self.config)?);
+        }
+        Ok(self)
     }
 
     /// The bytes a lead context may use: the input ceiling less this model's lead system text and the review reserve.
@@ -167,12 +178,14 @@ impl Model {
         if context.len() + system.len() > ceiling.min(MAX_INPUT_BYTES) {
             bail!("context_budget_too_small")
         }
+        let (route, settings) =
+            Profile::route_and_settings(self.profile.as_ref(), &self.config, role);
         let body = request_body_with(
-            &self.config.model,
+            route,
             system,
             &context,
             self.config.max_output_tokens,
-            &self.config.settings,
+            settings,
         )?;
         let request_sha256 = sha(&body);
         // A server error is asked again once with the same body after a short wait: the reasoner's structured-output
@@ -271,7 +284,7 @@ impl Model {
         {
             bail!("model_budget_exceeded")
         }
-        let mut receipt = json!({"role":role,"model_role":self.config.model,"reported_model":model,
+        let mut receipt = json!({"role":role,"model_role":route,"reported_model":model,
             "context_sha256":sha(context.as_bytes()),"system_sha256":sha(system.as_bytes()),"content_sha256":sha(content.as_bytes()),
             "request_sha256":request_sha256,"max_output_tokens":self.config.max_output_tokens,
             "prompt_tokens":prompt,"completion_tokens":completion,"finish_reason":"stop","capture":"validated_structured_content_only"});
@@ -281,8 +294,12 @@ impl Model {
         if let Some(status) = retried {
             receipt["server_error_before"] = json!(status);
         }
-        if !self.config.settings.is_empty() {
-            receipt["settings"] = Value::Object(self.config.settings.clone());
+        if !settings.is_empty() {
+            receipt["settings"] = Value::Object(settings.clone());
+        }
+        if let Some(profile) = &self.profile {
+            receipt["profile"] = json!(profile.name);
+            receipt["profile_sha256"] = json!(profile.sha256);
         }
         let (reasoning, truncated, reasoning_bytes) = kept_reasoning(&choice["message"]);
         if !reasoning.is_empty() {

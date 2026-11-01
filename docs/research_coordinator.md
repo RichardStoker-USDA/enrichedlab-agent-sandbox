@@ -986,6 +986,20 @@ configuration change. Credentials are read from a private file at each call and 
 Redirects and endpoint choices from model output are unavailable. HTTP requires an explicit
 local/Kubernetes service route; otherwise HTTPS is required. Operator network policy must restrict the actual route.
 
+`--model-profile-file` names an optional private model profile: what the served model is and how each call role uses
+it. It is a closed object read once at start (at most 16 KiB, owner-only, like the model configuration):
+`schema_version: 1`; `name` (lowercase letters, digits, dots and hyphens, for example `glm-5.3-flash-v1`);
+`model_identity` (`name`, optional `quant`, `engine`, `engine_version`, and `context_window_tokens`, which must equal
+the model configuration's); `roles`, keyed by `lead`, `methods_specialist`, `literature_specialist`,
+`literature_review` or `orientation`, each with a `route` (a model name the gateway serves) and/or `settings` (checked
+as above); `known_weaknesses` (at most 16 of `mechanism` as a fixed code, `source`, and `status` `hypothesis`,
+`measured` or `retired`); and `evidence` (`rounds`, at most 32 short texts, and `lineage_parent`, a profile name). A
+role's route replaces `model` in its requests and its receipt's `model_role`; its settings replace the configuration's
+`settings` for that role (they are not merged). A role the profile does not set sends exactly the request it sent
+without a profile. Every model call's receipt carries `profile` and `profile_sha256` (the file's SHA-256), so each turn
+record names the profile that shaped it. Any fault refuses start with `model_profile_invalid`. The campaign planner
+reads its own model configuration and takes no profile.
+
 The adapter uses OpenAI-compatible JSON chat completions and rejects truncated or malformed replies. Every call has
 a deadline and bounded response body. The UTF-8 byte input budget plus output reserve is conservative; configure the
 real model window and record actual token counts. A replaced model or provider changes this adapter/configuration,
