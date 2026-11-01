@@ -1,13 +1,13 @@
 # The upload guard: one Rust binary, which also runs as its own bounded parsing worker, with qpdf
 # and poppler's pdftotext and pdftoppm as its PDF helpers, and ClamAV's daemon and signature updater for the scanner
-# Deployment, which runs the same image. Image digests and the Debian snapshot were checked on 2026-10-06 and the Wolfi
-# package lock regenerated on 2026-10-15, after Wolfi withdrew some of its builds. The default target is the release
+# Deployment, which runs the same image. The Rust image digest and the Debian snapshot were checked on 2026-10-06; the
+# Wolfi base digest and package lock were refreshed on 2026-11-01 for fixed brotli, glibc and curl builds. The default target is the release
 # image; `runtime-check` and `runtime-lock` are described below.
 ARG RUST_IMAGE=rust:1.98.1-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546
 # The runtime is Wolfi: its glibc (2.44) is newer than the build stage's, and its qpdf, poppler and ClamAV are current
 # and covered by Wolfi's own security advisories. Debian 13's libxml2, curl, libtiff, expat and ClamAV carried HIGH
 # findings with no fixed version, which the registry's release policy refuses.
-ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base@sha256:00fd4e9cdd9c5576c336d979fa663f9976f160c456b6ae9fe87e19c4e9c759a2
+ARG RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73
 # The test stage's packages come from one Debian snapshot so they do not move between builds. Plain HTTP is enough:
 # apt checks the signed InRelease against the image's archive keyring.
 ARG DEBIAN_SNAPSHOT=20261004T000000Z
