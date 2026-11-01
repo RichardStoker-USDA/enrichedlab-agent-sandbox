@@ -49,6 +49,98 @@ pub fn past_research_tasks(past: &Value) -> Vec<Uuid> {
 /// `standing.ts`); the lead reads it apart from the other constraints.
 pub(super) const INSTRUCTION_PREFIX: &str = "Scientist's instruction: ";
 
+/// The lead context's sections that stay the same across a run's turns, written first in this order so consecutive
+/// calls share the longest prefix the model server can cache: the guidance, the question and what bounds it, the
+/// starting data, the orientation and the methods.
+pub(super) const STABLE_SECTIONS: [&str; 14] = [
+    "guidance",
+    "context_schema_version",
+    "question",
+    "constraints",
+    "scientist_instructions",
+    "starting_point",
+    "max_parallel",
+    "orientation",
+    "working_memory",
+    "methods",
+    "data_cards",
+    "tool_card",
+    "plan_pages",
+    "earlier_readings",
+];
+
+/// The sections that change at every turn, written last in this order: the saved state's revision, results and what
+/// was left out of them, the earlier answers, the shared and library text, and the refusal, review and redirect that
+/// steer only this call.
+pub(super) const VOLATILE_SECTIONS: [&str; 29] = [
+    "analyses",
+    "state_revision",
+    "state_sha256",
+    "analysis_source_tables",
+    "analysis_source_tables_omitted",
+    "results_omitted",
+    "results_omitted_more",
+    "answerability",
+    "attempts",
+    "earlier_findings",
+    "latest_answer",
+    "query_facts",
+    "query_facts_omitted",
+    "lab_notes",
+    "lab_notes_omitted",
+    "lab_notes_withheld",
+    "past_research",
+    "past_research_left_out",
+    "past_research_withheld",
+    "literature",
+    "literature_left_out",
+    "literature_withheld",
+    "reading_offer",
+    "reading",
+    "reading_cited",
+    "prior_attempt",
+    "methods_review",
+    "redirect",
+    "previous_reply_unreadable",
+];
+
+/// `value` as the JSON text a model call sends: an object's top-level keys in `STABLE_SECTIONS` order, then any other
+/// key in sorted order, then `VOLATILE_SECTIONS` order; everything below the top level as `serde_json` writes it. The
+/// text holds the same keys and values in the same number of bytes as `serde_json::to_string`, so every size check
+/// holds for it.
+pub(super) fn stable_prefix_text(value: &Value) -> serde_json::Result<String> {
+    let Some(object) = value.as_object() else {
+        return serde_json::to_string(value);
+    };
+    let rank = |key: &str| {
+        STABLE_SECTIONS
+            .iter()
+            .position(|k| *k == key)
+            .map(|i| (0, i))
+            .or_else(|| {
+                VOLATILE_SECTIONS
+                    .iter()
+                    .position(|k| *k == key)
+                    .map(|i| (2, i))
+            })
+            .unwrap_or((1, 0))
+    };
+    let mut keys: Vec<&String> = object.keys().collect();
+    // A stable sort keeps the map's own sorted order among the unlisted keys.
+    keys.sort_by_key(|k| rank(k));
+    let mut text = String::from("{");
+    for (i, key) in keys.into_iter().enumerate() {
+        if i > 0 {
+            text.push(',');
+        }
+        text.push_str(&serde_json::to_string(key)?);
+        text.push(':');
+        text.push_str(&serde_json::to_string(&object[key])?);
+    }
+    text.push('}');
+    Ok(text)
+}
+
 /// One compiled lead context (version 7: findings, notes, library passages, the newest answer and
 /// withheld counts) and what it showed.
 pub struct CompiledContext {

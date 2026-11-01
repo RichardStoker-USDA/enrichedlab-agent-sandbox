@@ -4539,3 +4539,78 @@ fn a_kept_orientation_always_fits_its_reserve() {
     let refused = json!({"status": "refused", "faults": ["unknown_key"]});
     assert_eq!(orientation::reserve(&refused, &statuses), 0);
 }
+
+/// Two consecutive turns of one run, written as a model call sends them, share a prefix that covers the guidance, the
+/// question, its constraints and instructions, the starting data and the methods; the text parses back to the same
+/// value in the same number of bytes.
+#[test]
+fn consecutive_turns_share_the_stable_prefix() {
+    use super::compile_context;
+    use super::context::stable_prefix_text;
+    use serde_json::json;
+    use std::collections::HashMap;
+    let profiles = json!([{"key": "lab-sql", "name": "Query the lab", "description": "One SELECT over the lab's tables."}]);
+    let turn = |revision: u64, status: &str, lessons: Vec<&str>, next: &str| {
+        json!({"goal": "Which samples were weighed, and how many in each batch?",
+            "constraints": ["Use only the lab's own tables.", "Scientist's instruction: Report counts, not names."],
+            "plan": [{"action_key": "count", "title": "Count the weighed samples", "status": status,
+                      "evidence_refs": []}],
+            "lessons": lessons, "next_action": next, "revision": revision,
+            "state_sha256": format!("sha256:{revision:064}"), "workspace": {"input_refs": ["input://lab/example"]}})
+    };
+    let first = compile_context(
+        &turn(3, "planned", vec![], "Query the data."),
+        &HashMap::new(),
+        &profiles,
+        &json!([]),
+        &json!({"results": []}),
+        2,
+        65536,
+    );
+    let notes = json!([{"note_id": "n1", "statement_sha256": format!("sha256:{}", "1".repeat(64)),
+        "statement": "Batch 7 was weighed wet.", "same_data": true, "matching_methods": []}]);
+    let second = compile_context(
+        &turn(
+            4,
+            "failed",
+            vec!["The first query named the wrong table."],
+            "Query again.",
+        ),
+        &HashMap::new(),
+        &profiles,
+        &json!([]),
+        &json!({"results": [], "lab_notes": notes, "attempts": [{"turn": 3, "refused": "query_failed"}]}),
+        2,
+        65536,
+    );
+    let (a, b) = (
+        stable_prefix_text(&first.value).unwrap(),
+        stable_prefix_text(&second.value).unwrap(),
+    );
+    for (text, value) in [(&a, &first.value), (&b, &second.value)] {
+        assert_eq!(
+            &serde_json::from_str::<serde_json::Value>(text).unwrap(),
+            value
+        );
+        assert_eq!(text.len(), serde_json::to_string(value).unwrap().len());
+    }
+    let common = a.bytes().zip(b.bytes()).take_while(|(x, y)| x == y).count();
+    let methods_end = a.find(r#""methods":"#).unwrap()
+        + r#""methods":"#.len()
+        + serde_json::to_string(&first.value["methods"])
+            .unwrap()
+            .len();
+    assert!(
+        common >= methods_end,
+        "common prefix {common} ends before the methods end at {methods_end}"
+    );
+    // Sorted keys alone put a changing section first.
+    let plain = serde_json::to_string(&first.value).unwrap();
+    let plain_second = serde_json::to_string(&second.value).unwrap();
+    let plain_common = plain
+        .bytes()
+        .zip(plain_second.bytes())
+        .take_while(|(x, y)| x == y)
+        .count();
+    assert!(plain_common < plain.find(r#""question":"#).unwrap());
+}

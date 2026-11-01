@@ -171,7 +171,7 @@ impl Model {
         context: &Value,
         ceiling: usize,
     ) -> Result<Call> {
-        let context = serde_json::to_string(context)?;
+        let context = super::context::stable_prefix_text(context)?;
         // UTF-8 bytes plus a fixed wrapper allowance is deliberately conservative.
         // The context window is an operator-declared model contract, not inferred
         // from a display name. Actual token usage is recorded when returned.

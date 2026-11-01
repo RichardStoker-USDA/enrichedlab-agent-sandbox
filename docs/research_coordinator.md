@@ -119,7 +119,14 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    relations and restored step titles) give way first, their shares halving at each of four levels and empty at the
    last (the level is recorded as `optional_yield` in the context's inputs). When the context still does not fit, or the
    checkpoint view cannot fit its share, the run stops for a person as `review_required` with reason
-   `context_too_large` before any model call, instead of retrying a context that cannot fit. The lead proposes a method. A separate
+   `context_too_large` before any model call, instead of retrying a context that cannot fit. A model call writes the
+   context's top-level sections in a fixed order (`context::stable_prefix_text`): first the sections a run keeps
+   across its turns (the guidance, schema version, question, constraints, scientist instructions, starting data,
+   parallel limit, orientation, methods, data cards, tool card, plan pages and earlier readings), then any other
+   section, then those that change each turn (the analyses and their results, the state revision, earlier answers,
+   shared and library text, the refusal, the methods check's request and the redirect), so consecutive calls of one
+   run share the longest prefix the model server can cache. The text holds the same keys and values in the same bytes
+   as before; only the order of the top-level keys changes. The lead proposes a method. A separate
    methods-specialist call checks its fit using the same compiled context, the proposal and `finding_values` (the
    cell each of the lead's placeholders names). It does not rebuild context from the full checkpoint. Both roles must
    reassess prior interpretations; citing an artifact does not prove a claim about its contents. The original
