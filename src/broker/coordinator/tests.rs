@@ -4587,44 +4587,15 @@ fn a_kept_orientation_always_fits_its_reserve() {
     assert_eq!(orientation::reserve(&refused, &statuses), 0);
 }
 
-/// A first turn's orientation, made after the context was compiled, is given room by removing the shared lab notes,
-/// then the past research, each named in the inputs; library passages and the pinned sections stay.
-#[test]
-fn a_first_turn_orientation_sheds_shared_notes_then_past_research() {
-    use super::context::shed_optional;
-    use serde_json::json;
-    let context = json!({"question": "How many?", "literature": [{"ref": "paper-1", "text": "x".repeat(800)}],
-        "lab_notes": [{"note": "n1", "statement": "y".repeat(900)}], "lab_notes_omitted": 2,
-        "past_research": [{"ref": "knowledge://1", "summary": "z".repeat(900)}], "past_research_left_out": 1});
-    let size = |v: &serde_json::Value| serde_json::to_vec(v).unwrap().len();
-    let whole = size(&context);
-    let mut inputs = json!({"lab_notes": []});
-    let mut c = context.clone();
-    assert!(shed_optional(&mut c, &mut inputs, whole));
-    assert_eq!(c, context);
-    assert!(inputs.get("shed").is_none());
-    let mut c = context.clone();
-    assert!(shed_optional(&mut c, &mut inputs, whole - 900));
-    assert!(c.get("lab_notes").is_none() && c.get("lab_notes_omitted").is_none());
-    assert!(c.get("past_research").is_some());
-    assert_eq!(inputs["shed"], json!(["lab_notes"]));
-    let mut inputs = json!({});
-    let mut c = context.clone();
-    assert!(shed_optional(&mut c, &mut inputs, whole - 1900));
-    assert_eq!(inputs["shed"], json!(["lab_notes", "past_research"]));
-    assert_eq!(c["literature"], context["literature"]);
-    assert_eq!(c["question"], context["question"]);
-    let mut c = context.clone();
-    assert!(!shed_optional(&mut c, &mut json!({}), 100));
-}
-
-/// Two consecutive turns of one run, written as a model call sends them, share a prefix that covers the guidance, the
-/// question, its constraints and instructions, the starting data and the methods; the text parses back to the same
-/// value in the same number of bytes.
+/// Two consecutive turns of one run, written as a model call sends them, share a prefix through the methods while the
+/// orientation and methods are unchanged, and through the parallel limit (the question, constraints, scientist
+/// instructions and starting data) when an orientation's profiling step changed status; the text parses back to the
+/// same value in the same number of bytes.
 #[test]
 fn consecutive_turns_share_the_stable_prefix() {
     use super::compile_context;
     use super::context::stable_prefix_text;
+    use super::orientation;
     use serde_json::json;
     use std::collections::HashMap;
     let profiles = json!([{"key": "lab-sql", "name": "Query the lab", "description": "One SELECT over the lab's tables."}]);
@@ -4661,34 +4632,55 @@ fn consecutive_turns_share_the_stable_prefix() {
         2,
         65536,
     );
-    let (a, b) = (
-        stable_prefix_text(&first.value).unwrap(),
-        stable_prefix_text(&second.value).unwrap(),
+    let record = json!({"status": "read", "step_keys": ["profile-weights"], "orientation": {
+        "question": "How many samples were weighed per batch?", "sources": [{"key": "lab-sql", "why": "The weigh log."}],
+        "tools": [], "papers": [], "earlier": [], "unknowns": ["Whether batch 7 was dried."],
+        "profiles": [{"action_key": "profile-weights", "title": "Profile the weigh log"}]}});
+    let with_orientation = |value: &serde_json::Value, status: &str| {
+        let mut v = value.clone();
+        let statuses = HashMap::from([("profile-weights".to_owned(), status.to_owned())]);
+        v["orientation"] = orientation::section(&record, &statuses);
+        v
+    };
+    let common = |a: &str, b: &str| a.bytes().zip(b.bytes()).take_while(|(x, y)| x == y).count();
+    let end_of = |text: &str, value: &serde_json::Value, key: &str| {
+        text.find(&format!("\"{key}\":")).unwrap()
+            + key.len()
+            + 3
+            + serde_json::to_string(&value[key]).unwrap().len()
+    };
+    // Orientation and methods unchanged: the prefix covers both.
+    let (a_value, b_value) = (
+        with_orientation(&first.value, "succeeded"),
+        with_orientation(&second.value, "succeeded"),
     );
-    for (text, value) in [(&a, &first.value), (&b, &second.value)] {
+    let (a, b) = (
+        stable_prefix_text(&a_value).unwrap(),
+        stable_prefix_text(&b_value).unwrap(),
+    );
+    for (text, value) in [(&a, &a_value), (&b, &b_value)] {
         assert_eq!(
             &serde_json::from_str::<serde_json::Value>(text).unwrap(),
             value
         );
         assert_eq!(text.len(), serde_json::to_string(value).unwrap().len());
     }
-    let common = a.bytes().zip(b.bytes()).take_while(|(x, y)| x == y).count();
-    let methods_end = a.find(r#""methods":"#).unwrap()
-        + r#""methods":"#.len()
-        + serde_json::to_string(&first.value["methods"])
-            .unwrap()
-            .len();
+    let methods_end = end_of(&a, &a_value, "methods");
     assert!(
-        common >= methods_end,
-        "common prefix {common} ends before the methods end at {methods_end}"
+        common(&a, &b) >= methods_end,
+        "{} < {methods_end}",
+        common(&a, &b)
     );
+    // A profiling step that finished between the turns: the prefix still covers the question and what bounds it.
+    let b_value = with_orientation(&second.value, "failed");
+    let b = stable_prefix_text(&b_value).unwrap();
+    let shared = common(&a, &b);
+    assert!(shared >= end_of(&a, &a_value, "max_parallel"), "{shared}");
+    assert!(shared < end_of(&a, &a_value, "orientation"), "{shared}");
     // Sorted keys alone put a changing section first.
-    let plain = serde_json::to_string(&first.value).unwrap();
-    let plain_second = serde_json::to_string(&second.value).unwrap();
-    let plain_common = plain
-        .bytes()
-        .zip(plain_second.bytes())
-        .take_while(|(x, y)| x == y)
-        .count();
-    assert!(plain_common < plain.find(r#""question":"#).unwrap());
+    let (plain, plain_second) = (
+        serde_json::to_string(&first.value).unwrap(),
+        serde_json::to_string(&second.value).unwrap(),
+    );
+    assert!(common(&plain, &plain_second) < plain.find(r#""question":"#).unwrap());
 }

@@ -532,7 +532,7 @@ async fn advance(
         return yield_context_too_large(store, run, worker, generation).await;
     }
     let mut context = compiled.value;
-    let mut context_inputs = compiled.inputs;
+    let context_inputs = compiled.inputs;
     // For a lab whose operator turned it on, the lead reads the literature specialist's claims instead of the passages.
     let (literature_reading, specialist_calls) = if lab_text.claims.contains(lab)
         && context["literature"]
@@ -627,19 +627,6 @@ async fn advance(
         .await?
         {
             placed = orientation::place(&mut context, &oriented.record, &statuses, budget);
-            // A first turn's orientation is made after the context was compiled, so no room was set aside for it: the
-            // shared lab notes, then the past research, give way to it (named in the inputs' `shed`).
-            if !placed
-                && kept_orientation.is_none()
-                && oriented.delegate.is_none()
-                && context::shed_optional(
-                    &mut context,
-                    &mut context_inputs,
-                    budget.saturating_sub(orientation::reserve(&oriented.record, &statuses)),
-                )
-            {
-                placed = orientation::place(&mut context, &oriented.record, &statuses, budget);
-            }
             delegated = oriented.delegate;
             oriented_record = Some(oriented.record);
         }
@@ -654,6 +641,15 @@ async fn advance(
             .as_ref()
             .is_some_and(|r| r["status"] == "read")
     {
+        // A first turn's orientation is made after the context was compiled, so no room was set aside for it: the run
+        // waits briefly with no failure counted (`checkpoint_changed`), and the next attempt reads the kept record and
+        // compiles within its reserve. A kept orientation that still does not fit leaves the run to a person.
+        if kept_orientation.is_none() {
+            store
+                .yield_research_run(run, worker, generation, "checkpoint_changed", None)
+                .await?;
+            return Ok(());
+        }
         return yield_context_too_large(store, run, worker, generation).await;
     }
     let (lead, checked, read_calls, reading, ceiling) = if let Some((call, checked)) = delegated {

@@ -49,9 +49,10 @@ pub fn past_research_tasks(past: &Value) -> Vec<Uuid> {
 /// `standing.ts`); the lead reads it apart from the other constraints.
 pub(super) const INSTRUCTION_PREFIX: &str = "Scientist's instruction: ";
 
-/// The lead context's sections that stay the same across a run's turns, written first in this order so consecutive
-/// calls share the longest prefix the model server can cache: the guidance, the question and what bounds it, the
-/// starting data, the orientation and the methods.
+/// The lead context's sections written first, most stable first, so consecutive calls of a run share the longest prefix
+/// the model server can cache: the guidance, the question and what bounds it, the starting data and the parallel limit
+/// never change within a run; the orientation changes only as its profiling steps finish, the data cards with a data
+/// release, the methods when finished queries reorder their relations, and the rest more often.
 pub(super) const STABLE_SECTIONS: [&str; 14] = [
     "guidance",
     "context_schema_version",
@@ -62,8 +63,8 @@ pub(super) const STABLE_SECTIONS: [&str; 14] = [
     "max_parallel",
     "orientation",
     "working_memory",
-    "methods",
     "data_cards",
+    "methods",
     "tool_card",
     "plan_pages",
     "earlier_readings",
@@ -734,43 +735,6 @@ pub(super) fn added_bytes(added: &Value) -> usize {
             })
             .fold(0, usize::saturating_add)
     })
-}
-
-/// The built lead context's shared lab notes, then its past research, removed until the context fits `room` bytes; the
-/// sections removed are named in `inputs.shed`. Returns whether it fits. It makes room for a first turn's orientation,
-/// which is made after the context was compiled; library passages stay, since the lead may cite them.
-pub(super) fn shed_optional(context: &mut Value, inputs: &mut Value, room: usize) -> bool {
-    let fits = |c: &Value| serde_json::to_vec(c).is_ok_and(|b| b.len() <= room);
-    let groups: [&[&str]; 2] = [
-        &["lab_notes", "lab_notes_omitted", "lab_notes_withheld"],
-        &[
-            "past_research",
-            "past_research_left_out",
-            "past_research_withheld",
-        ],
-    ];
-    for group in groups {
-        if fits(context) {
-            break;
-        }
-        let Some(object) = context.as_object_mut() else {
-            break;
-        };
-        if group
-            .iter()
-            .filter(|k| object.remove(**k).is_some())
-            .count()
-            > 0
-        {
-            if !inputs["shed"].is_array() {
-                inputs["shed"] = json!([]);
-            }
-            if let Some(shed) = inputs["shed"].as_array_mut() {
-                shed.push(json!(group[0]));
-            }
-        }
-    }
-    fits(context)
 }
 
 /// An optional section's share at a yield level: halved at each level, none at the last.

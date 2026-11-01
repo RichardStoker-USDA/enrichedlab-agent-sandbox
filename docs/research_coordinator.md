@@ -120,16 +120,18 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    placed before the remainder (shared lab notes, query relations, restored step titles, observation and hypothesis
    lessons, archived plan-page titles) give way first, their shares halving at each of four levels and empty at the
    last (the level is recorded as `optional_yield` in the context's inputs); constraint lessons stay. A first turn's
-   orientation, made after the context was compiled, is given room by removing the shared lab notes and then the past
-   research (named in the inputs' `shed`); library passages stay, since the lead may cite them. When the context still does not fit, or the
+   orientation is made after the context was compiled, so no room was set aside for it: when it does not fit, the run
+   waits 15 seconds with no failure counted (`checkpoint_changed`) and the next attempt compiles within the kept
+   orientation's reserve. When the context still does not fit, or the
    checkpoint view cannot fit its share, the run stops for a person as `review_required` with reason
    `context_too_large` before any model call, instead of retrying a context that cannot fit. A model call writes the
-   context's top-level sections in a fixed order (`context::stable_prefix_text`): first the sections a run keeps
-   across its turns (the guidance, schema version, question, constraints, scientist instructions, starting data,
-   parallel limit, orientation, methods, data cards, tool card, plan pages and earlier readings), then any other
-   section, then those that change each turn (the analyses and their results, the state revision, earlier answers,
-   shared and library text, the refusal, the methods check's request and the redirect), so consecutive calls of one
-   run share the longest prefix the model server can cache. The text holds the same keys and values in the same bytes
+   context's top-level sections in a fixed order (`context::stable_prefix_text`), most stable first: the guidance,
+   schema version, question, constraints, scientist instructions, starting data and parallel limit, which never change
+   within a run; then the orientation (it changes as its profiling steps finish), data cards (with a data release),
+   methods (when finished queries reorder their relations), tool card, plan pages and earlier readings; then any other
+   section; then those that change each turn (the analyses and their results, the state revision, earlier answers,
+   shared and library text, the refusal, the methods check's request and the redirect). Consecutive calls of one run
+   share a prefix through the last of these sections that did not change, which the model server can cache. The text holds the same keys and values in the same bytes
    as before; only the order of the top-level keys changes. The lead proposes a method. A separate
    methods-specialist call checks its fit using the same compiled context, the proposal and `finding_values` (the
    cell each of the lead's placeholders names). It does not rebuild context from the full checkpoint. Both roles must
