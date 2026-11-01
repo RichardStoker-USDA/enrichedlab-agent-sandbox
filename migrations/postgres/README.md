@@ -216,9 +216,15 @@ recorded counts as pending. Deleting the tenant's row in `evidence.capture_tenan
 append-guarded table, guard function or captured column fails the evidence check until it is reviewed and listed. Run
 `scripts/qualify_remote_broker.sh evidence`, and any mode with `QUALIFY_EVIDENCE_CAPTURE=1`.
 
-Migration 086 adds the lab object requests and receipts of migration 083 to the captured tables, gives each the insert
-trigger, and adds their two event types to every existing capture grant (a grant then lists 63 of its 64). After it
-commits, for each opted-in tenant, run `evidence.capture_catchup(tenant, ARRAY['broker_object_receipts',
-'broker_object_requests'])` for the rows written before it, then `evidence.capture_missing(tenant)`. Every migrate run
-applies 081 again before 086; a recorder batch that meets an object entry between the two rolls back whole and the next
-batch records it.
+Migration 086 adds the lab object requests and receipts of migration 083 to the captured tables and gives each the
+insert trigger. `evidence.capture_event_types()` becomes the one list of capture event types (the evidence check
+requires it to equal the captured tables' events and the three updates); a scope is ready only when its grant holds
+every type on it, and `evidence.capture_producer` brings a grant with an earlier list up to it without waiting, so a
+grant written before 086, or while it ran, is repaired on its scope's next use. 086 also updates existing grants at once
+and records schema version 86, which the coordinator and the lab object worker require; the evidence service starts its
+recorder only when `capture_event_types` exists. After it commits, for each opted-in tenant, run
+`evidence.capture_prepare_scopes(tenant, lab, limit)` until none remain, then `evidence.capture_catchup(tenant,
+ARRAY['broker_object_receipts', 'broker_object_requests'])` for the rows written before it, then
+`evidence.capture_missing(tenant)`. Every migrate run applies 081 again before 086; a recorder batch that meets an object
+entry between the two rolls back whole and the next batch records it. To roll back, drain the two tables' log entries
+before restoring 081's list (the order is in 086's header).
