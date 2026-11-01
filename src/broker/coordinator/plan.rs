@@ -172,7 +172,7 @@ pub fn with_archived_page(pages: &Value, moved: &[PlanStep], facts: &Value) -> V
 
 /// The archived steps as the lead sees them: the pages, how many steps they hold and by status, then
 /// the newest with their titles while `PLAN_PAGES_BYTES` holds them; `steps_not_listed` counts the rest.
-pub(super) fn plan_pages_view(pages: &Value) -> Option<Value> {
+pub(super) fn plan_pages_view(pages: &Value, room: usize) -> Option<Value> {
     let steps = pages["steps"].as_u64().filter(|n| *n > 0)?;
     let size = |v: &Value| serde_json::to_vec(v).map_or(usize::MAX, |b| b.len());
     let mut shown = json!({"pages": pages["pages"], "steps": steps, "by_status": pages["by_status"],
@@ -182,14 +182,14 @@ pub(super) fn plan_pages_view(pages: &Value) -> Option<Value> {
         listed.push(json!({"key": s["action_key"], "title": s["title"], "status": s["status"]}));
         shown["newest"] = Value::Array(listed.clone());
         shown["steps_not_listed"] = json!(steps.saturating_sub(listed.len() as u64));
-        if size(&shown) > PLAN_PAGES_BYTES {
+        if size(&shown) > room {
             listed.pop();
             break;
         }
     }
     shown["newest"] = Value::Array(listed.clone());
     shown["steps_not_listed"] = json!(steps.saturating_sub(listed.len() as u64));
-    if size(&shown) > PLAN_PAGES_BYTES {
+    if size(&shown) > room {
         shown = json!({"pages": pages["pages"], "steps": steps, "steps_not_listed": steps});
     }
     Some(shown)

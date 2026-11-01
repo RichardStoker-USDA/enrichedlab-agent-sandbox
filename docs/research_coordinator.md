@@ -114,10 +114,14 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    come back newest first within 4,096 bytes and an eighth of the budget, and an older finished step shows its key
    alone. Parts a lead call must carry whole (the plan, people's review notes, this project's queries, the methods) are
    not cut. The pinned sections (the question, constraints, scientist instructions, the methods check's request and a
-   kept orientation) are never cut either: a kept orientation's bytes are set aside before the context is compiled, and
-   when a compiled context does not fit, the optional sections placed before the remainder (shared lab notes, query
-   relations and restored step titles) give way first, their shares halving at each of four levels and empty at the
-   last (the level is recorded as `optional_yield` in the context's inputs). When the context still does not fit, or the
+   kept orientation) are never cut either. A kept orientation's bytes, and those of the steering notes the turn adds after
+   compiling (the refused reply's `prior_attempt`, a `redirect`, the supervisor's narrowing, each built on an empty object
+   first), are set aside before the context is compiled. When a compiled context does not fit, the optional sections
+   placed before the remainder (shared lab notes, query relations, restored step titles, observation and hypothesis
+   lessons, archived plan-page titles) give way first, their shares halving at each of four levels and empty at the
+   last (the level is recorded as `optional_yield` in the context's inputs); constraint lessons stay. A first turn's
+   orientation, made after the context was compiled, is given room by removing the shared lab notes and then the past
+   research (named in the inputs' `shed`); library passages stay, since the lead may cite them. When the context still does not fit, or the
    checkpoint view cannot fit its share, the run stops for a person as `review_required` with reason
    `context_too_large` before any model call, instead of retrying a context that cannot fit. A model call writes the
    context's top-level sections in a fixed order (`context::stable_prefix_text`): first the sections a run keeps
@@ -742,8 +746,8 @@ in the coordinator's log and in the next call's `prior_attempt`.
 
 ## Supervisor
 
-Off by default (`--supervisor-labs`). Before each lead call in a listed lab the
-coordinator reads the run's whole history (`broker_research_run_faults`, migration 074: the newest 128 deferrals other
+Off by default (`--supervisor-labs`). Before each lead call in a listed lab, and before its context is compiled (so a
+pause spends no model call and a narrowing's bytes are set aside), the coordinator reads the run's whole history (`broker_research_run_faults`, migration 074: the newest 128 deferrals other
 than waits, by code and reason, and each committed turn's outcome and tasks) and counts, across the run rather than the
 last calls in a row (`coordinator/supervisor.rs`): refused replies by reason, refused replies in all, results that failed
 their step's check, and delegating turns in a row, newest first, whose tasks all finished with no usable result (a

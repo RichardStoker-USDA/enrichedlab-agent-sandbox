@@ -477,11 +477,44 @@ async fn advance(
     } else {
         None
     };
-    let room = budget.saturating_sub(
-        kept_orientation
-            .as_ref()
-            .map_or(0, |record| orientation::reserve(record, &statuses)),
-    );
+    // The supervisor counts the run's faults across the whole run, not only the last calls: past
+    // a bound it narrows this call through the redirect the reply check already holds it to, or pauses the run for a
+    // person with a fixed reason. It never edits a reply. It decides before the context is compiled, so a pause spends
+    // no model call and a narrowing's redirect is known when the steering notes' bytes are set aside.
+    let mut own_tasks = None;
+    let mut narrowing = None;
+    if lab_text.supervisor.contains(lab) {
+        let faults = store.research_run_faults(run, worker, generation).await?;
+        own_tasks = Some(supervisor::own_tasks(&faults));
+        let counts = supervisor::counts(&faults, &results["step_checks"], &claim["task_facts"]);
+        match supervisor::decide(&counts) {
+            Some(supervisor::Action::Pause(reason)) => {
+                store
+                    .supervisor_pause_research_run(run, worker, generation, reason.as_str())
+                    .await?;
+                tracing::info!(%run, generation, reason = reason.as_str(), "research run paused by its supervisor");
+                return Ok(());
+            }
+            Some(action @ supervisor::Action::Narrow(..)) => narrowing = Some((counts, action)),
+            None => {}
+        }
+    }
+    // The steering notes this call adds after compiling (the refused reply's `prior_attempt`, a `redirect`), built on
+    // an empty object so their bytes are set aside with the orientation's before the sections that share the budget.
+    let failures = r["failures"].as_i64().unwrap_or(0);
+    let mut steering = json!({});
+    with_prior_attempt(&mut steering, refused.as_ref(), failures);
+    Redirect::apply(&mut steering, refused.as_ref(), failures);
+    if let Some((_, supervisor::Action::Narrow(reason, redirect))) = &narrowing {
+        supervisor::narrow(&mut steering, *reason, *redirect);
+    }
+    let room = budget
+        .saturating_sub(
+            kept_orientation
+                .as_ref()
+                .map_or(0, |record| orientation::reserve(record, &statuses)),
+        )
+        .saturating_sub(context::added_bytes(&steering));
     let compiled = compile_context_with_sections(
         &view,
         &titles,
@@ -499,6 +532,7 @@ async fn advance(
         return yield_context_too_large(store, run, worker, generation).await;
     }
     let mut context = compiled.value;
+    let mut context_inputs = compiled.inputs;
     // For a lab whose operator turned it on, the lead reads the literature specialist's claims instead of the passages.
     let (literature_reading, specialist_calls) = if lab_text.claims.contains(lab)
         && context["literature"]
@@ -532,36 +566,17 @@ async fn advance(
     } else {
         None
     };
-    let failures = r["failures"].as_i64().unwrap_or(0);
     with_prior_attempt(&mut context, refused.as_ref(), failures);
     if let Some(redirect) = Redirect::apply(&mut context, refused.as_ref(), failures) {
         tracing::info!(%run, generation, kind = redirect.as_str(), "research turn redirected");
     }
-    // The supervisor counts the run's faults across the whole run, not only the last calls: past
-    // a bound it narrows this call through the redirect the reply check already holds it to, or pauses the run for a
-    // person with a fixed reason. It never edits a reply.
     let mut supervised = None;
-    let mut own_tasks = None;
-    if lab_text.supervisor.contains(lab) {
-        let faults = store.research_run_faults(run, worker, generation).await?;
-        own_tasks = Some(supervisor::own_tasks(&faults));
-        let counts = supervisor::counts(&faults, &results["step_checks"], &claim["task_facts"]);
-        match supervisor::decide(&counts) {
-            Some(supervisor::Action::Pause(reason)) => {
-                store
-                    .supervisor_pause_research_run(run, worker, generation, reason.as_str())
-                    .await?;
-                tracing::info!(%run, generation, reason = reason.as_str(), "research run paused by its supervisor");
-                return Ok(());
-            }
-            Some(action @ supervisor::Action::Narrow(reason, redirect)) => {
-                if supervisor::narrow(&mut context, reason, redirect) {
-                    tracing::info!(%run, generation, reason = reason.as_str(), "research turn narrowed by its supervisor");
-                    supervised = Some(supervisor::record(&counts, &action));
-                }
-            }
-            None => {}
-        }
+    if let Some((counts, action)) = narrowing
+        && let supervisor::Action::Narrow(reason, redirect) = action
+        && supervisor::narrow(&mut context, reason, redirect)
+    {
+        tracing::info!(%run, generation, reason = reason.as_str(), "research turn narrowed by its supervisor");
+        supervised = Some(supervisor::record(&counts, &action));
     }
     // A query whose result failed its step's check may run again with a corrected expectation.
     let repeatable = step_checks::without_failed(&results["own_queries"], &results["step_checks"]);
@@ -612,6 +627,19 @@ async fn advance(
         .await?
         {
             placed = orientation::place(&mut context, &oriented.record, &statuses, budget);
+            // A first turn's orientation is made after the context was compiled, so no room was set aside for it: the
+            // shared lab notes, then the past research, give way to it (named in the inputs' `shed`).
+            if !placed
+                && kept_orientation.is_none()
+                && oriented.delegate.is_none()
+                && context::shed_optional(
+                    &mut context,
+                    &mut context_inputs,
+                    budget.saturating_sub(orientation::reserve(&oriented.record, &statuses)),
+                )
+            {
+                placed = orientation::place(&mut context, &oriented.record, &statuses, budget);
+            }
             delegated = oriented.delegate;
             oriented_record = Some(oriented.record);
         }
@@ -807,7 +835,7 @@ async fn advance(
     }
     let mut record = json!({"schema_version":1,"lead":lead.receipt,"methods_specialist":review.receipt,"method_review":method,
         "scientific_validation":"not_performed","state_source_sha256":context["state_sha256"],"context_schema_version":context["context_schema_version"],
-        "context_inputs":compiled.inputs});
+        "context_inputs":context_inputs});
     // Each result's check as the lead read it this turn, for the workspace.
     if results["step_checks"]
         .as_array()

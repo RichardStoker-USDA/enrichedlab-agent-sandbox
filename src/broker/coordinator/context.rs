@@ -721,6 +721,58 @@ pub(super) fn compile_context_with_sections(
     }
 }
 
+/// The bytes the keys of `added` take once written into a non-empty context object: each key and value with its comma.
+/// The steering notes a turn adds after compiling (`prior_attempt`, `redirect`) are built on an empty object first, so
+/// their bytes are set aside before the sections that share the budget.
+pub(super) fn added_bytes(added: &Value) -> usize {
+    added.as_object().map_or(0, |o| {
+        o.iter()
+            .map(|(k, v)| {
+                serde_json::to_string(k).map_or(usize::MAX, |k| k.len())
+                    + serde_json::to_vec(v).map_or(usize::MAX, |v| v.len())
+                    + 2
+            })
+            .fold(0, usize::saturating_add)
+    })
+}
+
+/// The built lead context's shared lab notes, then its past research, removed until the context fits `room` bytes; the
+/// sections removed are named in `inputs.shed`. Returns whether it fits. It makes room for a first turn's orientation,
+/// which is made after the context was compiled; library passages stay, since the lead may cite them.
+pub(super) fn shed_optional(context: &mut Value, inputs: &mut Value, room: usize) -> bool {
+    let fits = |c: &Value| serde_json::to_vec(c).is_ok_and(|b| b.len() <= room);
+    let groups: [&[&str]; 2] = [
+        &["lab_notes", "lab_notes_omitted", "lab_notes_withheld"],
+        &[
+            "past_research",
+            "past_research_left_out",
+            "past_research_withheld",
+        ],
+    ];
+    for group in groups {
+        if fits(context) {
+            break;
+        }
+        let Some(object) = context.as_object_mut() else {
+            break;
+        };
+        if group
+            .iter()
+            .filter(|k| object.remove(**k).is_some())
+            .count()
+            > 0
+        {
+            if !inputs["shed"].is_array() {
+                inputs["shed"] = json!([]);
+            }
+            if let Some(shed) = inputs["shed"].as_array_mut() {
+                shed.push(json!(group[0]));
+            }
+        }
+    }
+    fits(context)
+}
+
 /// An optional section's share at a yield level: halved at each level, none at the last.
 fn yielded(share: usize, level: u32) -> usize {
     if level >= YIELD_LEVELS {
@@ -900,6 +952,31 @@ fn compile_at_level(
         .flatten()
         .filter_map(|id| id.as_str().map(str::to_owned))
         .collect();
+    // The checkpoint view's lessons: its constraint lessons are always shown; its observations and hypotheses are
+    // optional and give way at each yield level, newest kept first in the view's order, none at the last level.
+    let all_lessons: Vec<Value> = view["lessons"].as_array().cloned().unwrap_or_default();
+    let (rules, optional): (Vec<Value>, Vec<Value>) = all_lessons
+        .into_iter()
+        .partition(|l| l["kind"] == "constraint");
+    let share = yielded(
+        optional
+            .iter()
+            .map(|l| serde_json::to_vec(l).map_or(usize::MAX, |b| b.len() + 1))
+            .sum(),
+        level,
+    );
+    let (mut lessons, mut used_lessons) = (rules, 0_usize);
+    let mut dropped = 0_u64;
+    for lesson in optional {
+        let n = serde_json::to_vec(&lesson).map_or(usize::MAX, |b| b.len() + 1);
+        if dropped == 0 && used_lessons.saturating_add(n) <= share {
+            used_lessons += n;
+            lessons.push(lesson);
+        } else {
+            dropped += 1;
+        }
+    }
+    let omitted_lessons = json!(view["omitted_lessons"].as_u64().unwrap_or(0) + dropped);
     let mut value = json!({
         "context_schema_version": 12,
         "state_revision": view["revision"],
@@ -919,8 +996,8 @@ fn compile_at_level(
         ),
         "max_parallel": parallel,
         "earlier_readings": {"verification": "unverified_saved_assessments",
-            "suggested_next_action": view["next_action"], "lessons": view["lessons"],
-            "omitted_lessons": view["omitted_lessons"]},
+            "suggested_next_action": view["next_action"], "lessons": lessons,
+            "omitted_lessons": omitted_lessons},
         "guidance": "Treat earlier readings and hypotheses as proposals. Resolve uncertain steps against the analysis records before retrying. A finished analysis is not a scientist's approval; only a review marked accepted is. Shared lab notes and past research are prior knowledge from other projects, not results of this one.",
     });
     // A query source too large for its share shows its relations in part; its card follows.
@@ -1150,7 +1227,7 @@ fn compile_at_level(
     );
     inputs["tool_card"] = json!(card["methods"].as_array().map_or(0, Vec::len));
     value["tool_card"] = card;
-    if let Some(pages) = plan_pages_view(&results["plan_pages"]) {
+    if let Some(pages) = plan_pages_view(&results["plan_pages"], yielded(PLAN_PAGES_BYTES, level)) {
         inputs["plan_pages"] = json!({"pages": pages["pages"], "steps": pages["steps"],
             "listed": pages["newest"].as_array().map_or(0, Vec::len)});
         value["plan_pages"] = pages;

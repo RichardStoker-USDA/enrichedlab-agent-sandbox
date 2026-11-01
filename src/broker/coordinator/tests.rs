@@ -4376,10 +4376,11 @@ async fn a_profile_out_of_contract_is_refused() {
     );
 }
 
-/// The pinned sections (the question, constraints, scientist instructions and the methods check's request at its
-/// schema limits, multibyte text included) are shown whole at every lead budget where the context fits. Where it does
-/// not fit, the same context without its optional sections does not fit either: shared lab notes and restored step
-/// titles gave way first (`YIELD_LEVELS`).
+/// The pinned sections (the question, constraints, scientist instructions, constraint lessons and the methods check's
+/// request at its schema limits, multibyte text included) are shown whole at every lead budget where the context fits.
+/// Where it does not fit, the same context without its optional sections does not fit either: shared lab notes,
+/// restored step titles, observation and hypothesis lessons and archived plan-page titles gave way first
+/// (`YIELD_LEVELS`).
 #[test]
 fn pinned_sections_survive_every_budget() {
     use super::compile_context;
@@ -4393,6 +4394,25 @@ fn pinned_sections_survive_every_budget() {
             .collect::<Vec<_>>(),
         "lessons": [], "next_action": "Query the data.", "revision": 3,
         "state_sha256": format!("sha256:{}", "d".repeat(64)), "workspace": {"input_refs": ["input://lab/example"]}});
+    let rules = vec![
+        json!({"kind": "constraint", "text": "Batch 7 is excluded by the protocol."}),
+        json!({"kind": "constraint", "text": "Counts come from the weigh log only."}),
+    ];
+    let mut full_view = view.clone();
+    full_view["lessons"] = json!(
+        rules
+            .iter()
+            .cloned()
+            .chain((0..18).map(|i| json!({"kind": if i % 2 == 0 { "observation" } else { "hypothesis" },
+                "text": format!("Lesson {i}: the dried weights of batch {i} {}", "ran heavier than the wet ones ".repeat(8))})))
+            .collect::<Vec<_>>()
+    );
+    let mut bare_view = view.clone();
+    bare_view["lessons"] = json!(rules);
+    let pages = json!({"pages": 3, "steps": 40, "by_status": {"succeeded": 40},
+        "newest": (0..30).map(|i| json!({"action_key": format!("old-{i:02}"),
+            "title": format!("Archived step {i}: weigh the batch again {}", "and record it".repeat(6)),
+            "status": "succeeded"})).collect::<Vec<_>>()});
     let titles: HashMap<String, String> = keys
         .iter()
         .map(|k| {
@@ -4425,7 +4445,7 @@ fn pinned_sections_survive_every_budget() {
         .collect();
     let request = json!({"turn": 2, "reason": reason, "findings": findings, "targets": targets});
     let full = json!({"results": [], "revision_budget": 3, "revisions": 1, "revision_request": request,
-        "lab_notes": notes});
+        "lab_notes": notes, "plan_pages": pages});
     let pinned_only =
         json!({"results": [], "revision_budget": 3, "revisions": 1, "revision_request": request});
     let expected: Vec<Value> = findings
@@ -4440,7 +4460,15 @@ fn pinned_sections_survive_every_budget() {
     let review = json!({"turn": 2, "reason": reason, "findings": expected, "revisions_left": 2});
     let (mut fitted, mut refused, mut yielded) = (0, 0, 0);
     for budget in (super::LEAD_BUDGET_MIN..=super::MAX_INPUT_BYTES).step_by(4096) {
-        let c = compile_context(&view, &titles, &json!({}), &json!([]), &full, 2, budget);
+        let c = compile_context(
+            &full_view,
+            &titles,
+            &json!({}),
+            &json!([]),
+            &full,
+            2,
+            budget,
+        );
         if c.fits(budget) {
             fitted += 1;
             yielded += usize::from(c.inputs.get("optional_yield").is_some());
@@ -4457,10 +4485,12 @@ fn pinned_sections_survive_every_budget() {
                 "{budget}"
             );
             assert_eq!(v["methods_review"], review, "{budget}");
+            let shown = v["earlier_readings"]["lessons"].as_array().unwrap();
+            assert!(rules.iter().all(|r| shown.contains(r)), "{budget}");
         } else {
             refused += 1;
             let bare = compile_context(
-                &view,
+                &bare_view,
                 &HashMap::new(),
                 &json!({}),
                 &json!([]),
@@ -4509,9 +4539,24 @@ fn a_kept_orientation_always_fits_its_reserve() {
     let view = json!({"goal": "How many samples?", "constraints": [], "plan": [], "lessons": [],
         "next_action": "Query.", "revision": 1, "state_sha256": format!("sha256:{}", "e".repeat(64)),
         "workspace": {"input_refs": []}});
+    // The steering notes a retried turn adds after compiling: a refusal naming many faults, and its redirect.
+    let refusal = super::Refusal {
+        reason: "proposal_redirect_ignored",
+        names: (0..40)
+            .map(|i| format!("step {i}: {}", "ü".repeat(60)))
+            .collect(),
+        focus: vec![],
+    };
+    let mut steering = json!({});
+    super::with_prior_attempt(&mut steering, Some(&refusal), 2);
+    super::Redirect::apply(&mut steering, Some(&refusal), 2);
+    let steering_bytes = super::context::added_bytes(&steering);
+    assert!(steering_bytes > 1000, "{steering_bytes}");
     let mut placed = 0;
     for budget in (super::LEAD_BUDGET_MIN..=super::MAX_INPUT_BYTES).step_by(4096) {
-        let room = budget.saturating_sub(reserve);
+        let room = budget
+            .saturating_sub(reserve)
+            .saturating_sub(steering_bytes);
         let c = compile_context(
             &view,
             &HashMap::new(),
@@ -4525,6 +4570,8 @@ fn a_kept_orientation_always_fits_its_reserve() {
             continue;
         }
         let mut context = c.value;
+        super::with_prior_attempt(&mut context, Some(&refusal), 2);
+        super::Redirect::apply(&mut context, Some(&refusal), 2);
         assert!(
             orientation::place(&mut context, &record, &statuses, budget),
             "{budget}"
@@ -4538,6 +4585,37 @@ fn a_kept_orientation_always_fits_its_reserve() {
     assert!(placed > 0);
     let refused = json!({"status": "refused", "faults": ["unknown_key"]});
     assert_eq!(orientation::reserve(&refused, &statuses), 0);
+}
+
+/// A first turn's orientation, made after the context was compiled, is given room by removing the shared lab notes,
+/// then the past research, each named in the inputs; library passages and the pinned sections stay.
+#[test]
+fn a_first_turn_orientation_sheds_shared_notes_then_past_research() {
+    use super::context::shed_optional;
+    use serde_json::json;
+    let context = json!({"question": "How many?", "literature": [{"ref": "paper-1", "text": "x".repeat(800)}],
+        "lab_notes": [{"note": "n1", "statement": "y".repeat(900)}], "lab_notes_omitted": 2,
+        "past_research": [{"ref": "knowledge://1", "summary": "z".repeat(900)}], "past_research_left_out": 1});
+    let size = |v: &serde_json::Value| serde_json::to_vec(v).unwrap().len();
+    let whole = size(&context);
+    let mut inputs = json!({"lab_notes": []});
+    let mut c = context.clone();
+    assert!(shed_optional(&mut c, &mut inputs, whole));
+    assert_eq!(c, context);
+    assert!(inputs.get("shed").is_none());
+    let mut c = context.clone();
+    assert!(shed_optional(&mut c, &mut inputs, whole - 900));
+    assert!(c.get("lab_notes").is_none() && c.get("lab_notes_omitted").is_none());
+    assert!(c.get("past_research").is_some());
+    assert_eq!(inputs["shed"], json!(["lab_notes"]));
+    let mut inputs = json!({});
+    let mut c = context.clone();
+    assert!(shed_optional(&mut c, &mut inputs, whole - 1900));
+    assert_eq!(inputs["shed"], json!(["lab_notes", "past_research"]));
+    assert_eq!(c["literature"], context["literature"]);
+    assert_eq!(c["question"], context["question"]);
+    let mut c = context.clone();
+    assert!(!shed_optional(&mut c, &mut json!({}), 100));
 }
 
 /// Two consecutive turns of one run, written as a model call sends them, share a prefix that covers the guidance, the
