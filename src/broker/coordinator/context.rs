@@ -947,10 +947,11 @@ pub(super) fn compile_context_with_sections(
     }
     // The methods check's request for a revision of the previous proposal (migration 049): its reason
     // and typed findings, each with the words of the part it names, and how many more times the check may send this run
-    // back. It stays within a quarter of the budget, at most `METHODS_REVIEW_BYTES` (a fixed room could
-    // pass the smallest lead budget), as `fit_methods_review` shortens it.
+    // back. It is pinned: it keeps its fixed room, `METHODS_REVIEW_BYTES`, at every budget, so a budget too small to
+    // carry it does not fit and the run pauses, rather than the lead planning without the check's findings
+    // (`pinned_sections_survive_every_budget`).
     if let Some(request) = results["revision_request"].as_object() {
-        let room = METHODS_REVIEW_BYTES.min(budget / 4);
+        let room = METHODS_REVIEW_BYTES;
         let left = results["revision_budget"]
             .as_u64()
             .unwrap_or(0)

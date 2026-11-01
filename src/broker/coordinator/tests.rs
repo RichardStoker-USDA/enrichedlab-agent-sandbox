@@ -4292,7 +4292,8 @@ async fn without_a_profile_receipts_and_bodies_are_unchanged() {
 async fn a_profile_out_of_contract_is_refused() {
     let (model, _bodies, dir) = replying_model(vec![]).await;
     let config = dir.path().join("model.json");
-    let cases: Vec<(&str, Box<dyn Fn(&mut serde_json::Value)>)> = vec![
+    type Change = Box<dyn Fn(&mut serde_json::Value)>;
+    let cases: Vec<(&str, Change)> = vec![
         ("schema", Box::new(|p| p["schema_version"] = 2.into())),
         ("name", Box::new(|p| p["name"] = "GLM 5.3".into())),
         (
@@ -4372,5 +4373,63 @@ async fn a_profile_out_of_contract_is_refused() {
             .map(|e| e.to_string())
             .as_deref(),
         Some("private_file_invalid")
+    );
+}
+
+// The question, every constraint and scientist instruction, and the methods check's current findings are never cut to
+// make a lead context fit: at every lead budget from the floor to the ceiling, in 4 KiB steps, either all of them are
+// shown byte for byte or the context does not fit (and the run pauses for a person rather than plan without them).
+#[test]
+fn pinned_sections_survive_every_budget() {
+    use super::compile_context;
+    use serde_json::{Value, json};
+    let view = json!({"goal": "Which samples were weighed, and how many in each batch?",
+        "constraints": ["Use only the lab's own tables.", "Scientist's instruction: Report counts, not names.",
+                        "Keep batch 7 out."],
+        "plan": [], "lessons": [], "next_action": "Query the data.", "revision": 3,
+        "state_sha256": format!("sha256:{}", "d".repeat(64)), "workspace": {"input_refs": ["input://lab/example"]}});
+    let findings: Vec<Value> = (0..12)
+        .map(|i| json!({"about": format!("step q-{i}"), "problem": "wrong_rows",
+            "detail": format!("Finding {i}: the step reads the raw table where the design weighed dried samples {}.",
+                              "and names the batch".repeat(8)),
+            "refs": []}))
+        .collect();
+    let results = json!({"results": [], "revision_budget": 3, "revisions": 1,
+        "revision_request": {"turn": 2, "reason": "The plan departs from the design.", "findings": findings}});
+    let mut cut = vec![];
+    let mut fitted = 0;
+    for budget in (super::LEAD_BUDGET_MIN..=super::MAX_INPUT_BYTES).step_by(4096) {
+        let c = compile_context(
+            &view,
+            &std::collections::HashMap::new(),
+            &json!({}),
+            &json!([]),
+            &results,
+            2,
+            budget,
+        );
+        if !c.fits(budget) {
+            continue;
+        }
+        fitted += 1;
+        let v = &c.value;
+        let shown = v["methods_review"]["findings"].as_array();
+        let whole = v["question"] == view["goal"]
+            && v["constraints"] == json!(["Use only the lab's own tables.", "Keep batch 7 out."])
+            && v["scientist_instructions"] == json!(["Report counts, not names."])
+            && shown.is_some_and(|s| {
+                s.len() == findings.len()
+                    && s.iter()
+                        .zip(&findings)
+                        .all(|(a, b)| a["detail"] == b["detail"] && a["about"] == b["about"])
+            });
+        if !whole {
+            cut.push(budget);
+        }
+    }
+    assert!(fitted > 0);
+    assert!(
+        cut.is_empty(),
+        "budgets where a pinned section was cut while the context fit: {cut:?}"
     );
 }
