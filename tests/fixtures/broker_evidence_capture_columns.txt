@@ -461,6 +461,8 @@ broker_sql_source_cards card_sha256 text copy
 broker_sql_source_cards created_at timestamp with time zone copy
 broker_sql_source_cards manifest_sha256 text copy
 broker_sql_source_cards source_key text copy
+broker_sql_source_cards source_version jsonb content
+broker_sql_source_cards spec jsonb content
 broker_sql_source_cards tenant_id text copy
 broker_sql_sources connection_ref text copy
 broker_sql_sources created_at timestamp with time zone copy
