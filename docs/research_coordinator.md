@@ -997,7 +997,9 @@ as above); `known_weaknesses` (at most 16 of `mechanism` as a fixed code, `sourc
 role's route replaces `model` in its requests and its receipt's `model_role`; its settings replace the configuration's
 `settings` for that role (they are not merged). A role the profile does not set sends exactly the request it sent
 without a profile. Every model call's receipt carries `profile` and `profile_sha256` (the file's SHA-256), so each turn
-record names the profile that shaped it. Any fault refuses start with `model_profile_invalid`. The campaign planner
+record names the profile that shaped it. A profile whose content breaks these rules refuses start with
+`model_profile_invalid`; a file that is not private or cannot be read refuses as the model configuration does
+(`private_file_invalid`, `private_file_unavailable`). The campaign planner
 reads its own model configuration and takes no profile.
 
 The adapter uses OpenAI-compatible JSON chat completions and rejects truncated or malformed replies. Every call has
