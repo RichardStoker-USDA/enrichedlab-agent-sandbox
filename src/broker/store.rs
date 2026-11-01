@@ -441,12 +441,13 @@ impl Store {
     /// reasoning in its deferral (061), and reads each digest's column summaries without a lab's values for its step
     /// checks (073), and keeps a run's orientation and counts its faults (074), and reads each source's card and data
     /// versions to say when a card is behind its data (082), and commits a lab objects step (083) with the columns it
-    /// keeps (084). A coordinator without them must not claim runs.
+    /// keeps (084), whose request rows the research record captures (086). A coordinator without them must not claim runs.
     pub async fn ready_for_research_results(&self) -> StoreResult<()> {
         let client = self.pool.get().await.map_err(pool_error)?;
         let row = client
             .query_one(
-                "SELECT enrichedlab_agent.broker_schema_ready(85) \
+                "SELECT enrichedlab_agent.broker_schema_ready(86) \
+                 AND enrichedlab_agent.broker_schema_ready(85) \
                  AND enrichedlab_agent.broker_schema_ready(84) \
                  AND enrichedlab_agent.broker_schema_ready(83) \
                  AND enrichedlab_agent.broker_schema_ready(82) \

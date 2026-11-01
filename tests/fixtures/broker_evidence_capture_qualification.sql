@@ -713,6 +713,20 @@ DO $$ DECLARE added text; removed text; wrong text; BEGIN
   IF wrong IS NOT NULL THEN RAISE EXCEPTION 'captured tables with no reviewed guard: %', wrong; END IF;
 END $$;
 
+-- The written-out capture event types (migration 086) are exactly the insert event of every captured table and the
+-- three permitted updates, so a newly captured table fails here until its type is listed.
+DO $$
+DECLARE derived text[];
+BEGIN
+  SELECT array_agg(evidence.capture_event_type(ct.table_name, 'insert'))
+      || ARRAY['broker.tool_group_grant_revoked', 'broker.dataset_intake_bound', 'broker.reviewed_query_retired']
+    INTO derived FROM evidence.capture_tables() ct;
+  IF NOT (derived @> evidence.capture_event_types() AND evidence.capture_event_types() @> derived
+      AND cardinality(derived) = cardinality(evidence.capture_event_types())) THEN
+    RAISE EXCEPTION 'capture_event_types() differs from the captured tables';
+  END IF;
+END $$;
+
 -- 13. What each captured column can contribute (copied when a safe token, digested, or model text by digest only) is
 -- frozen in broker_evidence_capture_columns.txt: a new or retyped column fails here until its class is reviewed.
 \set expected_columns `cat /workspace/tests/fixtures/broker_evidence_capture_columns.txt`

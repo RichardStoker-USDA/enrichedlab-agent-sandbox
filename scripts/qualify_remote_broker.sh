@@ -457,18 +457,29 @@ run_evidence() {
           WHERE conname = 'capture_gaps_reason_check'" | grep -qx t \
         || { printf '%s\n' 'migration 081 did not replace the gap reason list' >&2; exit 1; }
     # 4b. Migration 086 after 081 runs again (as every migrate run does): the lab object tables keep their capture
-    # triggers through 081, are listed again, and a capture grant written before 086 gains their two event types.
-    pg --command="UPDATE evidence.producer_grants g SET event_types = array_remove(array_remove(g.event_types,
+    # triggers through 081 and are listed again. A capture grant with an earlier event list (written before 086, or by
+    # a recorder that read 081's list while 086 ran) is brought up to the current list by 086, and one it misses is not
+    # ready and is repaired by its scope's next preparation.
+    strip="UPDATE evidence.producer_grants g SET event_types = array_remove(array_remove(g.event_types,
           'broker.object_requests'), 'broker.object_receipts')
         FROM evidence.producers p WHERE p.tenant_id = g.tenant_id AND p.producer_id = g.producer_id
-          AND p.identity = 'broker:capture'" >/dev/null
+          AND p.identity = 'broker:capture' AND g.tenant_id = 'drain-late'"
+    stale="SELECT count(*) FILTER (WHERE NOT g.event_types @> evidence.capture_event_types()) || ' ' || count(*)
+          || ' ' || max(cardinality(g.event_types))
+        FROM evidence.producer_grants g JOIN evidence.producers p ON p.tenant_id = g.tenant_id
+          AND p.producer_id = g.producer_id WHERE p.identity = 'broker:capture' AND g.tenant_id = 'drain-late'"
+    pg --command="$strip" >/dev/null
     pg --file=/workspace/migrations/postgres/086_evidence_capture_lab_objects.sql >/dev/null 2>"$evidence_log" \
         || { printf '%s\n' 'migration 086 did not run again' >&2; cat "$evidence_log" >&2; exit 1; }
-    pg --tuples-only --no-align --command="SELECT count(*) FILTER (WHERE NOT g.event_types @> ARRAY['broker.object_requests',
-          'broker.object_receipts']) || ' ' || count(*) || ' ' || max(cardinality(g.event_types))
-        FROM evidence.producer_grants g JOIN evidence.producers p ON p.tenant_id = g.tenant_id
-          AND p.producer_id = g.producer_id WHERE p.identity = 'broker:capture'" | grep -Eqx '0 [1-9][0-9]* 63' \
+    pg --tuples-only --no-align --command="$stale" | grep -Eqx '0 [1-9][0-9]* 63' \
         || { printf '%s\n' 'a capture grant written before migration 086 lacks the lab object event types' >&2; exit 1; }
+    pg --command="$strip" >/dev/null
+    pg --tuples-only --no-align --command="SET statement_timeout = '800ms';
+        SELECT evidence.capture_prepare_scopes('drain-late', 'drain-late-lab', 1000)" >"$evidence_log"
+    python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); sys.exit(not (d["prepared"] > 0 and d["remaining"] == 0))' \
+        "$evidence_log" || { printf '%s\n' 'a capture grant with an earlier event list was ready or not repaired' >&2; exit 1; }
+    pg --tuples-only --no-align --command="$stale" | grep -Eqx '0 [1-9][0-9]* 63' \
+        || { printf '%s\n' 'preparation did not repair a capture grant with an earlier event list' >&2; exit 1; }
     pg --tuples-only --no-align --command="SELECT count(*) FROM evidence.capture_tables() ct
         JOIN pg_class c ON c.relname = ct.table_name AND c.relnamespace = 'enrichedlab_agent'::regnamespace
         JOIN pg_trigger x ON x.tgrelid = c.oid AND x.tgname = 'evidence_capture'

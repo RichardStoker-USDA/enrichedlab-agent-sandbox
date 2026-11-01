@@ -456,6 +456,9 @@ pub async fn serve(args: EvidenceAppendArgs) -> Result<()> {
         None => None,
     };
     let mut service = prepare(pool, auth, args.tenant).await?;
+    if args.capture_interval_seconds > 0 {
+        capture_ready(&service.pool).await?;
+    }
     service.custody = custody;
     let identity = Identity::from_pem(
         fs::read(&args.tls_cert).context("failed to read the server certificate")?,
@@ -523,6 +526,27 @@ async fn authority(pool: &Pool, auth: &EvidenceProducerAuth, tenant: &str) -> Re
         bail!("{unbound} configured producer(s) are not bound to this database role");
     }
     Ok(row.get(2))
+}
+
+/// Migration 086's capture set: the lab object tables, and grants that hold every capture event type. Without it a lab
+/// object row is written with no log entry and no missing count, so the recorder does not start. A catalog read: the
+/// role needs no privilege on the function.
+const CAPTURE_READY_SQL: &str =
+    "SELECT to_regprocedure('evidence.capture_event_types()') IS NOT NULL";
+
+async fn capture_ready(pool: &Pool) -> Result<()> {
+    let client = pool
+        .get()
+        .await
+        .context("the evidence record's database is unreachable")?;
+    let row = client
+        .query_one(CAPTURE_READY_SQL, &[])
+        .await
+        .context("the capture readiness check failed")?;
+    if !row.get::<_, bool>(0) {
+        bail!("the capture recorder needs migration 086");
+    }
+    Ok(())
 }
 
 /// Startup: the authority checks, then any missing monthly partition, so the service never reports serving for
