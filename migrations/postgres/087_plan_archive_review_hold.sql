@@ -47,8 +47,12 @@ BEGIN
       WHERE s->>'action_key'=ANY(p_keys) AND s->>'task_id' IS NOT NULL)
     ORDER BY t.task_id FOR UPDATE;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(prior->'plan') s
+      -- Person reviews only, as the coordinator's results read (064) shows them; a retained service-account review
+      -- neither holds a step there nor refuses it here.
       CROSS JOIN LATERAL (SELECT v.decision FROM enrichedlab_agent.broker_task_reviews v
-        WHERE v.tenant_id=p_tenant AND v.task_id=(s->>'task_id')::uuid ORDER BY v.created_at DESC, v.review_id DESC LIMIT 1) n
+        JOIN enrichedlab_agent.broker_principals p ON p.tenant_id = v.tenant_id AND p.principal_id = v.reviewer_id
+        WHERE v.tenant_id=p_tenant AND v.task_id=(s->>'task_id')::uuid AND p.principal_class = 'person'
+        ORDER BY v.created_at DESC, v.review_id DESC LIMIT 1) n
       WHERE s->>'action_key'=ANY(p_keys) AND s->>'task_id' IS NOT NULL AND n.decision <> 'accepted') THEN
     RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='broker:plan_archive_reviewed'; END IF;
   SELECT coalesce(jsonb_agg(e.s ORDER BY e.n) FILTER (WHERE NOT (e.s->>'action_key'=ANY(p_keys))),'[]'::jsonb),

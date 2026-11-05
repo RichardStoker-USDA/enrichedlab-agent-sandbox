@@ -7253,3 +7253,15 @@ async fn a_rejection_reaches_the_next_run_after_an_answer_tables_analysis_is_arc
     drop(owner);
     connection.abort();
 }
+
+#[test]
+fn migration_087_is_valid_postgresql_syntax_and_counts_only_person_reviews() {
+    let migration = include_str!("../migrations/postgres/087_plan_archive_review_hold.sql");
+    pg_query::parse(migration).unwrap();
+    pg_query::parse_plpgsql(migration).unwrap();
+    // The hold reads person reviews only, as the results read shows them, so a retained service-account review can
+    // neither hold a step the coordinator would move nor make the archive refuse it forever.
+    assert!(migration.contains("p.principal_class = 'person'"));
+    assert!(migration.contains("FOR UPDATE"));
+    assert!(migration.contains("broker:plan_archive_reviewed"));
+}
