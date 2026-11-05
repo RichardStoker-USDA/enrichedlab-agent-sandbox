@@ -82,5 +82,8 @@ GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_supervisor_pause_research_run
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_orientation_for_run(text,uuid,text,bigint,jsonb) TO :"coordinator_role";
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_working_memory(text,uuid,text,bigint) TO :"coordinator_role";
 
+-- Migration 089: the harness manifest the coordinator computed at start, kept once by digest.
+GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_record_harness_manifest(text,text,bytea) TO :"coordinator_role";
+
 -- Migration 083: the run's lab objects methods, under the run lease.
 GRANT EXECUTE ON FUNCTION enrichedlab_agent.broker_research_run_object_methods(text,uuid,text,bigint) TO :"coordinator_role";

@@ -1153,7 +1153,7 @@ if [ "$mode" = working-memory ]; then
         --file=/workspace/migrations/postgres/grant_broker_coordinator.psql
     BROKER_QUALIFICATION_MIGRATION_DSN_FILE="$dsn_file" \
         cargo test --locked --test broker_working_memory -- --ignored --test-threads=1
-    printf '%s\n' 'Working memory kept on the turn record, read back under the lease into the next lead call, refused and failed calls without a run failure, and the holder-only read PostgreSQL checks passed.'
+    printf '%s\n' 'Working memory kept on the turn record, read back under the lease into the next lead call, refused and failed calls without a run failure, the holder-only read, and each turn record naming the stored, digest-checked harness manifest PostgreSQL checks passed.'
     exit 0
 fi
 if [ "$mode" = research-runs ]; then

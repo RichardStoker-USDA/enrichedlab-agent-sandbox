@@ -9,6 +9,7 @@ use enrichedlab_agent_sandbox::broker::{
     store::Store,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 use std::{env, fs};
 use uuid::Uuid;
@@ -260,6 +261,46 @@ async fn a_checked_memory_is_kept_on_the_turn_and_the_runs_next_lead_call_reads_
     assert_eq!(roles(&bodies), ["lead", "methods"]);
     let record = turn_record(run).await.expect("a committed turn");
     assert!(record.get("working_memory").is_none() && record.get("working_memory_call").is_none());
+    // Every turn record names the harness manifest the coordinator stored at start, and the stored bytes hash to it.
+    let manifest = record["harness_manifest_sha256"]
+        .as_str()
+        .expect("a manifest digest")
+        .to_owned();
+    let (content, schema): (Vec<u8>, Option<String>) = {
+        let row = owner
+            .query_one(
+                "SELECT content, convert_from(content,'UTF8')::jsonb->>'schema_version'
+                 FROM enrichedlab_agent.broker_harness_manifests WHERE tenant_id='research-site' AND sha256=$1",
+                &[&manifest],
+            )
+            .await
+            .unwrap();
+        (row.get(0), row.get(1))
+    };
+    assert_eq!(
+        manifest,
+        format!("sha256:{}", hex::encode(Sha256::digest(&content)))
+    );
+    assert_eq!(schema.as_deref(), Some("1"));
+    // The table refuses a change, and the record function refuses bytes whose digest is not the one given.
+    let changed = owner
+        .execute(
+            "UPDATE enrichedlab_agent.broker_harness_manifests SET created_at=created_at WHERE sha256=$1",
+            &[&manifest],
+        )
+        .await;
+    assert!(changed.is_err());
+    let refused = owner
+        .query_one(
+            "SELECT enrichedlab_agent.broker_record_harness_manifest('research-site',$1,'{\"schema_version\":1,\"surfaces\":{}}'::bytea)",
+            &[&manifest],
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refused.as_db_error().map(|e| e.message()),
+        Some("broker:harness_manifest_invalid")
+    );
 
     // 2. A sound memory follows the decision and is kept on its record with its digest; the run's first call had
     // none to read.

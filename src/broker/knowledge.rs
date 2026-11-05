@@ -518,6 +518,16 @@ impl KnowledgeService {
         }
     }
 
+    /// The coordinator's retrieval generation, `None` for search v1.
+    pub fn default_generation(&self) -> Option<&str> {
+        self.generation.as_deref()
+    }
+
+    /// The labs with their own retrieval generation, each a generation's name or `None` for search v1.
+    pub fn lab_generations(&self) -> &BTreeMap<String, Option<String>> {
+        &self.lab_generations
+    }
+
     /// The retrieval generation `lab`'s library sections are ranked with: the lab's own entry when it has one, otherwise
     /// the coordinator's; `None` is search v1.
     pub fn generation_for(&self, lab: &str) -> Option<&str> {

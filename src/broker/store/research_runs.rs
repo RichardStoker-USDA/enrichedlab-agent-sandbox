@@ -270,6 +270,19 @@ impl Store {
         Ok(())
     }
 
+    /// Keeps the coordinator's harness manifest once by digest (migration 089, which checks the digest against the
+    /// bytes).
+    pub async fn record_harness_manifest(&self, sha256: &str, content: &[u8]) -> StoreResult<()> {
+        let c = self.pool.get().await.map_err(pool_error)?;
+        c.query_one(
+            "SELECT enrichedlab_agent.broker_record_harness_manifest($1,$2,$3)",
+            &[&self.tenant, &sha256, &content],
+        )
+        .await
+        .map_err(database_error)?;
+        Ok(())
+    }
+
     /// The run's newest accepted working memory (migration 088): `{turn, memory, sha256}`, or `None` when no turn of
     /// the run kept one. Only the run's holder reads it.
     pub async fn research_run_working_memory(

@@ -57,6 +57,7 @@ use super::input_request;
 
 mod config;
 mod context;
+mod harness_manifest;
 mod lead_check;
 mod literature;
 mod literature_review;
@@ -890,6 +891,9 @@ async fn advance(
     let mut record = json!({"schema_version":1,"lead":lead.receipt,"methods_specialist":review.receipt,"method_review":method,
         "scientific_validation":"not_performed","state_source_sha256":context["state_sha256"],"context_schema_version":context["context_schema_version"],
         "context_inputs":context_inputs});
+    if let Some(manifest) = &model.harness_manifest_sha256 {
+        record["harness_manifest_sha256"] = json!(manifest);
+    }
     // Each result's check as the lead read it this turn, for the workspace.
     if results["step_checks"]
         .as_array()
@@ -1174,10 +1178,8 @@ pub(super) async fn run_prepared(args: CoordinatorArgs, mut ready: ReadyFile) ->
     if !action_key(&worker) {
         bail!("coordinator_config_invalid")
     }
-    let model = Arc::new(
-        Model::load_with(&args.model_config_file, lead_system)?
-            .with_profile(args.model_profile_file.as_ref())?,
-    );
+    let mut model = Model::load_with(&args.model_config_file, lead_system)?
+        .with_profile(args.model_profile_file.as_ref())?;
     if let Some(profile) = &model.profile {
         tracing::info!(profile = %profile.name, profile_sha256 = %profile.sha256, "model profile from file");
     }
@@ -1225,6 +1227,11 @@ pub(super) async fn run_prepared(args: CoordinatorArgs, mut ready: ReadyFile) ->
     {
         bail!("coordinator_config_invalid")
     }
+    // The harness this coordinator runs under, stored once by digest before any claim and named on every turn record.
+    let manifest = harness_manifest::compute(&args, &model, knowledge.as_deref())?;
+    tracing::info!(harness_manifest_sha256 = %manifest.sha256, "harness manifest");
+    model.harness_manifest_sha256 = Some(manifest.sha256.clone());
+    let model = Arc::new(model);
     let dsn = migration_dsn(
         &Some(args.database_dsn_file),
         "AGENT_SANDBOX_COORDINATOR_DSN",
@@ -1235,6 +1242,9 @@ pub(super) async fn run_prepared(args: CoordinatorArgs, mut ready: ReadyFile) ->
     // and keeps the texts it sends (032); without them, stay out of service. Its past research comes from the
     // knowledge service, not the database.
     store.ready_for_research_results().await?;
+    store
+        .record_harness_manifest(&manifest.sha256, &manifest.bytes)
+        .await?;
     if !lab_text.reading.is_empty() {
         store.ready_for_reading().await?;
     }

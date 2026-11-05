@@ -13,6 +13,8 @@ pub(crate) struct Model {
     pub(super) lead_system: &'static str,
     /// The model profile read at start, if any: per-role routes and settings, named on every receipt.
     pub(super) profile: Option<Profile>,
+    /// The digest of the harness manifest this coordinator computed and stored at start, named on every turn record.
+    pub(super) harness_manifest_sha256: Option<String>,
 }
 
 pub(crate) struct Call {
@@ -108,6 +110,7 @@ impl Model {
             url,
             lead_system,
             profile: None,
+            harness_manifest_sha256: None,
         })
     }
 
