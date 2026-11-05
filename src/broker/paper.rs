@@ -73,6 +73,16 @@ pub struct Figure {
     pub description: Option<String>,
     #[serde(default)]
     pub page: Option<i64>,
+    /// ParsEnriched's id for the figure, by which the workspace fetches its image.
+    #[serde(default)]
+    pub id: Option<String>,
+    /// The service's path to the figure's image, present only when it holds the image.
+    #[serde(default)]
+    pub image_url: Option<String>,
+    #[serde(default)]
+    pub width: Option<i64>,
+    #[serde(default)]
+    pub height: Option<i64>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

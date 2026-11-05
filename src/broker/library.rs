@@ -27,6 +27,9 @@ const TOKEN_LIMIT: u64 = 4096;
 const CONFIG_LIMIT: u64 = 64 * 1024;
 const SMALL_RESPONSE: usize = 256 * 1024;
 const DOCUMENT_RESPONSE: usize = 2 * 1024 * 1024;
+/// The largest figure image the workspace shows, and the raster types it accepts; SVG is never served.
+pub const MAX_FIGURE_IMAGE_BYTES: usize = 12 * 1024 * 1024;
+pub const FIGURE_IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/gif"];
 const SEARCH_RESPONSE: usize = 1024 * 1024;
 pub const SEARCH_LIMIT: usize = 20;
 
@@ -576,6 +579,74 @@ impl LibraryService {
             &format!("documents/{document_id}/tables/{ordinal}"),
         )?;
         self.get_object(url, &token).await
+    }
+
+    /// One figure's image from the lab's corpus: its bytes and media type, at most `MAX_FIGURE_IMAGE_BYTES`, and only
+    /// a raster type a browser draws without running anything (`FIGURE_IMAGE_TYPES`). The caller has already checked
+    /// the figure belongs to a paper the reader may open.
+    pub async fn figure_image(
+        &self,
+        lab: &str,
+        figure_id: Uuid,
+    ) -> Result<(Vec<u8>, &'static str), LibraryError> {
+        let (entry, token) = self.lab(lab)?;
+        let url = self.url(&entry.corpus, &format!("figures/{figure_id}/image"))?;
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&token)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await
+            .map_err(|_| LibraryError::Unavailable)?;
+        let status = response.status();
+        if status != StatusCode::OK {
+            return Err(Self::refused(status));
+        }
+        let declared = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| {
+                v.split(';')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_ascii_lowercase()
+            })
+            .unwrap_or_default();
+        let media = FIGURE_IMAGE_TYPES
+            .iter()
+            .find(|t| **t == declared)
+            .copied()
+            .ok_or(LibraryError::Unavailable)?;
+        if response
+            .content_length()
+            .is_some_and(|n| n > MAX_FIGURE_IMAGE_BYTES as u64)
+        {
+            return Err(LibraryError::TooLarge);
+        }
+        let mut bytes = Vec::new();
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|_| LibraryError::Unavailable)?;
+            if bytes.len() + chunk.len() > MAX_FIGURE_IMAGE_BYTES {
+                return Err(LibraryError::TooLarge);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        // The bytes must be the type the service named: PNG, JPEG, WebP or GIF by their opening bytes.
+        let matches = match media {
+            "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+            "image/jpeg" => bytes.starts_with(&[0xff, 0xd8, 0xff]),
+            "image/webp" => bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP",
+            "image/gif" => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
+            _ => false,
+        };
+        if !matches {
+            return Err(LibraryError::Unavailable);
+        }
+        Ok((bytes, media))
     }
 
     /// The paper's figure captions and counts from its parse, for the paper page.

@@ -592,3 +592,181 @@ mod tests {
         }
     }
 }
+
+/// The paper's document when the reader may open it and it is still in the library; a removed paper is not read.
+async fn open_document(
+    state: &ApiState,
+    headers: &HeaderMap,
+    lab: &str,
+    paper: Uuid,
+) -> Result<Uuid, ApiError> {
+    let actor = authenticate(state, headers).await?;
+    checked_lab(lab)?;
+    let (record, document_id) = state.store.library_paper(actor, lab, paper).await?;
+    if !record["removed"].is_null() {
+        return Err(ApiError::not_found("library_paper_removed"));
+    }
+    Ok(document_id)
+}
+
+/// The most bytes a reading may hold; a longer one keeps its first sections and says it was cut.
+const MAX_READING_BYTES: usize = 6 * 1024 * 1024;
+
+/// `GET /api/v1/labs/{lab}/library/papers/{paper}/read`: the whole paper as its parse holds it, for reading in the
+/// workspace: sections in order with the parser's role, figures with whether an image is on file and any description
+/// a model made (marked as derived), and tables. The same reader the research lead uses (`broker::paper`).
+pub(super) async fn read(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    AxumPath((lab, paper)): AxumPath<(String, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let document_id = open_document(&state, &headers, &lab, paper).await?;
+    let service = service(&state, &lab)?;
+    let read = crate::broker::paper::read(service, &lab, document_id)
+        .await
+        .map_err(library_error)?;
+    let mut sections = Vec::new();
+    let mut bytes = 0usize;
+    let mut cut_sections = false;
+    for section in &read.sections {
+        let size: usize = section.texts.iter().map(String::len).sum::<usize>() + 256;
+        if bytes + size > MAX_READING_BYTES {
+            cut_sections = true;
+            break;
+        }
+        bytes += size;
+        sections.push(json!({
+            "key": section.key,
+            "heading": section.heading(),
+            "path": section.path,
+            "role": section.role,
+            "paragraphs": section.texts,
+            "cut_paragraphs": section.cut,
+            "pages": section.pages(),
+        }));
+    }
+    let figures: Vec<Value> = read
+        .figures
+        .iter()
+        .map(|figure| {
+            let id = figure.id.as_deref().and_then(|id| Uuid::parse_str(id).ok());
+            json!({
+                "ordinal": figure.ordinal,
+                "id": id,
+                "label": figure.label,
+                "caption": figure.caption,
+                "description": figure.description,
+                "page": figure.page,
+                "image": id.is_some() && figure.image_url.is_some(),
+                "width": figure.width.filter(|w| (1..=20_000).contains(w)),
+                "height": figure.height.filter(|h| (1..=20_000).contains(h)),
+            })
+        })
+        .collect();
+    let tables: Vec<Value> = read
+        .tables
+        .iter()
+        .map(|table| json!({"ordinal": table.ordinal, "label": table.label, "caption": table.caption, "page": table.page}))
+        .collect();
+    Ok(Json(json!({"reading": {
+        "sections": sections,
+        "figures": figures,
+        "tables": tables,
+        "figures_total": read.figures_total,
+        "tables_total": read.tables_total,
+        "blocks_read": read.blocks_read,
+        "blocks_total": read.blocks_total,
+        "complete": read.complete() && !cut_sections,
+    }})))
+}
+
+/// `GET /api/v1/labs/{lab}/library/papers/{paper}/figures/{figure}/image`: one figure's image, when the figure is one of
+/// this paper's (read from the paper's own figure list, never trusted from the request) and the service holds it.
+pub(super) async fn figure_image(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    AxumPath((lab, paper, figure)): AxumPath<(String, Uuid, Uuid)>,
+) -> Result<Response, ApiError> {
+    let document_id = open_document(&state, &headers, &lab, paper).await?;
+    let service = service(&state, &lab)?;
+    let wanted = figure.to_string();
+    let mut offset = 0usize;
+    let mut found = false;
+    while offset < crate::broker::paper::MAX_PARTS && !found {
+        let page = service
+            .document_page(&lab, document_id, "figures", offset)
+            .await
+            .map_err(library_error)?;
+        let items = page["figures"].as_array().cloned().unwrap_or_default();
+        if items.is_empty() {
+            break;
+        }
+        found = items
+            .iter()
+            .any(|f| f["id"].as_str() == Some(wanted.as_str()) && f["image_url"].is_string());
+        offset += items.len();
+    }
+    if !found {
+        return Err(ApiError::not_found("figure_image_not_found"));
+    }
+    let (bytes, media) = service
+        .figure_image(&lab, figure)
+        .await
+        .map_err(library_error)?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static(media)),
+            (
+                header::X_CONTENT_TYPE_OPTIONS,
+                HeaderValue::from_static("nosniff"),
+            ),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("private, max-age=86400"),
+            ),
+            (
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; sandbox"),
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+/// `GET /api/v1/labs/{lab}/library/papers/{paper}/tables/{ordinal}`: one of the paper's tables as a bounded grid.
+pub(super) async fn table(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    AxumPath((lab, paper, ordinal)): AxumPath<(String, Uuid, i64)>,
+) -> Result<impl IntoResponse, ApiError> {
+    if !(0..=10_000).contains(&ordinal) {
+        return Err(ApiError::not_found("library_table_not_found"));
+    }
+    let document_id = open_document(&state, &headers, &lab, paper).await?;
+    let service = service(&state, &lab)?;
+    let grid = service
+        .table(&lab, document_id, ordinal)
+        .await
+        .map_err(library_error)?;
+    let text = |v: &Value| v.as_str().map(|s| s.chars().take(2000).collect::<String>());
+    let cells = |row: &Value| -> Vec<Value> {
+        row.as_array()
+            .map(|cells| {
+                cells
+                    .iter()
+                    .take(64)
+                    .map(|c| json!(text(c).or_else(|| (!c.is_null()).then(|| c.to_string()))))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    Ok(Json(json!({"table": {
+        "ordinal": ordinal,
+        "label": text(&grid["label"]),
+        "caption": text(&grid["caption"]),
+        "header": cells(&grid["header"]),
+        "rows": grid["rows"].as_array().map(|rows| rows.iter().take(2000).map(|r| Value::Array(cells(r))).collect::<Vec<_>>()).unwrap_or_default(),
+        "rows_total": grid["rows"].as_array().map_or(0, Vec::len),
+    }})))
+}

@@ -558,6 +558,18 @@ pub fn router(state: ApiState) -> Router {
             "/api/v1/labs/{lab}/library/papers/{paper}/labels",
             post(library::label),
         )
+        .route(
+            "/api/v1/labs/{lab}/library/papers/{paper}/read",
+            get(library::read),
+        )
+        .route(
+            "/api/v1/labs/{lab}/library/papers/{paper}/figures/{figure}/image",
+            get(library::figure_image),
+        )
+        .route(
+            "/api/v1/labs/{lab}/library/papers/{paper}/tables/{ordinal}",
+            get(library::table),
+        )
         .with_state(state)
         .layer(axum::middleware::from_fn(conditional_get))
         .layer(DefaultBodyLimit::max(1024 * 1024))
