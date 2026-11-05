@@ -926,6 +926,21 @@ mod tests {
                 }),
             )
             .route(
+                "/v1/corpora/{corpus}/figures/{id}/image",
+                get(move |AxumPath((_corpus, id)): AxumPath<(String, String)>, headers: HeaderMap| async move {
+                    if !authorized(&headers) {
+                        return (AxumStatus::UNAUTHORIZED, [("content-type", "text/plain")], Vec::new());
+                    }
+                    match id.as_str() {
+                        // A PNG, an SVG (never served), and HTML that claims to be a PNG.
+                        "f1000000-0000-4000-8000-000000000001" => (AxumStatus::OK, [("content-type", "image/png")], b"\x89PNG\r\n\x1a\nrest".to_vec()),
+                        "f1000000-0000-4000-8000-000000000002" => (AxumStatus::OK, [("content-type", "image/svg+xml")], b"<svg/>".to_vec()),
+                        "f1000000-0000-4000-8000-000000000003" => (AxumStatus::OK, [("content-type", "image/png")], b"<html>".to_vec()),
+                        _ => (AxumStatus::NOT_FOUND, [("content-type", "text/plain")], Vec::new()),
+                    }
+                }),
+            )
+            .route(
                 "/v1/corpora/{corpus}/search",
                 get(|Query(q): Query<HashMap<String, String>>| async move {
                     assert_eq!(q["mode"], "lexical");
@@ -942,6 +957,34 @@ mod tests {
         let address = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         format!("http://{address}")
+    }
+
+    #[tokio::test]
+    async fn only_a_raster_image_of_its_named_type_is_served() {
+        let url = fake(Seen::default(), true).await;
+        let dir = tempfile::tempdir().unwrap();
+        let service = LibraryService::load(&config(dir.path(), &url, "")).unwrap();
+        let id =
+            |n: u8| Uuid::parse_str(&format!("f1000000-0000-4000-8000-00000000000{n}")).unwrap();
+        let (bytes, media) = service.figure_image("pilot-lab", id(1)).await.unwrap();
+        assert_eq!(media, "image/png");
+        assert!(bytes.starts_with(b"\x89PNG"));
+        assert_eq!(
+            service.figure_image("pilot-lab", id(2)).await,
+            Err(LibraryError::Unavailable)
+        );
+        assert_eq!(
+            service.figure_image("pilot-lab", id(3)).await,
+            Err(LibraryError::Unavailable)
+        );
+        assert_eq!(
+            service.figure_image("pilot-lab", id(4)).await,
+            Err(LibraryError::NotConfigured)
+        );
+        assert_eq!(
+            service.figure_image("other-lab", id(1)).await,
+            Err(LibraryError::NotConfigured)
+        );
     }
 
     #[tokio::test]
