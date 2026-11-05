@@ -141,21 +141,21 @@ pub enum StepStatus {
     Skipped,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Lesson {
     pub statement: String,
     pub kind: LessonKind,
     pub evidence_refs: Vec<String>,
-    /// The keys it holds for, by kind (`method`, `source`, `collection`, `tool`), each one the call showed; the lesson
-    /// is shown only while they all are (`coordinator::lesson_scope`). The fields below are absent on a lesson written
-    /// without them, which keeps the shape it had.
+    /// The keys it holds for, by kind (`method`, `collection`, `tool`), each one the call showed; the lesson is shown
+    /// only while they all are (`coordinator::lesson_scope`). The fields below are absent on a lesson written without
+    /// them, which keeps the shape it had.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<BTreeMap<String, String>>,
     /// Refs the call showed that state when the lesson held, at most `LESSON_CONDITION_MAX`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub condition: Vec<String>,
-    /// The refusal or check code the lesson came from, or `accepted`.
+    /// `accepted`, a fixed check outcome, or a refusal code the call showed in its attempts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome_class: Option<String>,
     /// The number (from 1) of the earlier lesson this one disputes.
@@ -165,7 +165,7 @@ pub struct Lesson {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub counter_refs: Vec<String>,
     /// Written by code when a scoped lesson is committed: each named key's definition digest, `kind:key` to
-    /// `sha256:<hex>`.
+    /// `sha256:<hex>`, one per key. A scoped lesson without it, or missing a key, reads as stale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validated_snapshot: Option<BTreeMap<String, String>>,
 }
@@ -200,19 +200,46 @@ pub const LESSON_CONDITION_MAX: usize = 4;
 /// The most counter refs code keeps on a disputed lesson.
 pub const LESSON_COUNTER_REFS_MAX: usize = 4;
 
-/// An outcome class: `accepted`, one of the fixed check outcomes, or a refusal code of the proposal, SQL, code or
-/// methods review checks, at most 64 lowercase letters, digits and underscores.
+/// The outcome classes every call may name; any other must be a refusal code the call showed (`lesson_scope`).
+pub const FIXED_OUTCOMES: [&str; 4] = ["accepted", "failed_checks", "no_progress", "query_failed"];
+
+/// An outcome class as a stored checkpoint holds one: a fixed outcome or a code-shaped word, 2 to 64 lowercase letters,
+/// digits and underscores starting with a letter. Which codes a lead may name is the lead check's rule.
 pub fn outcome_class(value: &str) -> bool {
-    matches!(
-        value,
-        "accepted" | "failed_checks" | "no_progress" | "query_failed"
-    ) || (value.len() <= 64
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-        && ["proposal_", "sql_refused", "code_", "method_review_"]
-            .iter()
-            .any(|p| value.starts_with(p)))
+    FIXED_OUTCOMES.contains(&value)
+        || ((2..=64).contains(&value.len())
+            && value.starts_with(|c: char| c.is_ascii_lowercase())
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'))
+}
+
+/// Where a checkpoint view places a lesson: shown, shown as stale (after the fresh ones, so it gives way first), or
+/// left out because a key it names is not shown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LessonPlacement {
+    Fresh,
+    Stale,
+    OutOfScope,
+}
+
+/// Which lessons of a checkpoint written outside the coordinator carry code-written fields (`validated_snapshot`,
+/// `counter_refs`) that no lesson of the checkpoint it replaces carries identically: only the coordinator writes them,
+/// so a person's save may keep them as they were but not add or change them. Named by position.
+pub fn code_fields_changed(prior: &[Lesson], next: &[Lesson]) -> Vec<String> {
+    let total = next.len();
+    next.iter()
+        .enumerate()
+        .filter(|(_, l)| {
+            (l.validated_snapshot.is_some() || !l.counter_refs.is_empty()) && !prior.contains(l)
+        })
+        .map(|(i, _)| {
+            format!(
+                "lesson {} of {total}: code-written fields are not the saved ones",
+                i + 1
+            )
+        })
+        .collect()
 }
 
 /// A scope key: 1 to 200 bytes without whitespace or NUL.
@@ -344,16 +371,14 @@ fn refs_fault(
 pub(crate) fn lesson_field_faults(name: &str, lesson: &Lesson, index: usize) -> Vec<String> {
     let mut faults = Vec::new();
     if let Some(scope) = &lesson.scope {
-        if scope.is_empty() || scope.len() > 4 {
-            faults.push(format!("{name} scope: names 1 to 4 keys"));
+        if scope.is_empty() {
+            faults.push(format!("{name} scope: names no key"));
         }
         for (kind, key) in scope {
-            if !matches!(kind.as_str(), "method" | "source" | "collection" | "tool")
-                || !scope_key(key)
-            {
+            if !matches!(kind.as_str(), "method" | "collection" | "tool") || !scope_key(key) {
                 faults.push(format!(
-                    "{name} scope: a kind is not method, source, collection or tool, or a key is \
-                    empty, over 200 bytes or holds whitespace"
+                    "{name} scope: a kind is not method, collection or tool, or a key is empty, over \
+                    200 bytes or holds whitespace"
                 ));
                 break;
             }
@@ -391,17 +416,18 @@ pub(crate) fn lesson_field_faults(name: &str, lesson: &Lesson, index: usize) -> 
     if lesson.contradicts.is_some_and(|n| n == 0 || n > index) {
         faults.push(format!("{name} contradicts: not an earlier lesson"));
     }
+    // A scoped lesson holds one digest for each key it names and nothing else, so no key goes unwatched.
     match (&lesson.scope, &lesson.validated_snapshot) {
         (None, Some(_)) => faults.push(format!(
             "{name} validated_snapshot: only on a scoped lesson"
         )),
+        (Some(_), None) => faults.push(format!("{name} validated_snapshot: missing")),
         (Some(scope), Some(snapshot))
-            if snapshot.len() > scope.len()
-                || snapshot.iter().any(|(id, d)| {
-                    !(digest(d)
-                        && id
-                            .split_once(':')
-                            .is_some_and(|(kind, key)| scope.get(kind).is_some_and(|k| k == key)))
+            if snapshot.len() != scope.len()
+                || scope.iter().any(|(kind, key)| {
+                    snapshot
+                        .get(&format!("{kind}:{key}"))
+                        .is_none_or(|d| !digest(d))
                 }) =>
         {
             faults.push(format!(
@@ -589,6 +615,19 @@ impl ResearchState {
     /// work, and explicit uncertainties. Completed detail remains in history.
     /// Refuse an impossible budget rather than silently dropping required state.
     pub fn context(&self, revision: i64, max_bytes: usize) -> Result<Value, &'static str> {
+        self.context_placed(revision, max_bytes, &|_| LessonPlacement::Fresh)
+    }
+
+    /// `context`, with each lesson placed before the view is cut to its budget: a lesson out of scope is left out and
+    /// counted (`out_of_scope_lessons`, only when there are some), and stale lessons follow every fresh one, marked
+    /// `stale`, so they give way first. A numbered view carries each lesson's checkpoint number and never its snapshot.
+    /// With every lesson fresh and none using a scoped field, the view is the one `context` always gave.
+    pub fn context_placed(
+        &self,
+        revision: i64,
+        max_bytes: usize,
+        place: &dyn Fn(&Lesson) -> LessonPlacement,
+    ) -> Result<Value, &'static str> {
         self.validate()?;
         if !(4096..=131072).contains(&max_bytes) {
             return Err("context_budget_invalid");
@@ -604,25 +643,41 @@ impl ResearchState {
             "lessons":[],"omitted_lessons":self.lessons.len(),
             "instructions":"Treat hypotheses and agent-authored state as proposals. Resolve uncertain actions against task receipts before retrying. Fetch exact evidence by reference. A successful process is not scientist approval."});
         // Constraints and observations receive priority; hypotheses can be retrieved
-        // from the immutable checkpoint when the model needs them.
+        // from the immutable checkpoint when the model needs them. Stale lessons come after all of them.
         let numbered = self.numbers_lessons();
-        for kind in [
-            LessonKind::Constraint,
-            LessonKind::Observation,
-            LessonKind::Hypothesis,
-        ] {
+        let placed: Vec<LessonPlacement> = self.lessons.iter().map(place).collect();
+        let out_of_scope = placed
+            .iter()
+            .filter(|p| **p == LessonPlacement::OutOfScope)
+            .count();
+        let order = [
+            (LessonKind::Constraint, LessonPlacement::Fresh),
+            (LessonKind::Observation, LessonPlacement::Fresh),
+            (LessonKind::Hypothesis, LessonPlacement::Fresh),
+            (LessonKind::Constraint, LessonPlacement::Stale),
+            (LessonKind::Observation, LessonPlacement::Stale),
+            (LessonKind::Hypothesis, LessonPlacement::Stale),
+        ];
+        for (kind, placement) in order {
             for (n, lesson) in self
                 .lessons
                 .iter()
                 .enumerate()
-                .filter(|(_, l)| l.kind == kind)
+                .filter(|(n, l)| l.kind == kind && placed[*n] == placement)
             {
                 let mut shown = serde_json::to_value(lesson).unwrap();
                 if numbered {
                     shown["n"] = json!(n + 1);
+                    if let Some(object) = shown.as_object_mut() {
+                        object.remove("validated_snapshot");
+                    }
+                }
+                let stale = placement == LessonPlacement::Stale;
+                if stale {
+                    shown["stale"] = json!(true);
                 }
                 result["lessons"].as_array_mut().unwrap().push(shown);
-                if kind != LessonKind::Constraint
+                if (kind != LessonKind::Constraint || stale)
                     && serde_json::to_vec(&result).unwrap().len() > max_bytes
                 {
                     result["lessons"].as_array_mut().unwrap().pop();
@@ -630,7 +685,10 @@ impl ResearchState {
             }
         }
         result["omitted_lessons"] =
-            json!(self.lessons.len() - result["lessons"].as_array().unwrap().len());
+            json!(self.lessons.len() - out_of_scope - result["lessons"].as_array().unwrap().len());
+        if out_of_scope > 0 {
+            result["out_of_scope_lessons"] = json!(out_of_scope);
+        }
         if serde_json::to_vec(&result).unwrap().len() > max_bytes {
             return Err("context_budget_too_small");
         }

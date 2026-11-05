@@ -466,6 +466,32 @@ async fn advance(
         let found = super::lead_objects::read(knowledge, run, lab, &state.goal).await;
         super::lead_objects::with_lab_objects(&methods, &object_methods, &found)
     };
+    // A checkpoint with scoped lessons places them by the methods this run shows before its view is cut to budget, so
+    // a lesson out of scope or stale never takes a fresh lesson's room (`lesson_scope`). Without one the view stays the
+    // one read above.
+    let view = if state.numbers_lessons() {
+        match state.context_placed(
+            revision,
+            (budget * 2 / 3).max(4096),
+            &lesson_scope::placement(&methods),
+        ) {
+            Ok(view) => view,
+            Err("context_budget_too_small") => {
+                return segment_boundary(
+                    store,
+                    run,
+                    worker,
+                    generation,
+                    revision,
+                    &plan_segment_keys(&state, &claim["task_facts"], &held),
+                )
+                .await;
+            }
+            Err(error) => bail!(error),
+        }
+    } else {
+        view
+    };
     // An analysis the previous reply named without having seen its contract comes first in this call's view.
     if let Some(refusal) = refused.as_ref() {
         let focus = analysis_view::focus_of(refusal.reason, &refusal.names, &refusal.focus);

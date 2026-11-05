@@ -1,6 +1,7 @@
 use super::*;
 use crate::broker::project::{
-    CheckpointRequest, CreateProject, Inspection, ProjectGrant, ResearchState,
+    CheckpointRequest, CreateProject, Inspection, Lesson, ProjectGrant, ResearchState,
+    code_fields_changed,
 };
 use crate::broker::workspace_catalog::{CombineRefusal, combine, initial_state};
 
@@ -311,6 +312,36 @@ pub(super) async fn checkpoint(
         ));
     }
     let actor = authenticate(&state, &headers).await?;
+    // Only the coordinator writes a lesson's snapshot and counter refs (`coordinator::lesson_scope`): a save may keep
+    // them as the checkpoint it replaces holds them, never add or change them. The write itself still requires that
+    // checkpoint's revision, so the comparison is with the state it replaces.
+    if request
+        .state
+        .lessons
+        .iter()
+        .any(|l| l.validated_snapshot.is_some() || !l.counter_refs.is_empty())
+    {
+        let prior: Vec<Lesson> = state
+            .store
+            .project_history(
+                actor,
+                project,
+                request.expected_revision.saturating_add(1),
+                1,
+            )
+            .await?
+            .into_iter()
+            .find(|c| c["revision"].as_i64() == Some(request.expected_revision))
+            .and_then(|c| serde_json::from_value::<ResearchState>(c["state"].clone()).ok())
+            .map(|s| s.lessons)
+            .unwrap_or_default();
+        if !code_fields_changed(&prior, &request.state.lessons).is_empty() {
+            return Err(ApiError::invalid(
+                "checkpoint_invalid",
+                "A lesson's code-written fields are not the saved ones",
+            ));
+        }
+    }
     let revision = state
         .store
         .checkpoint_project(actor, project, &request)

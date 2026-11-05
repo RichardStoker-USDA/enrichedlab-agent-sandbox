@@ -715,23 +715,28 @@ lists its table as `operator` and keeps it out of lab evidence streams.
 ## Scoped lessons
 
 A lesson may carry four optional fields the lead writes (`coordinator/lesson_scope.rs`): `scope`, an object naming the
-method, query source, object collection or reviewed query (`tool`) key it holds for, each a key the call's methods
-showed; `condition`, at most four refs the call showed that state when it held; `outcome_class`, `accepted` or the
-refusal or check code it came from; and `contradicts`, the number of an earlier lesson it disputes. Code writes two
-more and refuses them in a reply: a scoped lesson's `validated_snapshot`, the digest of each named key's definition
-when it is committed (a method's name, description, template, query source and refs; a source's stored card digest; a
-reviewed query's entry; a collection's reference, title, summary and file names, never its sizes or samples), and a
-disputed lesson's `counter_refs`, the disputing lesson's evidence, at most four. A scope kind outside the four, a key or
-condition ref the call did not show, an outcome class outside the codes and a dispute of a lesson the call did not
-number are refused as `proposal_lesson_invalid`, each named by lesson and field. The stored checkpoint holds the same
-rules for any writer (`checkpoint_invalid`).
+method, object collection or reviewed query (`tool`) key it holds for, each a key the call's methods showed (a query
+source is named by its method, because the methods show a source by its title); `condition`, at most four refs the call
+showed that state when it held; `outcome_class`, `accepted`, `failed_checks`, `no_progress`, `query_failed` or a refusal
+code the call's `attempts` showed; and `contradicts`, the number of an earlier lesson it disputes. Code writes two more
+and refuses them in a reply: a scoped lesson's `validated_snapshot`, one digest per named key of its definition when it
+is committed (a method's name, description, template, refs, source title and stored card digest; a reviewed query's
+entry; a collection's reference, title and summary, never its file count, sizes or samples), and a disputed lesson's
+`counter_refs`, the disputing lesson's evidence, at most four. A scope kind outside the three, a key or condition ref the
+call did not show, a condition ref of a rejected analysis, an outcome class outside that list and a dispute of a lesson
+the call did not number are refused as `proposal_lesson_invalid`, each named by lesson and field. The condition and
+counter refs of a lesson the call showed count as shown. The stored checkpoint holds the same bounds for any writer
+(`checkpoint_invalid`), including a complete snapshot on every scoped lesson, and a checkpoint saved through the API may
+keep a lesson's code-written fields as the checkpoint it replaces holds them but not add or change them, so only the
+coordinator writes scoped lessons.
 
-The compiled context shows a scoped lesson only while the methods show every key it names, and counts the rest in
-`earlier_readings.out_of_scope_lessons`. A lesson whose named definition changed or is gone since it was committed is
-shown with `stale: true` instead of its snapshot, after the fresh lessons, so it gives way first. The checkpoint view
-numbers its lessons (`n`) once one of them uses a scoped field. A checkpoint with no such lesson compiles to the same
-bytes as before, and a lesson without the fields keeps its shape. A project's lessons reach only that project's runs,
-all in one lab, so a scope names no lab. A lesson shared as a lab note keeps its statement, kind and evidence only.
+When a checkpoint holds a scoped lesson, the coordinator builds its view again once the run's methods are read and
+places each lesson before the view is cut to its budget: a lesson whose keys the methods do not all show is left out and
+counted in `earlier_readings.out_of_scope_lessons`; a lesson whose named definition changed, is gone or has no recorded
+digest is shown with `stale: true` after every fresh lesson, so it gives way first. The view numbers its lessons (`n`)
+and never shows a snapshot. A checkpoint with no lesson using a scoped field takes the view it always had and compiles to
+the same bytes, and a lesson without the fields keeps its shape. A project's lessons reach only that project's runs, all
+in one lab, so a scope names no lab. A lesson shared as a lab note keeps its statement, kind and evidence only.
 
 The compiled lead text does not describe these fields: it is the text the autonomy suite accepted and the accepted lane
 uses. A lead text that describes them (a candidate's `--lead-system-file`) reaches them under its own measurement.

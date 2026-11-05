@@ -48,8 +48,8 @@ fn a_checkpoint_without_scoped_lessons_keeps_its_view_and_numbers_lessons_once_o
     );
     let mut scoped = research.clone();
     scoped.lessons.push(serde_json::from_value(json!({"statement":"The source holds one row per animal.",
-        "kind":"observation","evidence_refs":["input://public/example"],"scope":{"source":"public"},
-        "outcome_class":"accepted","validated_snapshot":{"source:public":format!("sha256:{}","c".repeat(64))}})).unwrap());
+        "kind":"observation","evidence_refs":["input://public/example"],"scope":{"method":"reviewed-r"},
+        "outcome_class":"accepted","validated_snapshot":{"method:reviewed-r":format!("sha256:{}","c".repeat(64))}})).unwrap());
     scoped.validate().unwrap();
     let after = scoped.context(4, 8192).unwrap();
     let numbers: Vec<u64> = after["lessons"]
@@ -80,11 +80,12 @@ fn a_stored_checkpoint_refuses_scoped_fields_that_break_their_rules() {
     assert_eq!(
         bad(with("scope", json!({"lab":"lab-a"}))),
         vec![
-            "lesson 2 of 2 scope: a kind is not method, source, collection or tool, or a key is empty, over 200 bytes or holds whitespace"
+            "lesson 2 of 2 scope: a kind is not method, collection or tool, or a key is empty, over 200 bytes or holds whitespace",
+            "lesson 2 of 2 validated_snapshot: missing",
         ]
     );
     assert_eq!(
-        bad(with("outcome_class", json!("made_up"))),
+        bad(with("outcome_class", json!("Made up"))),
         vec!["lesson 2 of 2 outcome_class: not accepted or a refusal or check code"]
     );
     assert_eq!(
@@ -98,8 +99,8 @@ fn a_stored_checkpoint_refuses_scoped_fields_that_break_their_rules() {
         )),
         vec!["lesson 2 of 2 validated_snapshot: only on a scoped lesson"]
     );
-    let mut wrong_key = with("scope", json!({"source":"public"}));
-    wrong_key["validated_snapshot"] = json!({"source:other": format!("sha256:{}","d".repeat(64))});
+    let mut wrong_key = with("scope", json!({"method":"reviewed-r"}));
+    wrong_key["validated_snapshot"] = json!({"method:other": format!("sha256:{}","d".repeat(64))});
     assert_eq!(
         bad(wrong_key),
         vec!["lesson 2 of 2 validated_snapshot: not one digest per scope key"]

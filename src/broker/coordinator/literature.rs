@@ -31,6 +31,9 @@ pub fn context_evidence(context: &Value) -> HashSet<String> {
         .flatten()
     {
         refs.extend(strings(&lesson["evidence_refs"]));
+        // A scoped lesson's condition and counter refs are shown with it.
+        refs.extend(strings(&lesson["condition"]));
+        refs.extend(strings(&lesson["counter_refs"]));
     }
     refs
 }
