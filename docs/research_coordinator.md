@@ -128,8 +128,8 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    answered with. Held steps never move, at a boundary or when a full plan archives (`HeldSteps`): an analysis still
    running or waiting for a person, one an earlier finding or answer table reads, one whose newest person review is
    not `accepted`, one the methods revision request cites, the orientation's profiling steps, and keys already
-   archived. The archive function also refuses a step whose newest review is not accepted, under a lock that orders it
-   against review writes (migration 087, `plan_archive_reviewed`), so a review recorded after the coordinator's read
+   archived. The archive function also refuses a step whose newest person review is not accepted (a service account's
+   retained review counts for neither), under a lock that orders it against review writes (migration 087, `plan_archive_reviewed`), so a review recorded after the coordinator's read
    still holds its step. After a move, or either refusal of a checkpoint that moved on, the run waits 15 seconds with
    no failure counted (`checkpoint_changed`) and the next attempt reads again; any other conflict is a fault. When no
    step can move, the run stops for a person as `review_required` with reason `context_too_large`, before any

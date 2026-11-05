@@ -3,7 +3,7 @@
 //! revision in the plan ledger as `plan_archive`; the claim carries every archived key, the counts by status and by
 //! method, the newest archived steps and each planned analysis's method; a project then grows past the 128 steps one
 //! working plan holds, an archived analysis's key cannot be planned again, the pages cannot change and only the
-//! coordinator archives.
+//! coordinator archives. A person's review that is not accepted holds its step (migration 087).
 use enrichedlab_agent_sandbox::broker::{
     coordinator::{StartRun, newest_tasks, reconcile},
     model::{PrincipalClass, SubmitTaskRequest, VerifiedIdentity},
@@ -648,5 +648,200 @@ async fn finished_steps_move_into_immutable_pages_and_a_project_grows_past_one_w
         ),
         "{indexed}"
     );
+
+    // 10. A person's review holds its analysis in the working plan (migration 087). Only person reviews count, as the
+    // coordinator's results read shows them: a service account's rejection, retained from before reviews became
+    // people-only, moves with its step. A needs_changes review refuses the move until a later review accepts the
+    // analysis, and a review still being recorded holds the archive at the analysis's row lock until it commits, so
+    // the archive then sees it.
+    api.pause_research_run(me, aged_run).await.unwrap();
+    let reviewed = Uuid::new_v4();
+    api.create_project(
+        me,
+        &CreateProject {
+            project_id: reviewed,
+            group: "pilot-lab".into(),
+            title: "Reviewed analyses held".into(),
+            visibility: Visibility::Private,
+        },
+    )
+    .await
+    .unwrap();
+    let held_keys = ["r-legacy", "r-person", "r-pending"];
+    let mut held = Vec::new();
+    for (i, key) in held_keys.iter().enumerate() {
+        let request = SubmitTaskRequest {
+            group: "pilot-lab".into(),
+            profile: "general-research".into(),
+            objective: "Read the public source.".into(),
+            project_id: Some(reviewed),
+            action_key: Some((*key).into()),
+            parent_task_id: None,
+        };
+        let task = api
+            .submit_project_task(
+                me,
+                &request,
+                &format!("held-{i}"),
+                &format!("{:064x}", i + 200),
+            )
+            .await
+            .unwrap();
+        owner
+            .execute(
+                "UPDATE enrichedlab_agent.broker_tasks SET status='failed',error_code='query_failed',
+                 finished_at=clock_timestamp() WHERE task_id=$1",
+                &[&task],
+            )
+            .await
+            .unwrap();
+        held.push(task);
+    }
+    let mut held_state = research();
+    for (key, task) in held_keys.iter().zip(&held) {
+        let mut s = step(key, "failed");
+        s["task_id"] = json!(task);
+        held_state.plan.push(serde_json::from_value(s).unwrap());
+    }
+    api.checkpoint_project(
+        me,
+        reviewed,
+        &CheckpointRequest {
+            expected_revision: 0,
+            request_id: Uuid::new_v4(),
+            state: held_state,
+        },
+    )
+    .await
+    .unwrap();
+    let held_run = api
+        .start_research_run(
+            me,
+            reviewed,
+            &StartRun {
+                run_id: Uuid::new_v4(),
+                expected_revision: 1,
+                allowed_profiles: vec!["general-research".into()],
+                max_turns: 8,
+                max_parallel: 2,
+            },
+        )
+        .await
+        .unwrap();
+    let claim = coordinator
+        .claim_research_run("lead-f", 90)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claim["run"]["run_id"], json!(held_run));
+    let generation = claim["run"]["generation"].as_i64().unwrap();
+    let archive_held = |revision: i64, key: &str| {
+        let coordinator = coordinator.clone();
+        let keys = vec![key.to_owned()];
+        async move {
+            coordinator
+                .archive_research_plan(held_run, "lead-f", generation, revision, &keys)
+                .await
+        }
+    };
+    // A rejection recorded by a workload account before migration 024, written as that migration left such rows.
+    let service = Uuid::new_v4();
+    owner
+        .execute(
+            "INSERT INTO enrichedlab_agent.broker_principals(tenant_id,principal_id,issuer,subject,email,principal_class)
+             VALUES ('research-site',$1,'https://identity.example.invalid','held-service','held-service@example.invalid',
+             'service_account')",
+            &[&service],
+        )
+        .await
+        .unwrap();
+    let direct_review = "INSERT INTO enrichedlab_agent.broker_task_reviews
+        (tenant_id,task_id,attempt,lease_generation,reviewer_id,request_id,decision,note,outputs)
+        SELECT tenant_id,task_id,attempt,lease_generation,$2,gen_random_uuid(),$3,$4,'[]'::jsonb
+        FROM enrichedlab_agent.broker_tasks WHERE task_id=$1";
+    owner
+        .execute(
+            direct_review,
+            &[
+                &held[0],
+                &service,
+                &"rejected",
+                &Some("Recorded by a workload account."),
+            ],
+        )
+        .await
+        .unwrap();
+    api.record_task_review(
+        me,
+        held[1],
+        "needs_changes",
+        Some("Rerun it with the corrected source."),
+        Uuid::new_v4(),
+    )
+    .await
+    .unwrap();
+    let refused = archive_held(1, "r-person").await.unwrap_err();
+    assert_eq!(
+        (refused.kind, refused.code),
+        (StoreErrorKind::Conflict, "plan_archive_reviewed")
+    );
+    assert_eq!(
+        archive_held(1, "r-legacy").await.unwrap(),
+        json!({"revision": 2, "page": 1, "steps": 1})
+    );
+    // Accepting needs an analysis with outputs, which a failed one lacks; the later decision is written directly.
+    owner
+        .execute(direct_review, &[&held[1], &me, &"accepted", &None::<&str>])
+        .await
+        .unwrap();
+    assert_eq!(
+        archive_held(2, "r-person").await.unwrap(),
+        json!({"revision": 3, "page": 2, "steps": 1})
+    );
+    let connect = |role: &str| {
+        let config: Config = dsn
+            .replace("user=postgres", &format!("user={role}"))
+            .parse()
+            .unwrap();
+        async move { config.connect(NoTls).await.unwrap() }
+    };
+    let (mut reviewer, reviewer_io) = connect("broker_api_qual").await;
+    let reviewer_io = tokio::spawn(reviewer_io);
+    let (archiver, archiver_io) = connect("broker_coordinator_qual").await;
+    let archiver_io = tokio::spawn(archiver_io);
+    let pending = reviewer.transaction().await.unwrap();
+    pending
+        .query_one(
+            "SELECT enrichedlab_agent.broker_record_task_review('research-site',$1::uuid,$2::uuid,'rejected',
+             'The source changed.',$3::uuid)",
+            &[&me, &held[2], &Uuid::new_v4()],
+        )
+        .await
+        .unwrap();
+    archiver
+        .batch_execute("SET lock_timeout = '500ms'")
+        .await
+        .unwrap();
+    let waited = archiver
+        .query_one(
+            "SELECT enrichedlab_agent.broker_archive_research_plan('research-site',$1::uuid,'lead-f',$2::bigint,
+             3::bigint,ARRAY['r-pending'])",
+            &[&held_run, &generation],
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        waited.code(),
+        Some(&SqlState::LOCK_NOT_AVAILABLE),
+        "{waited}"
+    );
+    pending.commit().await.unwrap();
+    let refused = archive_held(3, "r-pending").await.unwrap_err();
+    assert_eq!(
+        (refused.kind, refused.code),
+        (StoreErrorKind::Conflict, "plan_archive_reviewed")
+    );
+    reviewer_io.abort();
+    archiver_io.abort();
     connection.abort();
 }

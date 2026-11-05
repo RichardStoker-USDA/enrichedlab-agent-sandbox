@@ -2,8 +2,10 @@
 -- accepted out of every plan archive, but a review recorded between its read and the archive would still move that
 -- step, and an archived analysis's review no longer reaches the lead. This archive function (048's, unchanged
 -- otherwise) locks the moved steps' task rows, which conflicts with the row share lock a review write takes, and
--- refuses with plan_archive_reviewed when any moved step's newest review is needs_changes or rejected. The coordinator
--- reads again and decides without that step. Schema version 87 gates coordinators that expect the refusal.
+-- refuses with plan_archive_reviewed when any moved step's newest person review is needs_changes or rejected. Only
+-- person reviews count, as the coordinator's results read (064) shows them, so a service account's review retained
+-- from before migration 024 neither holds a step there nor refuses it here. The coordinator reads again and decides
+-- without that step. Schema version 87 gates coordinators that expect the refusal.
 --
 -- An earlier coordinator meets the refusal only when it would have moved a reviewed step, and then fails that turn
 -- instead of hiding the review.

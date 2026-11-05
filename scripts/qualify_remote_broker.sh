@@ -864,7 +864,7 @@ if [ "$mode" = plan-ledger ]; then
     exit 0
 fi
 if [ "$mode" = plan-pages ]; then
-    # Migration 048 must apply twice without change before its behavior is checked.
+    # Migrations 048 and 087 must apply twice without change before their behavior is checked.
     "$broker_bin" migrate --migration-dsn-file "$dsn_file"
     docker exec "$container" psql --username postgres --dbname "$database" --set=ON_ERROR_STOP=on \
         --command='CREATE ROLE broker_coordinator_qual LOGIN;'
@@ -872,7 +872,7 @@ if [ "$mode" = plan-pages ]; then
         --file=/workspace/migrations/postgres/grant_broker_coordinator.psql
     BROKER_QUALIFICATION_MIGRATION_DSN_FILE="$dsn_file" \
         cargo test --locked --test broker_plan_pages -- --ignored
-    printf '%s\n' "Plan pages: finished-only archive under the run's lease and revision, the ledger label, the claim's archive and methods, growth past one working plan, immutability and grants PostgreSQL checks passed."
+    printf '%s\n' "Plan pages: finished-only archive under the run's lease and revision, the ledger label, the claim's archive and methods, growth past one working plan, immutability, grants and the person-review hold PostgreSQL checks passed."
     exit 0
 fi
 if [ "$mode" = methods-revision ]; then
