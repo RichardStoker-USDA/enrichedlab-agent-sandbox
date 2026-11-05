@@ -687,8 +687,8 @@ pub(super) fn fix_for(reason: &str) -> Option<&'static str> {
 /// names them.
 pub(super) const CHECKPOINT_FIX: &str = "Correct each named item and keep the rest: a step title holds at most 512 \
     bytes, a step rationale, lesson statement or summary at most 2048; each ref is an artifact://, input://, \
-    receipt://, tool://, profile:// or source:// ref shown in this context; an observation lesson names its evidence \
-    refs; a step key is used once.";
+    receipt://, tool://, profile:// or source:// ref shown in this context, and a lesson may also cite a library:// \
+    part you read in this turn; an observation lesson names its evidence refs; a step key is used once.";
 
 /// What a number refusal's next call is told it may do (`prior_attempt.fix`), stating the prose rule as the checks apply
 /// it (`ResultIndex::number_refused`).

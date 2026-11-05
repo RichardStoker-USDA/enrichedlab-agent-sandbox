@@ -770,7 +770,11 @@ under `lists_kept_as_digests` while `lead` and `shown` stay for packages and acc
 refused the same way (`record: N bytes over`).
 A plan that breaks another checkpoint rule is refused as `checkpoint_invalid` with each rule and item named (`step
 <key> title: 513 of 512 bytes`, `lesson 4 of 9: an observation names its evidence refs`, a ref named by its position)
-and a fixed `fix` text in `prior_attempt`; the names hold keys, positions and sizes, never the text.
+and a fixed `fix` text in `prior_attempt`; the names hold keys, positions and sizes, never the text. A step's refs are
+results, inputs, receipts, tools, profiles or sources; a lesson's may also be a `library://` part of a paper the lead
+read in its turn, which the lead check already admits as lesson evidence. Before this, the checkpoint refused those
+parts, and r42's measurement refused the same lesson five times in two runs (`checkpoint_invalid`, its only new
+repeated refusal).
 
 The lead's instructions grew by 1,429 bytes for this. That text changes every run's call, so the autonomy suite runs on
 the release before it is accepted (`the_system_text_is_the_one_the_suite_accepted`). The methods review sends back an

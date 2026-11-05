@@ -189,6 +189,18 @@ fn reference(value: &str) -> bool {
         .any(|prefix| value.starts_with(prefix))
         && !value.contains(['?', '#', '@'])
 }
+/// A part of a library paper: `library://<paper uuid>`, optionally with the part's path, at most 512 bytes, without
+/// spaces, `?`, `#` or `@`. Only a lesson may cite one: the lead check admits a part only when the lead read it in its
+/// turn, so a lesson can rest on what a paper it read did.
+fn library_part_reference(value: &str) -> bool {
+    text(value, 512)
+        && !value.chars().any(char::is_whitespace)
+        && !value.contains(['?', '#', '@'])
+        && value.strip_prefix("library://").is_some_and(|rest| {
+            let paper = rest.split('/').next().unwrap_or_default();
+            Uuid::parse_str(paper).is_ok_and(|id| id.to_string() == paper)
+        })
+}
 fn references(values: &[String]) -> bool {
     values.len() <= 64 && values.iter().all(|s| reference(s))
 }
@@ -206,19 +218,38 @@ fn text_fault(name: &str, value: &str, max: usize) -> Option<String> {
 }
 /// The rule `references` applies, naming each refused ref by its position, or none.
 fn references_fault(name: &str, values: &[String]) -> Option<String> {
+    refs_fault(name, values, reference, "")
+}
+
+/// A lesson's refs: the checkpoint's refs or a library:// part the lead read.
+fn lesson_references_fault(name: &str, values: &[String]) -> Option<String> {
+    refs_fault(
+        name,
+        values,
+        |value| reference(value) || library_part_reference(value),
+        " or a library:// part you read",
+    )
+}
+
+fn refs_fault(
+    name: &str,
+    values: &[String],
+    allowed: impl Fn(&str) -> bool,
+    also: &str,
+) -> Option<String> {
     if values.len() > 64 {
         return Some(format!("{name}: {} of 64 refs", values.len()));
     }
     let refused: Vec<String> = values
         .iter()
         .enumerate()
-        .filter(|(_, value)| !reference(value))
+        .filter(|(_, value)| !allowed(value))
         .map(|(i, _)| (i + 1).to_string())
         .collect();
     (!refused.is_empty()).then(|| {
         format!(
-            "{name}: ref {} is not an artifact://, input://, receipt://, tool://, profile:// or source:// ref of at most \
-             512 bytes without spaces, ?, # or @",
+            "{name}: ref {} is not an artifact://, input://, receipt://, tool://, profile:// or source:// ref{also} of \
+             at most 512 bytes without spaces, ?, # or @",
             refused.join(", ")
         )
     })
@@ -348,7 +379,7 @@ impl ResearchState {
                 &lesson.statement,
                 2048,
             ));
-            faults.extend(references_fault(
+            faults.extend(lesson_references_fault(
                 &format!("{name} evidence_refs"),
                 &lesson.evidence_refs,
             ));

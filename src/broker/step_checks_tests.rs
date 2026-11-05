@@ -696,3 +696,49 @@ fn a_record_over_its_bound_gives_way_in_the_brokers_parts_before_refusing() {
     let mut record = json!({"proposal": {"summary": "s".repeat(130 * 1024)}, "reading": ledger(5)});
     assert!(fit_record(&mut record, &json!({})).is_some_and(|n| n > 0));
 }
+
+#[test]
+fn a_lesson_may_rest_on_a_library_part_the_lead_read_but_a_step_may_not() {
+    // r42's measurement: lessons citing a part the lead read passed the lead check and failed the checkpoint, five
+    // refusals in a row.
+    use crate::broker::project::ResearchState;
+    let paper = "0192f0aa-1111-7222-8333-944455556666";
+    let mut state: ResearchState = serde_json::from_value(json!({"schema_version":1,"goal":"g","constraints":[],"plan":[],
+        "lessons":[{"kind": "observation", "statement": "s",
+            "evidence_refs": [format!("library://{paper}/section/3"), format!("library://{paper}")]}],
+        "next_action":"n","workspace":{"schema_version":1,"profile":"p",
+        "image_digest":format!("sha256:{}","a".repeat(64)),"source_digest":format!("sha256:{}","b".repeat(64)),
+        "input_refs":[],"tool_refs":[],"preparation_receipt":null}}))
+    .unwrap();
+    assert!(
+        state.checkpoint_faults().is_empty(),
+        "{:?}",
+        state.checkpoint_faults()
+    );
+    assert_eq!(state.validate(), Ok(()));
+    // Not a part ref: a paper id that is not a canonical UUID, a space, a query.
+    for bad in [
+        "library://smith2020/section/1",
+        "library://0192F0AA-1111-7222-8333-944455556666",
+        "library://0192f0aa-1111-7222-8333-944455556666/a b",
+        "library://0192f0aa-1111-7222-8333-944455556666?x=1",
+    ] {
+        state.lessons[0].evidence_refs = vec![bad.to_owned()];
+        let faults = state.checkpoint_faults();
+        assert_eq!(faults.len(), 1, "{bad}: {faults:?}");
+        assert!(
+            faults[0].starts_with("lesson 1 of 1 evidence_refs: ref 1 is not")
+                && faults[0].contains("library:// part")
+        );
+    }
+    // A step's evidence stays a result or input.
+    state.lessons[0].evidence_refs = vec![format!("library://{paper}/section/3")];
+    state.plan.push(serde_json::from_value(json!({"action_key": "load_cohort", "title": "t", "status": "pending",
+        "task_id": null, "evidence_refs": [format!("library://{paper}/section/3")], "rationale": "r"})).unwrap());
+    let faults = state.checkpoint_faults();
+    assert_eq!(faults.len(), 1, "{faults:?}");
+    assert!(
+        faults[0].starts_with("step load_cohort evidence_refs: ref 1 is not")
+            && !faults[0].contains("library://")
+    );
+}
