@@ -210,7 +210,7 @@
       <div class="reading">
         {#if view.outline?.abstract}
           <section id="paper-abstract" tabindex="-1" aria-labelledby="abstract-title">
-            <h2 id="abstract-title" class="group-title">Abstract</h2>
+            <h2 id="abstract-title" class="section-title">Abstract</h2>
             <p class="abstract">{view.outline.abstract}</p>
           </section>
         {/if}
@@ -242,7 +242,7 @@
               {#each reading.figures as figure, i (figure.id ?? i)}
                 <div class="figure-item"><figure class="paper-figure">
                   {#if figure.image && figure.id && group}
-                    <a class="plate" href={library.figureImage(group.key, paperId, figure.id)} target="_blank" rel="noopener" style:aspect-ratio={figure.width && figure.height ? `${figure.width} / ${figure.height}` : null}>
+                    <a class="plate" href={library.figureImage(group.key, paperId, figure.id)} target="_blank" rel="noopener" style:aspect-ratio={figure.width && figure.height ? `${figure.width} / ${figure.height}` : null} style:max-width={figure.width ? `${figure.width}px` : null}>
                       <img src={library.figureImage(group.key, paperId, figure.id)} alt={`${figure.label ?? `Figure ${i + 1}`}${figure.caption ? `: ${figure.caption.slice(0, 160)}` : ""}`} loading="lazy" decoding="async" width={figure.width ?? undefined} height={figure.height ?? undefined} />
                     </a>
                   {:else}
@@ -416,7 +416,7 @@
   .reader { display: grid; gap: 28px; align-items: start; }
   .reader.with-contents { grid-template-columns: minmax(170px, 210px) minmax(0, 1fr); gap: 40px; }
   .reading { display: grid; gap: 28px; min-width: 0; }
-  .contents { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; padding-right: 4px; }
+  .contents { position: sticky; top: calc(var(--bar-h) + 12px); max-height: calc(100vh - var(--bar-h) - 24px); overflow: auto; padding-right: 4px; }
   .contents-title { font-size: var(--font-xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 6px; }
   .contents ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; border-left: 1px solid var(--line); }
   .contents li.depth-2 { padding-left: 12px; }
@@ -424,7 +424,7 @@
   .contents-link { all: unset; display: block; cursor: pointer; padding: 5px 10px; margin-left: -1px; border-left: 2px solid transparent; font-size: var(--font-small); line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
   .contents-link:hover { color: var(--heading); border-left-color: var(--line-2); background: var(--hover-wash); }
   .contents-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 3px; }
-  .paper-section, #paper-abstract, #paper-figures, #paper-tables { scroll-margin-top: 16px; display: grid; gap: 10px; }
+  .paper-section, #paper-abstract, #paper-figures, #paper-tables { scroll-margin-top: calc(var(--bar-h) + 16px); display: grid; gap: 10px; }
   .paper-section:focus, #paper-abstract:focus, #paper-figures:focus, #paper-tables:focus { outline: none; }
   .section-trail { font-size: var(--font-xs); color: var(--text-3); }
   .section-title { font-family: var(--serif); font-size: calc(22px * var(--type-scale)); line-height: 1.25; color: var(--heading); font-weight: 600; max-width: 34em; }
@@ -453,6 +453,6 @@
   .grid-scroll th { position: sticky; top: 0; background: var(--surface-2); color: var(--heading); font-weight: 600; }
   @media (max-width: 860px) {
     .reader.with-contents { grid-template-columns: minmax(0, 1fr); gap: 20px; }
-    .contents { position: static; max-height: none; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+    .contents { position: static; max-height: 40vh; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
   }
 </style>

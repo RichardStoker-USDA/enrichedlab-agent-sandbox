@@ -242,7 +242,7 @@ function reading(r: { paper_id: string; abstract: string; text: { section: strin
       cut_paragraphs: 0, pages: t.pages.replace("page ", "") })),
     figures: r.figures.map((f, i) => ({ ordinal: i, id: figureId(r, i), label: f.label, caption: f.caption,
       description: i === 0 ? "A line chart with two invented series over three hours; the upper line falls slowly after the first hour." : null,
-      page: f.page, image: true, width: 960, height: 600 })),
+      page: f.page, image: true, width: 480, height: 300 })),
     tables: [{ ordinal: 0, label: "Table 1", caption: "Invented participant characteristics by breakfast order.", page: 3 }],
     figures_total: r.figures.length, tables_total: 1, blocks_read: all.length * 2, blocks_total: all.length * 2, complete: true,
   };
