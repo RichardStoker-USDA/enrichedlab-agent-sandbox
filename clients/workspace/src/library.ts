@@ -1,5 +1,5 @@
 import { BrokerError, request } from "./api.ts";
-import type { Library, LibraryAdded, LibraryLabel, LibraryLabelNamespace, LibraryPaper, LibraryPaperView, LibrarySearch, PassageRead } from "./contracts.ts";
+import type { Library, LibraryAdded, LibraryLabel, LibraryLabelNamespace, LibraryPaper, LibraryPaperView, LibraryReading, LibrarySearch, LibraryTableGrid, PassageRead } from "./contracts.ts";
 import type { ResearchTurn } from "./projects.ts";
 
 // The lab library in plain words. Each lab keeps its papers in its own corpus of the document service,
@@ -37,6 +37,15 @@ export const library = {
   list: (lab: string, signal?: AbortSignal) => request<Library>(labPath(lab), { signal }),
   paper: (lab: string, paper: string, signal?: AbortSignal) =>
     request<LibraryPaperView>(`${labPath(lab)}/papers/${id(paper)}`, { signal }),
+  // The whole paper from its parse; a long paper takes several reads of the document service.
+  read: async (lab: string, paper: string, signal?: AbortSignal) =>
+    (await request<{ reading: LibraryReading }>(`${labPath(lab)}/papers/${id(paper)}/read`, { signal: signal ?? AbortSignal.timeout(90000) })).reading,
+  // Same-origin image address for an <img>: the broker checks the figure is this paper's before it fetches the image.
+  figureImage: (lab: string, paper: string, figure: string) => `${labPath(lab)}/papers/${id(paper)}/figures/${id(figure)}/image`,
+  table: async (lab: string, paper: string, ordinal: number, signal?: AbortSignal) => {
+    if (!Number.isInteger(ordinal) || ordinal < 0 || ordinal > 10000) throw new BrokerError("invalid_reference");
+    return (await request<{ table: LibraryTableGrid }>(`${labPath(lab)}/papers/${id(paper)}/tables/${ordinal}`, { signal })).table;
+  },
   search: (lab: string, query: string, signal?: AbortSignal) =>
     request<LibrarySearch>(`${labPath(lab)}/search?q=${encodeURIComponent(query)}`, { signal: signal ?? AbortSignal.timeout(40000) }),
   // Reading a long paper can take a minute or two; the request key makes a repeated click safe.
@@ -383,3 +392,12 @@ export function paperReadWords(item: PaperRead): string {
   if (item.state === "unknown") return "a paper in the lab's library";
   return [item.paper?.title?.trim() || "An untitled paper", ...item.pages].join(", ");
 }
+
+// The parser's section roles in plain words, for the paper's contents.
+const ROLE_WORDS: Record<string, string> = {
+  abstract: "Abstract", keywords: "Keywords", introduction: "Introduction", methods: "Methods", results: "Results",
+  discussion: "Discussion", conclusion: "Conclusion", references: "References", acknowledgements: "Acknowledgements",
+  funding: "Funding", conflict: "Conflicts of interest", supplementary: "Supplementary material",
+  author_contributions: "Author contributions", ethics: "Ethics", data_availability: "Data availability",
+};
+export const roleWords = (role: string | null) => (role ? ROLE_WORDS[role] ?? null : null);

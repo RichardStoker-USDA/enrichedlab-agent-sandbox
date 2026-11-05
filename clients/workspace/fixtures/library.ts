@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { crc32, deflateSync } from "node:zlib";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LibraryLabel, LibraryLabelNamespace, LibraryPaper } from "../src/contracts.ts";
 
@@ -155,6 +156,26 @@ export function libraryFixtures(options: { me: string; at: (seconds: number) => 
         json({ paper: view(record), created: true, restored: false }, 201);
         return true;
       }
+      const part = rest.match(/^\/papers\/([0-9a-f-]{36})\/(read|figures\/([0-9a-f-]{36})\/image|tables\/(\d{1,5}))$/);
+      if (part && req.method === "GET") {
+        const r = mine.find((p) => p.paper_id === part[1]);
+        if (!r || removal(r)) { refused(json, "library_paper_removed", 404); return true; }
+        if (part[2] === "read") { json({ reading: reading(r) }); return true; }
+        if (part[3]) {
+          const ok = r.figures.some((_f, i) => figureId(r, i) === part[3]);
+          if (!ok) { refused(json, "figure_image_not_found", 404); return true; }
+          _res.writeHead(200, { "content-type": "image/png", "cache-control": "private, max-age=86400", "x-content-type-options": "nosniff" });
+          _res.end(chartPng(part[3]));
+          return true;
+        }
+        const ordinal = Number(part[4]);
+        if (ordinal !== 0) { refused(json, "library_not_configured", 404); return true; }
+        json({ table: { ordinal: 0, label: "Table 1", caption: "Invented participant characteristics by breakfast order.",
+          header: ["Characteristic", "Order A (n = 12)", "Order B (n = 12)"],
+          rows: [["Age, years", "34 (8)", "36 (9)"], ["Women, n", "7", "6"], ["Body mass index", "24.1 (3.0)", "23.8 (2.7)"], ["Usual breakfast eaters, n", "10", "11"]],
+          rows_total: 4 } });
+        return true;
+      }
       const one = rest.match(/^\/papers\/([0-9a-f-]{36})(\/remove|\/labels|\/acceptance)?$/);
       if (!one) { denied(); return true; }
       const r = mine.find((p) => p.paper_id === one[1]);
@@ -202,4 +223,53 @@ export function libraryFixtures(options: { me: string; at: (seconds: number) => 
       return true;
     },
   };
+}
+
+// A paper's figure ids are fixed per paper and position, so the preview's image routes can check them.
+function figureId(r: { paper_id: string }, i: number) {
+  return `${r.paper_id.slice(0, 24)}${String(i + 1).padStart(12, "0")}`;
+}
+
+// The preview's whole-paper reading: invented sections from the fixture's passages, its figures and one table.
+function reading(r: { paper_id: string; abstract: string; text: { section: string; pages: string; body: string }[]; figures: { label: string; caption: string; page: number }[] }) {
+  const roles: Record<string, string> = { Methods: "methods", Results: "results", Introduction: "introduction", Discussion: "discussion" };
+  const opening = { section: "Introduction", pages: "page 1", body: "This invented introduction explains why breakfast composition might change fullness later in the morning. It exists only so the preview has a full paper to lay out." };
+  const closing = { section: "Discussion", pages: "page 6", body: "In this synthetic example the effect faded by the third hour. A real study would need far more participants; nothing here is a finding." };
+  const all = [opening, ...r.text, closing];
+  return {
+    sections: all.map((t, i) => ({ key: `${i.toString(16).padStart(16, "0")}`, heading: t.section, path: [t.section], role: roles[t.section] ?? null,
+      paragraphs: [t.body, "A second invented paragraph keeps the layout honest about length, with enough words to wrap across several lines at a comfortable reading width."],
+      cut_paragraphs: 0, pages: t.pages.replace("page ", "") })),
+    figures: r.figures.map((f, i) => ({ ordinal: i, id: figureId(r, i), label: f.label, caption: f.caption,
+      description: i === 0 ? "A line chart with two invented series over three hours; the upper line falls slowly after the first hour." : null,
+      page: f.page, image: true, width: 960, height: 600 })),
+    tables: [{ ordinal: 0, label: "Table 1", caption: "Invented participant characteristics by breakfast order.", page: 3 }],
+    figures_total: r.figures.length, tables_total: 1, blocks_read: all.length * 2, blocks_total: all.length * 2, complete: true,
+  };
+}
+
+// A small generated PNG standing in for a figure: bars on a light plate, varied by the figure id.
+function chartPng(seed: string) {
+  const w = 480, h = 300;
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  const bars = Array.from({ length: 6 }, (_, i) => 60 + ((seed.charCodeAt(30 + (i % 6)) * 37 + i * 53) % 170));
+  for (let y = 0; y < h; y++) {
+    raw[y * (w * 3 + 1)] = 0;
+    for (let x = 0; x < w; x++) {
+      const o = y * (w * 3 + 1) + 1 + x * 3;
+      let c = [250, 250, 250];
+      if (y === h - 30 || x === 40) c = [120, 120, 120];
+      const slot = Math.floor((x - 60) / 68), within = (x - 60) % 68;
+      if (slot >= 0 && slot < 6 && within < 44 && y < h - 30 && y > h - 30 - bars[slot]) c = slot % 2 ? [104, 132, 163] : [2, 40, 81];
+      raw[o] = c[0]; raw[o + 1] = c[1]; raw[o + 2] = c[2];
+    }
+  }
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, "latin1"), data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td) >>> 0);
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }

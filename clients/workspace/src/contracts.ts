@@ -512,6 +512,12 @@ export interface LibraryOutline {
   figures_total: number | null;
 }
 export interface LibraryPaperView { paper: LibraryPaper; outline: LibraryOutline | null; outline_error: string | null }
+// A paper read whole from its parse (broker `library::read`): sections in reading order, figures, tables.
+export interface LibrarySection { key: string; heading: string; path: string[]; role: string | null; paragraphs: string[]; cut_paragraphs: number; pages: string | null }
+export interface LibraryFigure { ordinal: number; id: string | null; label: string | null; caption: string | null; description: string | null; page: number | null; image: boolean; width: number | null; height: number | null }
+export interface LibraryTableRef { ordinal: number; label: string | null; caption: string | null; page: number | null }
+export interface LibraryReading { sections: LibrarySection[]; figures: LibraryFigure[]; tables: LibraryTableRef[]; figures_total: number; tables_total: number; blocks_read: number; blocks_total: number; complete: boolean }
+export interface LibraryTableGrid { ordinal: number; label: string | null; caption: string | null; header: (string | null)[]; rows: (string | null)[][]; rows_total: number }
 export interface LibraryPassage {
   paper_id: string;
   title: string | null;
