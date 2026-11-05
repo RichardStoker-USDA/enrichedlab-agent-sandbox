@@ -52,6 +52,7 @@ mod campaigns;
 mod changes;
 mod datasets;
 mod documents;
+mod explorer;
 mod figures;
 mod knowledge;
 mod lab_notes;
@@ -467,6 +468,14 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/api/v1/tasks/{task}/query", get(review::query))
         .route("/api/v1/tasks/{task}/figure", get(figures::detail))
+        // A figure version's browser explorer, on the workspace origin beside the webR mirror (decision 103).
+        .route("/explorer/page.js", get(explorer::page_script))
+        .route(
+            "/explorer/{task}/{artifact}",
+            get(explorer::page_without_slash),
+        )
+        .route("/explorer/{task}/{artifact}/", get(explorer::page))
+        .route("/explorer/{task}/{artifact}/app.json", get(explorer::app))
         .route("/api/v1/tasks/{task}/document", get(documents::detail))
         .route(
             "/api/v1/projects/{project}/documents",

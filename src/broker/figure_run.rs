@@ -84,6 +84,7 @@ const ANSWER_FIELDS: &[&str] = &[
     "common_code",
     "notes",
     "font_face",
+    "explorer",
 ];
 const MAX_ANSWER_HELD: usize = 128 * 1024 * 1024;
 const MAX_CATALOG_BYTES: usize = 1024 * 1024;
@@ -391,6 +392,107 @@ struct Drawn {
     notes: Vec<String>,
     /// The typeface R drew the text with, as the service reports it.
     font_face: Option<String>,
+    /// The figure's browser explorer (render-service 0.9.0, decision 103), or why the version has none.
+    explorer: Result<Explorer, &'static str>,
+}
+
+/// A figure's Shinylive explorer as the service wrote it: its version, the SHA-256 of its canonical file list and the
+/// files, each a name from `EXPLORER_FILES` with its text.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Explorer {
+    pub(super) version: u64,
+    pub(super) sha256: String,
+    pub(super) files: Vec<(String, String)>,
+}
+
+/// The files an explorer holds, the version this broker reads, and the most bytes its files may hold together.
+pub(super) const EXPLORER_FILES: &[&str] = &[
+    "app.R",
+    "settings.R",
+    "controls.json",
+    "params.json",
+    "figure.R.txt",
+    "_common.R.txt",
+    "data.csv",
+];
+const EXPLORER_VERSION: u64 = 1;
+/// The service's refusal of an explorer larger than its budget; the version is drawn again without one.
+const EXPLORER_TOO_LARGE: &str = "explorer_too_large";
+const MAX_EXPLORER_BYTES: usize = 8 * 1024 * 1024;
+
+/// The explorer in a service answer, checked: version 1, each of `EXPLORER_FILES` once as text, within the byte
+/// budget, and a `sha256` equal to the SHA-256 of the file list as the service canonicalizes it (sorted keys, no
+/// spaces, UTF-8). `Err` names why it is left out; the figure stands either way.
+pub(super) fn checked_explorer(value: &Value) -> Result<Explorer, &'static str> {
+    let unreadable = "explorer_unreadable";
+    let object = value.as_object().ok_or(unreadable)?;
+    if object.get("version").and_then(Value::as_u64) != Some(EXPLORER_VERSION) {
+        return Err(unreadable);
+    }
+    let sha256 = object
+        .get("sha256")
+        .and_then(Value::as_str)
+        .filter(|d| {
+            d.len() == 64
+                && d.bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        })
+        .ok_or(unreadable)?;
+    let listed = object
+        .get("files")
+        .and_then(Value::as_array)
+        .ok_or(unreadable)?;
+    if listed.len() != EXPLORER_FILES.len() {
+        return Err(unreadable);
+    }
+    let mut files = Vec::with_capacity(listed.len());
+    let mut bytes = 0usize;
+    for file in listed {
+        let entry = file.as_object().ok_or(unreadable)?;
+        if entry.len() != 3 || entry.get("type").and_then(Value::as_str) != Some("text") {
+            return Err(unreadable);
+        }
+        let name = entry
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or(unreadable)?;
+        let content = entry
+            .get("content")
+            .and_then(Value::as_str)
+            .ok_or(unreadable)?;
+        if !EXPLORER_FILES.contains(&name)
+            || files.iter().any(|(n, _): &(String, String)| n == name)
+        {
+            return Err(unreadable);
+        }
+        bytes += content.len();
+        if bytes > MAX_EXPLORER_BYTES {
+            return Err("explorer_too_large");
+        }
+        files.push((name.to_owned(), content.to_owned()));
+    }
+    // Sorted keys in compact UTF-8, the same bytes as the service's
+    // json.dumps(files, sort_keys=True, separators=(",", ":"), ensure_ascii=False). BTreeMap fixes the key order
+    // whatever serde_json's map ordering is.
+    let sorted: Vec<std::collections::BTreeMap<&str, &str>> = files
+        .iter()
+        .map(|(name, content)| {
+            std::collections::BTreeMap::from([
+                ("content", content.as_str()),
+                ("name", name.as_str()),
+                ("type", "text"),
+            ])
+        })
+        .collect();
+    let canonical = serde_json::to_vec(&sorted).map_err(|_| unreadable)?;
+    if hex::encode(Sha256::digest(&canonical)) != sha256 {
+        return Err(unreadable);
+    }
+    Ok(Explorer {
+        version: EXPLORER_VERSION,
+        sha256: sha256.to_owned(),
+        files,
+    })
 }
 
 const MAX_FONT_FACE_CHARS: usize = 120;
@@ -670,7 +772,16 @@ async fn run(
     if let Err(stop) = refresh_catalog(store, config).await {
         tracing::warn!(task_id=%task.id, event="render_catalog_not_read", code=stop.code);
     }
-    let drawn = draw(&base, request, &columns, rows, RENDER_TIMEOUT).await?;
+    // A version asks for its explorer too; one the service will not write (too large) is drawn again without it.
+    let drawn = match draw(&base, request, &columns, &rows, RENDER_TIMEOUT, true).await {
+        Err(stop) if stop.code == EXPLORER_TOO_LARGE => {
+            let mut drawn = draw(&base, request, &columns, &rows, RENDER_TIMEOUT, false).await?;
+            drawn.explorer = Err(EXPLORER_TOO_LARGE);
+            drawn
+        }
+        other => other?,
+    };
+    drop(rows);
     let (package, files, notes) =
         package(task, request, &drawn).map_err(|_| failed("figure_package_failed"))?;
     retain(store, config, task, &package, PACKAGE_LABEL).await?;
@@ -960,12 +1071,16 @@ async fn draw(
     base: &str,
     request: &TaskFigure,
     columns: &[String],
-    rows: Vec<Vec<Value>>,
+    rows: &[Vec<Value>],
     timeout: Duration,
+    explorer: bool,
 ) -> Result<Drawn, Stop> {
     let mut body = json!({"feature_id": request.feature, "params": request.controls, "columns": columns, "rows": rows});
     if !request.title.is_empty() {
         body["title"] = json!(request.title);
+    }
+    if explorer {
+        body["explorer"] = json!(true);
     }
     let response = client()?
         .post(format!("{base}/render"))
@@ -984,6 +1099,12 @@ async fn draw(
             })
         })?;
     drop(bytes);
+    if explorer
+        && status == StatusCode::PAYLOAD_TOO_LARGE
+        && out["refusal"]["code"].as_str() == Some("explorer_too_large")
+    {
+        return Err(failed(EXPLORER_TOO_LARGE));
+    }
     if status == StatusCode::BAD_REQUEST {
         return Err(service_stop(&out, columns, true));
     }
@@ -1047,6 +1168,12 @@ async fn draw(
             MAX_NOTES_BYTES,
         ),
         font_face: text("font_face").filter(|face| plain_face(face)),
+        explorer: if explorer {
+            out.get("explorer")
+                .map_or(Err("explorer_unreadable"), checked_explorer)
+        } else {
+            Err("explorer_not_asked")
+        },
     })
 }
 
@@ -1064,7 +1191,15 @@ pub async fn draw_preview(config: &WorkerConfig, request: &TaskFigure) -> Previe
             .await
             .map_err(|_| failed("figure_source_unreadable"))??;
         let (columns, rows) = parse_table(&table)?;
-        draw(&base, request, &columns, rows, PREVIEW_RENDER_TIMEOUT).await
+        draw(
+            &base,
+            request,
+            &columns,
+            &rows,
+            PREVIEW_RENDER_TIMEOUT,
+            false,
+        )
+        .await
     }
     .await;
     match drawn {
@@ -1204,6 +1339,11 @@ fn package(
             "shared": {"path": "code/_common.R", "sha256": hex::encode(Sha256::digest(drawn.common.as_bytes()))},
             "settings": {"path": "code/params.json", "sha256": hex::encode(Sha256::digest(&settings))}},
         "files": files,
+        "explorer": match &drawn.explorer {
+            Ok(explorer) => json!({"version": explorer.version, "sha256": explorer.sha256, "folder": "explorer/",
+                "files": explorer.files.iter().map(|(name, _)| name).collect::<Vec<_>>()}),
+            Err(reason) => json!({"skipped": reason}),
+        },
         "request_sha256": request.request_sha256,
     });
     let mut members: Vec<(String, Vec<u8>)> = figures
@@ -1214,6 +1354,11 @@ fn package(
     members.push(("code/_common.R".into(), drawn.common.clone().into_bytes()));
     members.push(("code/params.json".into(), settings));
     members.push(("spec.json".into(), serde_json::to_vec_pretty(&spec)?));
+    if let Ok(explorer) = &drawn.explorer {
+        for (name, content) in &explorer.files {
+            members.push((format!("explorer/{name}"), content.clone().into_bytes()));
+        }
+    }
     members.push((
         "README.md".into(),
         readme(request, &template_path, &drawn.service_version).into_bytes(),
@@ -1263,7 +1408,9 @@ fn readme(request: &TaskFigure, template_path: &str, version: &str) -> String {
          one was asked for.\n- `code/` holds the plot template (`{template_path}`), the shared R code it reads \
          (`code/_common.R`) and the exact settings it read (`code/params.json`).\n- `spec.json` records the request, \
          the settings as asked for and as used, anything the service changed or left out, the source table and the \
-         service's version.\n- `SHA256SUMS` lists every file's SHA-256.\n\n## Check the files\n\nmacOS: `shasum -a 256 -c \
+         service's version.\n- `explorer/`, when present, holds the figure's browser explorer: the Shinylive app files, \
+         with the table's rows, that the workspace opens with Explore. Its previews are drawn in the browser; the R figure \
+         above stays the master.\n- `SHA256SUMS` lists every file's SHA-256.\n\n## Check the files\n\nmacOS: `shasum -a 256 -c \
          SHA256SUMS`  \nLinux: `sha256sum -c SHA256SUMS`\n\n## Draw it again\n\nCopy the table from the earlier \
          analysis's package into a new folder as `data.csv`, and `code/params.json` into the same folder as \
          `params.json`. Then run `Rscript {template_path} <that folder>` with R 4.4 and the packages ggplot2, ragg, \
