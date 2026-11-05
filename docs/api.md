@@ -174,6 +174,9 @@ The remote broker is a separate Axum service behind Cloudflare Access. It does n
 | GET | `/api/v1/labs/{lab}/library` | the lab's papers for a member, the caller's role and whether the lab has a corpus ([lab library](lab_library.md)) |
 | POST | `/api/v1/labs/{lab}/library/papers?request_id=` | a member adds a PDF; HTTP 201 with the paper, or 200 when the lab already had those bytes |
 | GET | `/api/v1/labs/{lab}/library/papers/{paper}` | one paper with its abstract and figure captions from the document service |
+| GET | `/api/v1/labs/{lab}/library/papers/{paper}/read` | the whole paper from its parse: sections in reading order with the parser's role, figures with whether an image is on file and any model-made description (marked as derived), tables, totals and whether the read is complete ([lab library](lab_library.md#reading-a-paper)) |
+| GET | `/api/v1/labs/{lab}/library/papers/{paper}/figures/{figure}/image` | one figure's image when the figure is one of this paper's: PNG, JPEG, WebP or GIF only, at most 12 MiB, `nosniff` and a sandbox policy |
+| GET | `/api/v1/labs/{lab}/library/papers/{paper}/tables/{ordinal}` | one of the paper's tables as a grid (at most 2,000 rows of 64 cells) |
 | GET | `/api/v1/labs/{lab}/library/search?q=` | passages of the lab's papers ranked by words |
 | POST | `/api/v1/labs/{lab}/library/papers/{paper}/remove` | a lab lead or whoever added the paper removes it with a reason |
 | POST | `/api/v1/labs/{lab}/library/papers/{paper}/labels` | a member adds a typed label; a person removes one |

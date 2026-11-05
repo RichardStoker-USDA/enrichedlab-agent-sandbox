@@ -71,6 +71,7 @@ mod test_support;
 #[derive(Clone)]
 pub struct ApiState {
     workspace_ui: bool,
+    figure_explorer: bool,
     site: super::model::SiteView,
     workspace_catalog: Arc<super::workspace_catalog::WorkspaceCatalog>,
     store: Store,
@@ -209,6 +210,7 @@ pub async fn serve(args: ServeArgs) -> Result<()> {
     };
     let state = ApiState {
         workspace_ui: config.workspace_ui,
+        figure_explorer: config.figure_explorer,
         site: super::model::SiteView {
             organization: config.site_organization,
         },

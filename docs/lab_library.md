@@ -278,3 +278,17 @@ that needs acceptance (`not_accepted`, then `found` once accepted). `cargo test 
 encoding and the service calls against a local fake service (the token sent, the external identifier, the chunk index
 without embeddings, the catalog read and the fixed error codes). The workspace unit tests and browser regression cover
 the Library and paper pages and the papers the agent read and cited.
+
+## Reading a paper
+
+The paper page reads the paper whole from the document service's parse, through the same reader the research lead
+uses (`broker::paper`): its blocks grouped into sections by heading, each with the parser's role (methods, results and
+so on), its figures and its tables. The page shows a contents list, every section's text, each figure with its image
+when the parse saved one, and tables on request. A figure description written by a model during parsing is shown
+folded and labeled as derived, never as the authors' text. Long paragraphs the document service shortens to 2,048
+characters say so, and a paper longer than the reader's limits (3,000 blocks, 200 figures or tables) says it was read in
+part.
+
+Every route checks lab membership and that the paper is still in the library, then reaches the document service with
+the lab's own corpus token. A figure image is fetched only after the broker finds that figure in the paper's own figure
+list, so a request cannot name another paper's figure; only raster types are served, checked by their opening bytes.

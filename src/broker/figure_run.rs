@@ -3,7 +3,8 @@
 //! request names and checks both digests, sends the table's columns and rows with the chosen plot and settings to the
 //! service, and packages what the service returns: the figure files, the template and shared R code, the exact
 //! settings the template read, a record of the request, a README and `SHA256SUMS`. The table itself is not copied; the
-//! package names it by digest. One receipt is recorded per attempt. A refusal by the service finishes the version with
+//! package names it by digest. The one exception is the browser explorer, off unless `figure_explorer` is set: its
+//! `explorer/data.csv` holds the rows the figure drew, so a package with an explorer retains research data. One receipt is recorded per attempt. A refusal by the service finishes the version with
 //! the broker's approved words for the service's refusal code, so the person can change a setting; the service's own
 //! words are never passed on, since they may quote what the request sent or what a template read.
 use std::{
@@ -772,8 +773,17 @@ async fn run(
     if let Err(stop) = refresh_catalog(store, config).await {
         tracing::warn!(task_id=%task.id, event="render_catalog_not_read", code=stop.code);
     }
-    // A version asks for its explorer too; one the service will not write (too large) is drawn again without it.
-    let drawn = match draw(&base, request, &columns, &rows, RENDER_TIMEOUT, true).await {
+    // With the explorer on, a version asks for it too; one the service will not write (too large) is drawn again without it.
+    let drawn = match draw(
+        &base,
+        request,
+        &columns,
+        &rows,
+        RENDER_TIMEOUT,
+        config.figure_explorer,
+    )
+    .await
+    {
         Err(stop) if stop.code == EXPLORER_TOO_LARGE => {
             let mut drawn = draw(&base, request, &columns, &rows, RENDER_TIMEOUT, false).await?;
             drawn.explorer = Err(EXPLORER_TOO_LARGE);

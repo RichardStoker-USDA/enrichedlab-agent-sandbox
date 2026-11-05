@@ -721,6 +721,7 @@ async fn a_lab_file_becomes_a_prepared_table_through_the_guard_and_a_persons_pre
         direct_dispatch: None,
         query_connection_dir: None,
         render_url: None,
+        figure_explorer: false,
         dataset_fetcher_config: Some(root.path().join("fetcher.json")),
         lab_objects_config: None,
         live_output: false,

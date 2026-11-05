@@ -109,6 +109,15 @@ pub struct ServeArgs {
         env = "AGENT_SANDBOX_BROKER_WORKSPACE_UI",
         default_value_t = false
     )]
+    /// Offer each figure version's browser explorer (render-service explorer bundles, decision 103). Off until the
+    /// explorer has its own origin without workspace authority and its data contract is settled (security review
+    /// November 5, 2026): when off the worker never asks for an explorer and the explorer routes answer not found.
+    #[arg(
+        long,
+        env = "AGENT_SANDBOX_BROKER_FIGURE_EXPLORER",
+        default_value_t = false
+    )]
+    pub figure_explorer: bool,
     pub workspace_ui: bool,
     /// Serve each reader's change stream, `GET /api/v1/changes/stream`. When off, `/api/v1/me`
     /// says `change_stream: false` and the workspace reads on its timers as before.
@@ -273,6 +282,15 @@ pub struct WorkerArgs {
     /// Optional base URL of the reviewed R render service, for figure versions. Only the worker reaches it.
     #[arg(long, env = "AGENT_SANDBOX_BROKER_RENDER_URL")]
     pub render_url: Option<String>,
+    /// Offer each figure version's browser explorer (render-service explorer bundles, decision 103). Off until the
+    /// explorer has its own origin without workspace authority and its data contract is settled (security review
+    /// November 5, 2026): when off the worker never asks for an explorer and the explorer routes answer not found.
+    #[arg(
+        long,
+        env = "AGENT_SANDBOX_BROKER_FIGURE_EXPLORER",
+        default_value_t = false
+    )]
+    pub figure_explorer: bool,
 
     /// Optional upload-guard fetcher configuration: the worker reads the rebuilt copies of the lab datasets
     /// the API sent. Without it a dataset's intake ends `dataset_guard_unconfigured`.
@@ -379,6 +397,7 @@ pub enum ApiAuthentication {
 
 #[derive(Clone, Debug)]
 pub struct ApiConfig {
+    pub figure_explorer: bool,
     pub workspace_ui: bool,
     pub change_stream: bool,
     pub combine_starting_points: bool,
@@ -417,6 +436,7 @@ pub struct WorkerConfig {
     pub direct_dispatch: Option<DirectDispatchConfig>,
     pub query_connection_dir: Option<PathBuf>,
     pub render_url: Option<String>,
+    pub figure_explorer: bool,
     pub dataset_fetcher_config: Option<PathBuf>,
     pub lab_objects_config: Option<PathBuf>,
     pub live_output: bool,
@@ -525,6 +545,7 @@ impl ServeArgs {
             None => None,
         };
         Ok(ApiConfig {
+            figure_explorer: self.figure_explorer,
             workspace_ui: self.workspace_ui,
             change_stream: self.change_stream,
             combine_starting_points: self.combine_starting_points,
@@ -628,6 +649,7 @@ impl WorkerArgs {
             direct_dispatch,
             query_connection_dir: self.query_connection_dir,
             render_url,
+            figure_explorer: self.figure_explorer,
             dataset_fetcher_config: self.dataset_fetcher_config,
             lab_objects_config: self.lab_objects_config,
             live_output: self.live_output,
@@ -974,6 +996,7 @@ mod tests {
         fs::write(&dsn, "postgresql://localhost/broker?sslmode=disable").unwrap();
         ServeArgs {
             workspace_ui: false,
+            figure_explorer: false,
             change_stream: true,
             combine_starting_points: false,
             workspace_catalog: None,

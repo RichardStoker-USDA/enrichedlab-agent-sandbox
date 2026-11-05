@@ -2310,6 +2310,7 @@ mod direct_dispatch_tests {
             direct_dispatch: None,
             query_connection_dir: None,
             render_url: None,
+            figure_explorer: false,
             dataset_fetcher_config: None,
             lab_objects_config: None,
             max_parallel: 1,

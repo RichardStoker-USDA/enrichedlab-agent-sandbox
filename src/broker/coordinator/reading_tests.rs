@@ -59,6 +59,7 @@ fn study(paragraphs: &[&str]) -> Paper {
         caption: Some("Mice by group.".into()),
         description: Some("A bar chart.".into()),
         page: Some(2),
+        ..Default::default()
     }];
     paper::assemble(&summary, &blocks, figures, vec![])
 }

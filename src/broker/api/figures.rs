@@ -625,6 +625,7 @@ mod tests {
                 direct_dispatch: None,
                 query_connection_dir: None,
                 render_url: Some(render_service().await),
+                figure_explorer: false,
                 dataset_fetcher_config: None,
                 lab_objects_config: None,
                 live_output: false,

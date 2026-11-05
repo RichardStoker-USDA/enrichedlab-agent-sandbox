@@ -240,6 +240,7 @@ async fn a_person_gets_a_document_of_a_runs_answer() {
         direct_dispatch: None,
         query_connection_dir: Some(connections),
         render_url: None,
+        figure_explorer: false,
         dataset_fetcher_config: None,
         lab_objects_config: None,
         live_output: false,

@@ -83,6 +83,9 @@ async fn explorer_package(
     ),
     ApiError,
 > {
+    if !state.figure_explorer {
+        return Err(not_found());
+    }
     let actor = authenticate(state, headers).await?;
     let record = state.store.get_artifact(actor, task, artifact).await?;
     if !review::is_package(&record) {
@@ -114,13 +117,20 @@ pub(super) async fn page(
 
 /// `GET /explorer/{task}/{artifact}`: the same page needs its trailing slash so `app.json` resolves beside it.
 pub(super) async fn page_without_slash(
+    State(state): State<ApiState>,
     AxumPath((task, artifact)): AxumPath<(Uuid, Uuid)>,
 ) -> Response {
+    if !state.figure_explorer {
+        return not_found().into_response();
+    }
     axum::response::Redirect::permanent(&format!("/explorer/{task}/{artifact}/")).into_response()
 }
 
 /// `GET /explorer/page.js`: the page's start script. It holds no data.
-pub(super) async fn page_script() -> Response {
+pub(super) async fn page_script(State(state): State<ApiState>) -> Response {
+    if !state.figure_explorer {
+        return not_found().into_response();
+    }
     (
         explorer_headers("text/javascript; charset=utf-8", "no-cache"),
         PAGE_SCRIPT,

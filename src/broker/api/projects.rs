@@ -783,6 +783,7 @@ mod tests {
     fn api(dsn: &str, identity: VerifiedIdentity) -> ApiState {
         ApiState {
             workspace_ui: false,
+            figure_explorer: false,
             site: crate::broker::model::SiteView { organization: None },
             workspace_catalog: Arc::default(),
             store: Store::connect(dsn, "research-site".into(), 2).unwrap(),

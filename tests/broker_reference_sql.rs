@@ -962,6 +962,7 @@ async fn a_guarded_query_runs_read_only_and_keeps_its_package() {
         direct_dispatch: None,
         query_connection_dir: Some(connections),
         render_url: None,
+        figure_explorer: false,
         dataset_fetcher_config: None,
         lab_objects_config: None,
         live_output: false,

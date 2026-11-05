@@ -117,6 +117,12 @@ can redraw; it is read under the same project access as the version.
 
 ## The explorer
 
+The explorer is off unless the broker runs with `AGENT_SANDBOX_BROKER_FIGURE_EXPLORER=true` (worker and API). It stays off
+until two things land (security review, November 5, 2026): a separate origin for the page, so code running in the
+browser's webR runtime holds no workspace authority, and a settled data contract, since `explorer/data.csv` retains the
+rows the figure drew and a package with an explorer therefore holds research data. With the flag off the worker never
+asks for an explorer and every `/explorer/` route answers `explorer_not_found`.
+
 A version asks the service for its explorer too (render-service 0.9.0, decision 103): the Shinylive app files that redraw
 the figure in the browser from the same template, settings and rows, with a control for each setting the chart declares.
 The worker keeps them under `explorer/` and records in `spec.json` the explorer's version and SHA-256, which it checks

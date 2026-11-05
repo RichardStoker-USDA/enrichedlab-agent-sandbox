@@ -30,6 +30,7 @@ pub(super) fn person(subject: &str, email: &str) -> VerifiedIdentity {
 pub(super) fn api(dsn: &str, identity: VerifiedIdentity, root: &Path) -> ApiState {
     ApiState {
         workspace_ui: false,
+        figure_explorer: false,
         site: crate::broker::model::SiteView { organization: None },
         workspace_catalog: Arc::default(),
         store: Store::connect(dsn, "research-site".into(), 2).unwrap(),
