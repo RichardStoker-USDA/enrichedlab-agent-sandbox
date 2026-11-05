@@ -9,12 +9,13 @@ use super::*;
 const PROFILE_BYTES: u64 = 16384;
 
 /// The model call roles a profile may set.
-pub(super) const PROFILE_ROLES: [&str; 5] = [
+pub(super) const PROFILE_ROLES: [&str; 6] = [
     "lead",
     "methods_specialist",
     "literature_specialist",
     "literature_review",
     "orientation",
+    "working_memory",
 ];
 
 #[derive(Deserialize)]

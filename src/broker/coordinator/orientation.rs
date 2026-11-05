@@ -139,7 +139,7 @@ fn shown_keys(context: &Value) -> (HashSet<String>, HashSet<String>, HashSet<Str
 }
 
 /// Numbers a text may hold: those the question, its constraints or the scientist's instructions state.
-fn allowed_numbers(context: &Value) -> HashSet<String> {
+pub(super) fn allowed_numbers(context: &Value) -> HashSet<String> {
     let mut text = String::new();
     for key in ["question", "constraints", "scientist_instructions"] {
         collect_text(&context[key], &mut text);
@@ -161,7 +161,7 @@ fn collect_text(value: &Value, out: &mut String) {
 
 /// A text's fault, or none: 1 to 300 characters, no control characters, nothing that reads as an instruction, and no
 /// number the question, its constraints or the scientist's instructions do not state.
-fn text_fault(text: &str, numbers: &HashSet<String>) -> Option<&'static str> {
+pub(super) fn text_fault(text: &str, numbers: &HashSet<String>) -> Option<&'static str> {
     if text.trim().is_empty()
         || text.chars().count() > TEXT_CHARS
         || text.chars().any(char::is_control)

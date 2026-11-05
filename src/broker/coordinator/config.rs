@@ -123,6 +123,12 @@ pub struct CoordinatorArgs {
     /// at most three small profiling queries, which run as ordinary steps. Empty, the default, leaves runs as before.
     #[arg(long, value_delimiter = ',')]
     pub orientation_labs: Vec<String>,
+    /// Labs whose lead keeps a working memory: after each committed decision a checked call writes the threads still
+    /// open, what the evidence ruled out, what the next steps depend on and what is unknown, and every later lead call
+    /// of the run reads the newest accepted memory as one section. A measured candidate; empty, the default, leaves
+    /// runs as before.
+    #[arg(long, value_delimiter = ',')]
+    pub working_memory_labs: Vec<String>,
 }
 
 /// Which labs' shared notes and library papers reach the research lead, which of those it may read before a person
@@ -144,6 +150,8 @@ pub struct LabText {
     pub supervisor: HashSet<String>,
     /// Labs whose runs begin with an orientation.
     pub orientation: HashSet<String>,
+    /// Labs whose lead keeps a working memory between decisions.
+    pub working_memory: HashSet<String>,
 }
 
 fn study_field(value: &str) -> std::result::Result<String, String> {
@@ -197,6 +205,7 @@ pub(super) struct ModelSections {
     pub(super) lab_notes_bytes: Option<usize>,
     pub(super) answerability_bytes: Option<usize>,
     pub(super) analyses_bytes: Option<usize>,
+    pub(super) working_memory_bytes: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -214,6 +223,8 @@ pub(super) struct SectionBudgets {
     pub(super) answerability_bytes: usize,
     /// The template-analysis catalog's share before the quarter-of-budget bound (`analysis_view::analyses_room`).
     pub(super) analyses_bytes: usize,
+    /// The working memory section's largest size, its key included.
+    pub(super) working_memory_bytes: usize,
 }
 
 impl Default for SectionBudgets {
@@ -231,6 +242,7 @@ impl Default for SectionBudgets {
             lab_notes_bytes: LAB_NOTES_BYTES,
             answerability_bytes: ANSWERABILITY_BYTES,
             analyses_bytes: crate::broker::analysis_view::ANALYSES_VIEW_BYTES,
+            working_memory_bytes: working_memory::WORKING_MEMORY_BYTES,
         }
     }
 }
@@ -251,6 +263,10 @@ impl ModelSections {
             (
                 self.analyses_bytes,
                 crate::broker::analysis_view::ANALYSES_VIEW_BYTES,
+            ),
+            (
+                self.working_memory_bytes,
+                working_memory::WORKING_MEMORY_BYTES,
             ),
         ];
         let counts = [
@@ -281,6 +297,9 @@ impl ModelSections {
             analyses_bytes: self
                 .analyses_bytes
                 .unwrap_or(crate::broker::analysis_view::ANALYSES_VIEW_BYTES),
+            working_memory_bytes: self
+                .working_memory_bytes
+                .unwrap_or(working_memory::WORKING_MEMORY_BYTES),
         }
     }
 }

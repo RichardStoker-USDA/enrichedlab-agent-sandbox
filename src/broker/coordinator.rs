@@ -82,6 +82,7 @@ mod step_literals;
 mod supervisor;
 #[cfg(test)]
 mod tests;
+mod working_memory;
 
 pub(super) use readiness::ReadyFile;
 
@@ -492,6 +493,18 @@ async fn advance(
     } else {
         None
     };
+    // A kept working memory is pinned too: the run's newest accepted memory sets its section's bytes aside before the
+    // sections that share the budget. One larger than the section's configured share is left out of this call.
+    let kept_memory = if lab_text.working_memory.contains(lab) {
+        store
+            .research_run_working_memory(run, worker, generation)
+            .await?
+    } else {
+        None
+    };
+    let memory_reserve = working_memory::reserve(kept_memory.as_ref());
+    let kept_memory = kept_memory
+        .filter(|_| memory_reserve <= model.config.section_budgets().working_memory_bytes);
     // The supervisor counts the run's faults across the whole run, not only the last calls: past
     // a bound it narrows this call through the redirect the reply check already holds it to, or pauses the run for a
     // person with a fixed reason. It never edits a reply. It decides before the context is compiled, so a pause spends
@@ -529,6 +542,11 @@ async fn advance(
                 .as_ref()
                 .map_or(0, |record| orientation::reserve(record, &statuses)),
         )
+        .saturating_sub(if kept_memory.is_some() {
+            memory_reserve
+        } else {
+            0
+        })
         .saturating_sub(context::added_bytes(&steering));
     let compiled = compile_context_with_sections(
         &view,
@@ -655,6 +673,7 @@ async fn advance(
             oriented_record = Some(oriented.record);
         }
     }
+    let memory_placed = working_memory::place(&mut context, kept_memory.as_ref(), budget);
     // A turn that delegates the orientation's profiling steps has no lead call; the orientation's texts were kept when
     // it was asked. A lead call is never made without a read orientation: one that does not fit (a first turn's, made
     // after the context was compiled) leaves the run to a person.
@@ -946,6 +965,23 @@ async fn advance(
     if let Some(redirect) = context.get("redirect") {
         record["redirect"] = redirect.clone();
     }
+    // Working memory: after a decision that will be committed (not one the methods review sends back, and not a
+    // profiling turn, which has no lead call), a checked call writes what the lead is in the middle of. A refused or
+    // failed call leaves its codes here and the last accepted memory standing.
+    if lab_text.working_memory.contains(lab) && !profiling_turn && outcome != "revise" {
+        working_memory::refresh(
+            store,
+            model,
+            run,
+            worker,
+            generation,
+            &context,
+            &proposal,
+            model.config.section_budgets().working_memory_bytes,
+        )
+        .await?
+        .record(&mut record, memory_placed);
+    }
     // The record holds at most 128 KiB as PostgreSQL stores it, after the commit adds each submitted task, the actor and
     // the outcome: the step checks give way first, then the proposal is refused with how far over, instead of failing the
     // write.
@@ -1149,6 +1185,7 @@ pub(super) async fn run_prepared(args: CoordinatorArgs, mut ready: ReadyFile) ->
         review_bytes: args.literature_review_bytes,
         supervisor: args.supervisor_labs.iter().cloned().collect(),
         orientation: args.orientation_labs.iter().cloned().collect(),
+        working_memory: args.working_memory_labs.iter().cloned().collect(),
     });
     if lab_text
         .study_fields
@@ -1173,6 +1210,7 @@ pub(super) async fn run_prepared(args: CoordinatorArgs, mut ready: ReadyFile) ->
         || (!lab_text.reading.is_empty() && lab_text.reading_bytes == 0)
         || lab_text.supervisor.iter().any(|lab| !action_key(lab))
         || lab_text.orientation.iter().any(|lab| !action_key(lab))
+        || lab_text.working_memory.iter().any(|lab| !action_key(lab))
     {
         bail!("coordinator_config_invalid")
     }

@@ -1142,6 +1142,7 @@ async fn the_lead_reads_a_paper_whole_before_it_decides() {
         literature_review_bytes: 32768,
         supervisor_labs: Vec::new(),
         orientation_labs: Vec::new(),
+        working_memory_labs: Vec::new(),
         ready_file: None,
     };
     let coordinate = |reading: Vec<String>, bytes: usize| {

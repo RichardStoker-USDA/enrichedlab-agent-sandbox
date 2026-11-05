@@ -3,8 +3,8 @@ set -eu
 
 mode=${1:-all}
 case "$mode" in
-    all|campaigns|runtime-events|direct-readiness|custodian-role|evidence|evidence-service|projects|project-stream|project-list|research-runs|review|generated-code|lineage|attempt-lineage|lineage-upstream|result-digests|configured-methods|person-review|lab-notes|lab-library|lead-library|tool-groups|knowledge-person|decision-contexts|working-copies|plan-ledger|plan-pages|methods-revision|specialist-texts|query-facts|lab-methods|inbox|reference-sql|figure-versions|answer-documents|workspace-reads|table-reads|result-kinds|figure-kinds|figure-previews|template-analyses|lab-datasets|lead-analyses|lab-objects|change-feed|live-output|identity-enrollment|artifact-recovery|orientation) ;;
-    *) printf '%s\n' 'Usage: qualify_remote_broker.sh [all|campaigns|runtime-events|direct-readiness|custodian-role|evidence|evidence-service|projects|project-stream|project-list|research-runs|review|generated-code|lineage|attempt-lineage|lineage-upstream|result-digests|configured-methods|person-review|lab-notes|lab-library|lead-library|tool-groups|knowledge-person|decision-contexts|working-copies|plan-ledger|plan-pages|methods-revision|specialist-texts|query-facts|lab-methods|inbox|reference-sql|figure-versions|answer-documents|workspace-reads|table-reads|result-kinds|figure-kinds|figure-previews|template-analyses|lab-datasets|lead-analyses|lab-objects|change-feed|live-output|identity-enrollment|artifact-recovery|orientation]' >&2; exit 2 ;;
+    all|campaigns|runtime-events|direct-readiness|custodian-role|evidence|evidence-service|projects|project-stream|project-list|research-runs|review|generated-code|lineage|attempt-lineage|lineage-upstream|result-digests|configured-methods|person-review|lab-notes|lab-library|lead-library|tool-groups|knowledge-person|decision-contexts|working-copies|plan-ledger|plan-pages|methods-revision|specialist-texts|query-facts|lab-methods|inbox|reference-sql|figure-versions|answer-documents|workspace-reads|table-reads|result-kinds|figure-kinds|figure-previews|template-analyses|lab-datasets|lead-analyses|lab-objects|change-feed|live-output|identity-enrollment|artifact-recovery|orientation|working-memory) ;;
+    *) printf '%s\n' 'Usage: qualify_remote_broker.sh [all|campaigns|runtime-events|direct-readiness|custodian-role|evidence|evidence-service|projects|project-stream|project-list|research-runs|review|generated-code|lineage|attempt-lineage|lineage-upstream|result-digests|configured-methods|person-review|lab-notes|lab-library|lead-library|tool-groups|knowledge-person|decision-contexts|working-copies|plan-ledger|plan-pages|methods-revision|specialist-texts|query-facts|lab-methods|inbox|reference-sql|figure-versions|answer-documents|workspace-reads|table-reads|result-kinds|figure-kinds|figure-previews|template-analyses|lab-datasets|lead-analyses|lab-objects|change-feed|live-output|identity-enrollment|artifact-recovery|orientation|working-memory]' >&2; exit 2 ;;
 esac
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
@@ -1142,6 +1142,18 @@ if [ "$mode" = orientation ]; then
     BROKER_QUALIFICATION_MIGRATION_DSN_FILE="$dsn_file" \
         cargo test --locked --test broker_orientation -- --ignored --test-threads=1
     printf '%s\n' 'Supervisor fault reads, fixed-reason pauses and orientation keep-once and lab-member reads PostgreSQL checks passed.'
+    exit 0
+fi
+if [ "$mode" = working-memory ]; then
+    # Migration 088 must apply twice without change before its behavior is checked.
+    "$broker_bin" migrate --migration-dsn-file "$dsn_file"
+    docker exec "$container" psql --username postgres --dbname "$database" --set=ON_ERROR_STOP=on \
+        --command='CREATE ROLE broker_coordinator_qual LOGIN;'
+    docker exec "$container" psql --username postgres --dbname "$database" --set=coordinator_role=broker_coordinator_qual --set=api_role=broker_api_qual --set=worker_role=broker_worker_qual \
+        --file=/workspace/migrations/postgres/grant_broker_coordinator.psql
+    BROKER_QUALIFICATION_MIGRATION_DSN_FILE="$dsn_file" \
+        cargo test --locked --test broker_working_memory -- --ignored --test-threads=1
+    printf '%s\n' 'Working memory kept on the turn record, read back under the lease into the next lead call, refused and failed calls without a run failure, and the holder-only read PostgreSQL checks passed.'
     exit 0
 fi
 if [ "$mode" = research-runs ]; then

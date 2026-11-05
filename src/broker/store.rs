@@ -161,6 +161,7 @@ const MIGRATION_086: &str =
     include_str!("../../migrations/postgres/086_evidence_capture_lab_objects.sql");
 const MIGRATION_087: &str =
     include_str!("../../migrations/postgres/087_plan_archive_review_hold.sql");
+const MIGRATION_088: &str = include_str!("../../migrations/postgres/088_working_memory.sql");
 
 #[derive(Clone)]
 pub struct Store {
@@ -443,13 +444,14 @@ impl Store {
     /// reasoning in its deferral (061), and reads each digest's column summaries without a lab's values for its step
     /// checks (073), and keeps a run's orientation and counts its faults (074), and reads each source's card and data
     /// versions to say when a card is behind its data (082), and commits a lab objects step (083) with the columns it
-    /// keeps (084), whose request rows the research record captures (086), and whose plan archive refuses a reviewed
-    /// step (087). A coordinator without them must not claim runs.
+    /// keeps (084), whose request rows the research record captures (086), whose plan archive refuses a reviewed
+    /// step (087), and reads back the lead's newest working memory (088). A coordinator without them must not claim runs.
     pub async fn ready_for_research_results(&self) -> StoreResult<()> {
         let client = self.pool.get().await.map_err(pool_error)?;
         let row = client
             .query_one(
-                "SELECT enrichedlab_agent.broker_schema_ready(87) \
+                "SELECT enrichedlab_agent.broker_schema_ready(88) \
+                 AND enrichedlab_agent.broker_schema_ready(87) \
                  AND enrichedlab_agent.broker_schema_ready(86) \
                  AND enrichedlab_agent.broker_schema_ready(85) \
                  AND enrichedlab_agent.broker_schema_ready(84) \
@@ -508,6 +510,9 @@ impl Store {
                  'EXECUTE'), false) AND COALESCE(\
                  has_function_privilege(current_user, to_regprocedure(\
                  'enrichedlab_agent.broker_research_run_results(text,uuid,text,bigint)'),\
+                 'EXECUTE'), false) AND COALESCE(\
+                 has_function_privilege(current_user, to_regprocedure(\
+                 'enrichedlab_agent.broker_research_run_working_memory(text,uuid,text,bigint)'),\
                  'EXECUTE'), false) AND COALESCE(\
                  has_function_privilege(current_user, to_regprocedure(\
                  'enrichedlab_agent.broker_research_run_lab_notes(text,uuid,text,bigint)'),\
@@ -1720,6 +1725,10 @@ pub async fn migrate(args: MigrationArgs) -> Result<()> {
         .batch_execute(MIGRATION_087)
         .await
         .context("failed to apply PostgreSQL migration 087")?;
+    client
+        .batch_execute(MIGRATION_088)
+        .await
+        .context("failed to apply PostgreSQL migration 088")?;
     Ok(())
 }
 

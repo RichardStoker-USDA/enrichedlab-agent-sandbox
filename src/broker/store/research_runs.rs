@@ -269,6 +269,26 @@ impl Store {
         .map_err(database_error)?;
         Ok(())
     }
+
+    /// The run's newest accepted working memory (migration 088): `{turn, memory, sha256}`, or `None` when no turn of
+    /// the run kept one. Only the run's holder reads it.
+    pub async fn research_run_working_memory(
+        &self,
+        run: Uuid,
+        worker: &str,
+        generation: i64,
+    ) -> StoreResult<Option<Value>> {
+        let c = self.pool.get().await.map_err(pool_error)?;
+        let row = c
+            .query_one(
+                "SELECT enrichedlab_agent.broker_research_run_working_memory($1,$2,$3,$4)",
+                &[&self.tenant, &run, &worker, &generation],
+            )
+            .await
+            .map_err(database_error)?;
+        Ok(row.get(0))
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn commit_research_turn(
         &self,

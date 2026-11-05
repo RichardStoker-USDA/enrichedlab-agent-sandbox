@@ -114,7 +114,7 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    come back newest first within 4,096 bytes and an eighth of the budget, and an older finished step shows its key
    alone. Parts a lead call must carry whole (the plan, people's review notes, this project's queries, the methods) are
    not cut. The pinned sections (the question, constraints, scientist instructions, the methods check's request and a
-   kept orientation) are never cut either. A kept orientation's bytes, and those of the steering notes the turn adds after
+   kept orientation and working memory) are never cut either. A kept orientation's and working memory's bytes, and those of the steering notes the turn adds after
    compiling (the refused reply's `prior_attempt`, a `redirect`, the supervisor's narrowing, each built on an empty object
    first), are set aside before the context is compiled. When a compiled context does not fit, the optional sections
    placed before the remainder (shared lab notes, query relations, restored step titles, observation and hypothesis
@@ -842,6 +842,31 @@ coordinator starts with orientation labs only when schema 74 is in place and its
 `broker_orientation_for_run`. It is measured on the autonomy suite, two attempts with the qualification lab listed and
 two without on the same image, and turned on for a lab only when it scores at least as well on passed, correct final
 and correct ever.
+
+## Working memory between decisions
+
+Off by default (`--working-memory-labs`), and a measured candidate: it stays off unless a keyed suite shows it helps.
+For a run in a listed lab, after each lead decision that will be committed (not one the methods review sends back,
+and not a profiling turn, which has no lead call), a working memory call (`coordinator/working_memory.rs`, its own
+short instructions, profile role `working_memory`) reads the context the lead decided from, without its steering
+notes, and the decision itself (summary, answer state, the delegated steps by key and title, the findings'
+statements), never a transcript. It returns what the lead is in the middle of: open threads (at most 6), what the
+evidence ruled out (at most 8, each with the one ref that shows why and the refs it was ruled out under), what planned
+steps depend on (at most 4, each a plan step's key and the refs it needs) and unknowns (at most 4). Code checks every
+ref against the refs that context shows and every step key against its plan, holds each text to orientation's text rule
+(at most 300 characters, no control characters or instruction-like text, no number the question, constraints or
+scientist instructions do not state), refuses another field or shape, and refuses a memory whose section would pass
+`sections.working_memory_bytes` (default 3,072). A refused memory is asked again once with its faults named by list,
+position and fixed code; refused again, or after a failed call, the turn record keeps only `working_memory_call`
+(status, codes, receipts) and the last accepted memory stands. Neither counts as a failure of the run.
+
+An accepted memory is kept on the turn record (`working_memory`, `working_memory_sha256`, and `working_memory_call` with
+status `accepted`); the calls' contexts are kept by digest like every model call's. The next lead call of the run reads
+the newest accepted memory (`broker_research_run_working_memory`, migration 088, under the run's lease) as one pinned
+section, `working_memory`: its bytes are set aside before the context is compiled, and the section carries its label
+and one sentence of instructions, so a lead call without it keeps its instructions byte for byte. A kept memory larger
+than the configured share is left out of that call. `working_memory_call.placed` records whether the turn's lead call
+read one.
 
 ## Library passages
 

@@ -582,6 +582,7 @@ async fn a_runs_first_turn_orients_before_the_lead_plans_and_every_later_call_re
             literature_review_bytes: 32768,
             supervisor_labs: vec![],
             orientation_labs: orientation,
+            working_memory_labs: Vec::new(),
             ready_file: None,
         })
     };
@@ -924,6 +925,7 @@ async fn a_runs_first_turn_orients_before_the_lead_plans_and_every_later_call_re
             literature_review_bytes: 32768,
             supervisor_labs: vec![],
             orientation_labs: vec![],
+            working_memory_labs: Vec::new(),
             ready_file: None,
         })
     };
