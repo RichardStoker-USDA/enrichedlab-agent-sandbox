@@ -7,8 +7,9 @@
 -- run kept one. It reads only the run's own turn records and writes nothing. Schema version 88 gates coordinators
 -- that read it.
 --
--- Rollback: move coordinators to an image without 088, drop the function, run 087's broker_schema_ready again and
--- delete schema_migrations version 88. Turn records keep their working_memory fields; nothing else reads them.
+-- Rollback: move coordinators to an image without 088, drop broker_research_run_working_memory, run 070's
+-- broker_research_context and 087's broker_schema_ready again, and delete schema_migrations version 88. Turn records
+-- keep their working_memory fields; nothing else reads them.
 BEGIN;
 CREATE OR REPLACE FUNCTION enrichedlab_agent.broker_research_run_working_memory(
   p_tenant text, p_run uuid, p_worker text, p_generation bigint)
@@ -33,6 +34,92 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION enrichedlab_agent.broker_research_run_working_memory(text, uuid, text, bigint) FROM PUBLIC;
+
+-- A lab member reads a memory call's kept texts by digest like every other model call's; 070's function, with the
+-- memory calls and the run's orientation calls (which it never listed) added to the receipts it recognizes.
+CREATE OR REPLACE FUNCTION enrichedlab_agent.broker_research_context(
+  p_tenant text, p_actor uuid, p_run uuid, p_sha256 text)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, enrichedlab_agent AS $$
+DECLARE
+  r enrichedlab_agent.broker_research_runs%ROWTYPE;
+  grp text;
+  body bytea;
+BEGIN
+  SELECT * INTO r FROM enrichedlab_agent.broker_research_runs WHERE tenant_id = p_tenant AND run_id = p_run;
+  IF NOT FOUND OR NOT enrichedlab_agent.broker_project_can(p_tenant, p_actor, r.project_id, 'read') THEN
+    RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'broker:project_not_found';
+  END IF;
+  IF p_sha256 IS NULL OR p_sha256 !~ '^sha256:[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'broker:context_invalid';
+  END IF;
+  SELECT group_key INTO grp FROM enrichedlab_agent.broker_projects
+  WHERE tenant_id = p_tenant AND project_id = r.project_id;
+  IF NOT EXISTS (
+    SELECT 1 FROM enrichedlab_agent.broker_group_memberships m
+    JOIN enrichedlab_agent.broker_principals a ON a.tenant_id = m.tenant_id AND a.principal_id = m.principal_id AND a.enabled
+    JOIN enrichedlab_agent.broker_research_groups g ON g.tenant_id = m.tenant_id AND g.group_key = m.group_key AND g.enabled
+    WHERE m.tenant_id = p_tenant AND m.group_key = grp AND m.principal_id = p_actor) THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'broker:context_lab_members_only';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM enrichedlab_agent.broker_research_turns t
+    WHERE t.tenant_id = p_tenant AND t.run_id = p_run
+      AND (p_sha256 IN (t.record->'lead'->>'context_sha256', t.record->'lead'->>'system_sha256',
+                        t.record->'lead'->>'content_sha256', t.record->'lead'->>'reasoning_sha256',
+                        t.record->'methods_specialist'->>'context_sha256', t.record->'methods_specialist'->>'system_sha256',
+                        t.record->'methods_specialist'->>'content_sha256',
+                        t.record->'methods_specialist'->>'reasoning_sha256',
+                        t.record->'methods_specialist_refused'->'receipt'->>'context_sha256',
+                        t.record->'methods_specialist_refused'->'receipt'->>'system_sha256',
+                        t.record->'methods_specialist_refused'->'receipt'->>'content_sha256',
+                        t.record->'methods_specialist_refused'->'receipt'->>'reasoning_sha256')
+        OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(t.record->'literature_claims'->'specialist') = 'array'
+                                                  THEN t.record->'literature_claims'->'specialist' ELSE '[]'::jsonb END) s
+          WHERE p_sha256 IN (s->>'context_sha256', s->>'system_sha256', s->>'content_sha256', s->>'reasoning_sha256'))
+        OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(t.record->'reading'->'rounds') = 'array'
+                                                  THEN t.record->'reading'->'rounds' ELSE '[]'::jsonb END) rr
+          WHERE p_sha256 IN (rr->'lead'->>'context_sha256', rr->'lead'->>'system_sha256',
+                             rr->'lead'->>'content_sha256', rr->'lead'->>'reasoning_sha256'))))
+     AND NOT EXISTS (
+    SELECT 1 FROM enrichedlab_agent.broker_literature_reviews v,
+      LATERAL jsonb_array_elements(v.record->'specialist') s
+    WHERE v.tenant_id=p_tenant AND v.run_id=p_run
+      AND p_sha256 IN (s->>'context_sha256',s->>'system_sha256',s->>'content_sha256',s->>'reasoning_sha256'))
+     AND NOT EXISTS (
+    SELECT 1 FROM enrichedlab_agent.broker_research_turns t,
+      LATERAL jsonb_array_elements(coalesce(t.record->'literature_review'->'specialist','[]'::jsonb)) s
+    WHERE t.tenant_id=p_tenant AND t.run_id=p_run
+      AND p_sha256 IN (s->>'context_sha256',s->>'system_sha256',s->>'content_sha256',s->>'reasoning_sha256'))
+     AND NOT EXISTS (
+    -- The working memory calls a turn kept (migration 088).
+    SELECT 1 FROM enrichedlab_agent.broker_research_turns t,
+      LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(t.record->'working_memory_call'->'specialist') = 'array'
+                                        THEN t.record->'working_memory_call'->'specialist' ELSE '[]'::jsonb END) s
+    WHERE t.tenant_id=p_tenant AND t.run_id=p_run
+      AND p_sha256 IN (s->>'context_sha256',s->>'system_sha256',s->>'content_sha256',s->>'reasoning_sha256'))
+     AND NOT EXISTS (
+    -- The run's orientation calls, kept on its orientation record (migration 074).
+    SELECT 1 FROM enrichedlab_agent.broker_research_orientations o,
+      LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(o.record->'specialist') = 'array'
+                                        THEN o.record->'specialist' ELSE '[]'::jsonb END) s
+    WHERE o.tenant_id=p_tenant AND o.run_id=p_run
+      AND p_sha256 IN (s->>'context_sha256',s->>'system_sha256',s->>'content_sha256',s->>'reasoning_sha256'))
+     AND NOT EXISTS (
+    SELECT 1 FROM enrichedlab_agent.broker_research_run_events e
+    WHERE e.tenant_id = p_tenant AND e.run_id = p_run
+      AND p_sha256 IN (e.lead_context_sha256, e.lead_reply_sha256, e.lead_reasoning_sha256)) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'broker:context_not_found';
+  END IF;
+  SELECT content INTO body FROM enrichedlab_agent.broker_research_contexts
+  WHERE tenant_id = p_tenant AND sha256 = p_sha256;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'broker:context_not_kept';
+  END IF;
+  RETURN jsonb_build_object('sha256', p_sha256, 'bytes', octet_length(body), 'text', convert_from(body, 'UTF8'));
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION enrichedlab_agent.broker_schema_ready(p_version integer)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER

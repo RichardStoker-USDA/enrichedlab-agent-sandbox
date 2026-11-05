@@ -293,6 +293,20 @@ async fn a_checked_memory_is_kept_on_the_turn_and_the_runs_next_lead_call_reads_
         .unwrap()
         .get(0);
     assert_eq!(kept, 1, "the memory call's context is kept");
+    // A lab member reads the memory call's kept context by digest, as every model call's.
+    let shown = api
+        .research_context(me, run, receipt["context_sha256"].as_str().unwrap())
+        .await
+        .unwrap();
+    let read: Value = serde_json::from_str(shown["text"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        read["newest_turn"]["summary"],
+        "The scientist chooses the grouping next."
+    );
+    assert!(
+        read["context"].get("methods").is_none(),
+        "the call reads only its view of the context"
+    );
 
     // 3. A memory kept by an earlier turn of the run is read back under the run's lease and placed in the next lead
     // call with its own note; the new decision keeps a new memory.

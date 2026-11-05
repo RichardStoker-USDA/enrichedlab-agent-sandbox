@@ -968,25 +968,36 @@ async fn advance(
     // Working memory: after a decision that will be committed (not one the methods review sends back, and not a
     // profiling turn, which has no lead call), a checked call writes what the lead is in the middle of. A refused or
     // failed call leaves its codes here and the last accepted memory standing.
-    if lab_text.working_memory.contains(lab) && !profiling_turn && outcome != "revise" {
-        working_memory::refresh(
-            store,
-            model,
-            run,
-            worker,
-            generation,
-            &context,
-            &proposal,
-            model.config.section_budgets().working_memory_bytes,
-        )
-        .await?
-        .record(&mut record, memory_placed);
-    }
+    let refreshed =
+        if lab_text.working_memory.contains(lab) && !profiling_turn && outcome != "revise" {
+            Some(
+                working_memory::refresh(
+                    store,
+                    model,
+                    run,
+                    worker,
+                    generation,
+                    &context,
+                    &proposal,
+                    model.config.section_budgets().working_memory_bytes,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
     // The record holds at most 128 KiB as PostgreSQL stores it, after the commit adds each submitted task, the actor and
     // the outcome: the step checks give way first, then the proposal is refused with how far over, instead of failing the
     // write.
     let added = json!({"submitted_tasks": actions.iter().map(|a| json!({"task_id": Uuid::nil(),
         "action_key": a["action_key"]})).collect::<Vec<_>>(), "actor_id": Uuid::nil(), "outcome": outcome});
+    // The memory is added only while the record still fits with the step checks given way, so it never refuses a
+    // decision that fits without it.
+    if let Some(refreshed) = &refreshed {
+        refreshed.fit_into(&mut record, memory_placed, |candidate| {
+            step_checks::fit_record(&mut candidate.clone(), &added).is_none()
+        });
+    }
     if let Some(over) = step_checks::fit_record(&mut record, &added) {
         return Err(CodeRefused {
             code: "proposal_too_large",
