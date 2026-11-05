@@ -35,6 +35,9 @@ use tokio_postgres::{Config, NoTls, config::Host};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+/// The stand-in's explorer, made by render-service's canonical-JSON rule (src/broker/figure_run.rs explorer_tests).
+const EXPLORER: &str = r##"{"version": 1, "sha256": "661f79f9bb6abfb2605f01cc36ca4c40fcf8d33d2b8bf938c96fc087fdc0c24e", "files": [{"name": "app.R", "content": "library(shiny)\n", "type": "text"}, {"name": "settings.R", "content": "# \"settings\"\n", "type": "text"}, {"name": "controls.json", "content": "{\"controls\": []}\n", "type": "text"}, {"name": "params.json", "content": "{}", "type": "text"}, {"name": "figure.R.txt", "content": "ggplot() # µg ≤ 5\n", "type": "text"}, {"name": "_common.R.txt", "content": "x <- '\\\\'\t\n", "type": "text"}, {"name": "data.csv", "content": "a,b\n1,é\n\u0001\n", "type": "text"}]}"##;
+
 const MANIFEST: &str = "5f1c0d9a3a4e2b7c8d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c";
 const IMAGE: &str = "sha256:7f1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff0";
 
@@ -121,6 +124,21 @@ async fn render_service(seen: Arc<Mutex<Option<Value>>>) -> String {
             json!(IMAGE)
         };
         let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+        // render-service 0.9.0 writes the figure's explorer when asked (made by its canonical-JSON rule); a figure
+        // whose explorer would be too large is refused with 413 and drawn again without one.
+        let asked = body["explorer"] == json!(true);
+        if asked && body["params"]["x_label"] == "huge explorer" {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(json!({"error": "explorer too large",
+                "refusal": {"code": "explorer_too_large", "columns": [], "counts": [8388608]}})),
+            );
+        }
+        let explorer: Value = if asked {
+            serde_json::from_str(EXPLORER).unwrap()
+        } else {
+            Value::Null
+        };
         let mut params = body["params"].clone();
         if params["width"].as_f64().is_some_and(|w| w > 20.0) {
             params["width"] = json!(20.0);
@@ -133,6 +151,7 @@ async fn render_service(seen: Arc<Mutex<Option<Value>>>) -> String {
                 "common_code": "WORK <- commandArgs(TRUE)[1]\n", "service_version": "0.5.20", "image_digest": image,
                 "spec": {"params": params, "title": body["title"], "feature_id": body["feature_id"]},
                 "font_face": "DejaVu Sans",
+                "explorer": explorer,
                 "notes": if body["params"]["width"].as_f64().is_some_and(|w| w > 20.0) { json!(["'width' was above the 20 maximum; 20 was used"]) } else { json!([]) }
             })),
         )
@@ -855,9 +874,25 @@ async fn a_person_draws_a_figure_version_from_a_finished_table() {
             && names.contains(&"figures/figure.pdf".to_owned())
     );
     assert!(
-        !names.iter().any(|n| n.ends_with(".csv")),
-        "the table is named by digest, not copied"
+        !names
+            .iter()
+            .any(|n| n.ends_with(".csv") && !n.starts_with("explorer/")),
+        "the table is named by digest, not copied, outside the explorer's own rows"
     );
+    for file in [
+        "app.R",
+        "settings.R",
+        "controls.json",
+        "params.json",
+        "figure.R.txt",
+        "_common.R.txt",
+        "data.csv",
+    ] {
+        assert!(
+            names.contains(&format!("explorer/{file}")),
+            "explorer/{file} is kept"
+        );
+    }
     assert_eq!(settings["params"]["width"], 20.0);
     let digest = api.artifact_digest(a, version, package.id).await.unwrap();
     assert_eq!(digest["status"], "no_result_tables");
