@@ -7,9 +7,9 @@ use enrichedlab_agent_sandbox::broker::{
         check_method_review_in, code_request_digest, compile_context, context_evidence,
         context_literature, finding_fault_counts, knowledge_hits, lead_system_bytes,
         method_review_context, methods_view, newest_tasks, own_query_views, past_research_tasks,
-        plan_archive_keys, profile_configurations, profile_templates, project_tasks,
-        proposal_schema_names as schema_names_with_guidance, query_step_shape, read_reply,
-        reconcile, refusal as refusal_with_guidance, refused_numbers, rejection_reason,
+        plan_archive_keys, plan_segment_keys, profile_configurations, profile_templates,
+        project_tasks, proposal_schema_names as schema_names_with_guidance, query_step_shape,
+        read_reply, reconcile, refusal as refusal_with_guidance, refused_numbers, rejection_reason,
         repeated_queries, requires_execution_review, review_input_bytes, review_outcome,
         review_targets, unreadable_reply, with_archived_page, with_prior_attempt,
         with_unreadable_note,
@@ -6256,6 +6256,94 @@ fn a_full_working_plan_archives_its_oldest_finished_steps_and_keeps_what_finding
     );
     let (busy, busy_facts) = long_plan(PLAN_STEPS_MAX, |_| ("active", Some("running")));
     assert!(plan_archive_keys(&busy, &busy_facts, 1, &HashSet::new()).is_empty());
+}
+
+#[test]
+fn a_segment_boundary_moves_every_finished_step_no_finding_reads() {
+    // When a lead context no longer fits, every finished step moves, not only enough to leave 96: an analysis still
+    // running or waiting for a person stays, and so does a step an earlier finding reads.
+    let (state, facts) = long_plan(40, |i| match i {
+        5 => ("failed", Some("failed")),
+        7 => ("skipped", None),
+        10 => ("completed", Some("review_required")),
+        11 => ("active", Some("running")),
+        i if i >= 36 => ("pending", None),
+        _ => ("completed", Some("completed")),
+    });
+    let bound = HashSet::from([state.plan[3].task_id.unwrap().to_string()]);
+    let keys = plan_segment_keys(&state, &facts, &bound);
+    let expected: Vec<String> = (0..36)
+        .filter(|i| ![3, 10, 11].contains(i))
+        .map(|i| format!("q-{i}"))
+        .collect();
+    assert_eq!(keys, expected);
+    // The count rule moves nothing from the same plan: it has room for more steps.
+    assert!(plan_archive_keys(&state, &facts, 2, &bound).is_empty());
+    // One archive call takes at most 128 keys.
+    let (full, full_facts) = long_plan(PLAN_STEPS_MAX, |_| ("completed", Some("completed")));
+    assert_eq!(
+        plan_segment_keys(&full, &full_facts, &HashSet::new()).len(),
+        PLAN_STEPS_MAX
+    );
+    // Nothing finished, nothing to move: the run waits for a person.
+    let (busy, busy_facts) = long_plan(8, |_| ("active", Some("running")));
+    assert!(plan_segment_keys(&busy, &busy_facts, &HashSet::new()).is_empty());
+}
+
+#[test]
+fn a_context_that_does_not_fit_fits_once_its_finished_steps_move() {
+    // The project that could not fit (sixteen finished steps, each with a person's 2,000-byte request for changes):
+    // its steps can all move at a segment boundary, and the context compiled from the plan without them fits, because
+    // a moved step's analysis and review leave the lead context with it.
+    let mut state = research();
+    let (mut facts, mut reviews) = (Vec::new(), Vec::new());
+    for i in 0..16 {
+        let task = Uuid::new_v4();
+        state.plan.push(
+            serde_json::from_value(json!({"action_key":format!("step-{i}"),"title":format!("Step {i}"),
+                "status":"pending","task_id":task,"evidence_refs":[],"rationale":"Estimate the contrast."}))
+            .unwrap(),
+        );
+        let reference = format!("artifact://tasks/{task}/{}", Uuid::new_v4());
+        facts.push(
+            json!({"task_id":task,"status":"completed","result_class":"success","error_code":null,
+            "evidence_refs":[reference]}),
+        );
+        reviews.push(json!({"task_id":task,"review_id":Uuid::new_v4(),"decision":"needs_changes",
+            "recorded_at":"2026-10-04T00:00:00Z","covers_current_outputs":true,"note":"n".repeat(2000)}));
+    }
+    let facts = json!(facts);
+    reconcile(&mut state, &facts).unwrap();
+    let budget = 27_695;
+    let compile = |state: &ResearchState| {
+        let titles: HashMap<String, String> = state
+            .plan
+            .iter()
+            .map(|s| (s.action_key.clone(), s.title.clone()))
+            .collect();
+        let view = state.context(3, budget * 2 / 3).unwrap();
+        compile_context(
+            &view,
+            &titles,
+            &json!([]),
+            &facts,
+            &json!({"results": [], "earlier_findings": null, "reviews": reviews}),
+            1,
+            budget,
+        )
+    };
+    assert!(!compile(&state).fits(budget));
+    let keys = plan_segment_keys(&state, &facts, &HashSet::new());
+    assert_eq!(keys.len(), 16);
+    let mut archived = state.clone();
+    archived.plan.retain(|s| !keys.contains(&s.action_key));
+    let compiled = compile(&archived);
+    assert!(compiled.fits(budget));
+    assert!(
+        compiled.value["analyses"]
+            .as_array()
+            .is_none_or(|a| a.iter().all(|x| x["review"].is_null()))
+    );
 }
 
 #[test]

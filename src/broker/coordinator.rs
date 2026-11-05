@@ -296,7 +296,15 @@ async fn advance(
     let view = match state.context(revision, (budget * 2 / 3).max(4096)) {
         Ok(view) => view,
         Err("context_budget_too_small") => {
-            return yield_context_too_large(store, run, worker, generation).await;
+            return segment_boundary(
+                store,
+                run,
+                worker,
+                generation,
+                revision,
+                &plan_segment_keys(&state, &claim["task_facts"], &bound_tasks(&results)),
+            )
+            .await;
         }
         Err(error) => bail!(error),
     };
@@ -526,10 +534,19 @@ async fn advance(
         &model.config.section_budgets(),
     );
     // Parts a lead call must carry (the plan, people's review notes, this project's queries, the methods, the pinned
-    // sections) that no longer fit its budget, once the optional sections have given way, leave the run to a person
-    // instead of a call that cannot fit or a reply the methods review could not hold.
+    // sections) that no longer fit its budget, once the optional sections have given way, first move the plan's
+    // finished steps out at a segment boundary; only when nothing can move does the run wait for a person, never a
+    // call that cannot fit or a reply the methods review could not hold.
     if !compiled.fits(room) {
-        return yield_context_too_large(store, run, worker, generation).await;
+        return segment_boundary(
+            store,
+            run,
+            worker,
+            generation,
+            revision,
+            &plan_segment_keys(&state, &claim["task_facts"], &bound_tasks(&results)),
+        )
+        .await;
     }
     let mut context = compiled.value;
     let context_inputs = compiled.inputs;
@@ -650,7 +667,15 @@ async fn advance(
                 .await?;
             return Ok(());
         }
-        return yield_context_too_large(store, run, worker, generation).await;
+        return segment_boundary(
+            store,
+            run,
+            worker,
+            generation,
+            revision,
+            &plan_segment_keys(&state, &claim["task_facts"], &bound_tasks(&results)),
+        )
+        .await;
     }
     let (lead, checked, read_calls, reading, ceiling) = if let Some((call, checked)) = delegated {
         (

@@ -184,6 +184,39 @@ pub(super) async fn yield_context_too_large(
     Ok(())
 }
 
+/// A lead context that no longer fits first moves the plan's finished steps into an archive page (a segment
+/// boundary), and the next attempt compiles from the smaller plan; only a context with no step left to move leaves the
+/// run to a person (`context_too_large`). The boundary yields `checkpoint_changed`, which counts no failure; each one
+/// moves at least one step out of a plan of at most `PLAN_STEPS_MAX`, so the attempts end. A checkpoint that changed
+/// meanwhile yields the same way and the next attempt decides again.
+pub(super) async fn segment_boundary(
+    store: &Store,
+    run: Uuid,
+    worker: &str,
+    generation: i64,
+    revision: i64,
+    keys: &[String],
+) -> Result<()> {
+    if keys.is_empty() {
+        return yield_context_too_large(store, run, worker, generation).await;
+    }
+    match store
+        .archive_research_plan(run, worker, generation, revision, keys)
+        .await
+    {
+        Ok(archived) => {
+            tracing::info!(%run, generation, steps = keys.len(), page = %archived["page"],
+                "research plan archived at a segment boundary");
+        }
+        Err(e) if e.kind == StoreErrorKind::Conflict => {}
+        Err(e) => return Err(e.into()),
+    }
+    store
+        .yield_research_run(run, worker, generation, "checkpoint_changed", None)
+        .await?;
+    Ok(())
+}
+
 /// The profiles sorted by key: the claim does not fix their order.
 pub(super) fn sorted_by_key(profiles: &Value) -> Value {
     let mut sorted: Vec<Value> = profiles.as_array().cloned().unwrap_or_default();

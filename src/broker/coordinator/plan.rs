@@ -70,19 +70,13 @@ pub fn newest_tasks(claim: &Value) -> Vec<Uuid> {
     tasks
 }
 
-/// The steps to move out of a working plan that could not take another delegation: in plan order,
-/// completed, failed or skipped steps whose analysis, if any, finished (completed, failed or cancelled) and is read by no
-/// earlier finding, until the plan holds `PLAN_STEPS_AFTER_ARCHIVE` steps. Empty while the plan has room for `parallel`
-/// more steps, or when no step can move.
-pub fn plan_archive_keys(
-    state: &ResearchState,
+/// The steps that may leave the working plan, in plan order: completed, failed or skipped steps whose analysis, if
+/// any, finished (completed, failed or cancelled) and is read by no earlier finding.
+fn movable_steps<'a>(
+    state: &'a ResearchState,
     facts: &Value,
-    parallel: usize,
     bound: &HashSet<String>,
-) -> Vec<String> {
-    if state.plan.len() + parallel <= PLAN_STEPS_MAX {
-        return Vec::new();
-    }
+) -> Vec<&'a PlanStep> {
     let finished: HashSet<&str> = facts
         .as_array()
         .into_iter()
@@ -110,7 +104,40 @@ pub fn plan_archive_keys(
                 finished.contains(t.as_str()) && !bound.contains(&t)
             })
         })
+        .collect()
+}
+
+/// The steps to move out of a working plan that could not take another delegation: movable steps in plan order until
+/// the plan holds `PLAN_STEPS_AFTER_ARCHIVE` steps. Empty while the plan has room for `parallel` more steps, or when no
+/// step can move.
+pub fn plan_archive_keys(
+    state: &ResearchState,
+    facts: &Value,
+    parallel: usize,
+    bound: &HashSet<String>,
+) -> Vec<String> {
+    if state.plan.len() + parallel <= PLAN_STEPS_MAX {
+        return Vec::new();
+    }
+    movable_steps(state, facts, bound)
+        .into_iter()
         .take(state.plan.len().saturating_sub(PLAN_STEPS_AFTER_ARCHIVE))
+        .map(|s| s.action_key.clone())
+        .collect()
+}
+
+/// The steps to move out at a segment boundary, when a lead context no longer fits its budget: every movable step in
+/// plan order, at most `PLAN_STEPS_MAX` (one archive call takes 1 to 128 keys). A moved step's analysis and its review
+/// leave the lead context with it; the newest moved steps stay visible by title in the archive summary
+/// (`plan_pages`), and steps an earlier finding reads stay in the plan. Empty when no step can move.
+pub fn plan_segment_keys(
+    state: &ResearchState,
+    facts: &Value,
+    bound: &HashSet<String>,
+) -> Vec<String> {
+    movable_steps(state, facts, bound)
+        .into_iter()
+        .take(PLAN_STEPS_MAX)
         .map(|s| s.action_key.clone())
         .collect()
 }

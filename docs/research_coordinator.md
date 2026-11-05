@@ -122,9 +122,12 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    last (the level is recorded as `optional_yield` in the context's inputs); constraint lessons stay. A first turn's
    orientation is made after the context was compiled, so no room was set aside for it: when it does not fit, the run
    waits 15 seconds with no failure counted (`checkpoint_changed`) and the next attempt compiles within the kept
-   orientation's reserve. When the context still does not fit, or the
-   checkpoint view cannot fit its share, the run stops for a person as `review_required` with reason
-   `context_too_large` before any model call, instead of retrying a context that cannot fit. A model call writes the
+   orientation's reserve. When the context still does not fit, or the checkpoint view cannot fit its share, the plan's
+   finished steps move into an archive page at a segment boundary (every completed, failed or skipped step whose
+   analysis finished and that no earlier finding reads; at most 128 in one move): a moved step's analysis and review
+   leave the lead context with it, the run waits 15 seconds with no failure counted (`checkpoint_changed`), and the
+   next attempt compiles from the smaller plan. Only when no step can move does the run stop for a person as
+   `review_required` with reason `context_too_large`, before any model call. A model call writes the
    context's top-level sections in a fixed order (`context::stable_prefix_text`), most stable first: the guidance,
    schema version, question, constraints, scientist instructions, starting data and parallel limit, which never change
    within a run; then the orientation (it changes as its profiling steps finish), methods (when finished queries reorder
