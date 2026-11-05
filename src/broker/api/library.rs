@@ -527,13 +527,20 @@ async fn open_document(
     Ok(document_id)
 }
 
+/// A figure's or table's text cut to `chars` characters, so at most 200 of each keep the reading bounded.
+fn clip(text: &Option<String>, chars: usize) -> Option<String> {
+    text.as_ref().map(|t| t.chars().take(chars).collect())
+}
+
 /// The most bytes a reading may hold; a longer one keeps its first sections and says it was cut.
 const MAX_READING_BYTES: usize = 6 * 1024 * 1024;
 /// What one read may hold while it is fetched and answered, in KiB of the library's shared memory budget (uploads
 /// take theirs from the same budget), so many readers at once cannot pass the API's memory limit: a figure image
 /// (its bytes plus headroom), a whole-paper read (the parsed blocks, the reading and its JSON) and a table grid.
 const IMAGE_WEIGHT_KIB: u32 = (crate::broker::library::MAX_FIGURE_IMAGE_BYTES / 1024) as u32 + 512;
-const READING_WEIGHT_KIB: u32 = 20 * 1024;
+// A whole-paper read's worst case: 3,000 blocks of 2,048 four-byte characters (24 MiB), the sections copied from them
+// (24 MiB), and the trimmed reading and its JSON (6 MiB each), with headroom for one 2 MiB service page.
+const READING_WEIGHT_KIB: u32 = 64 * 1024;
 const TABLE_WEIGHT_KIB: u32 = 6 * 1024;
 
 /// A share of the library's memory budget, waited for at most `PERMIT_WAIT`; a busy library answers `library_busy`.
@@ -550,11 +557,24 @@ async fn reserve(
     .map_err(|_| ApiError::internal())
 }
 
-/// A response body that keeps its memory share until the body is handed to the connection.
+/// Response bytes that keep their memory share until the connection has released them.
+struct Held {
+    bytes: Vec<u8>,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+}
+
+impl AsRef<[u8]> for Held {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+/// A response body whose bytes own their memory share, so the share returns only when the last reference to the bytes
+/// is dropped; the body keeps its exact length, so conditional GET still answers 304 for an unchanged reading.
 fn held_body(bytes: Vec<u8>, permit: tokio::sync::OwnedSemaphorePermit) -> Body {
-    Body::from_stream(futures_util::stream::once(async move {
-        let _held = permit;
-        Ok::<_, std::convert::Infallible>(axum::body::Bytes::from(bytes))
+    Body::from(axum::body::Bytes::from_owner(Held {
+        bytes,
+        _permit: permit,
     }))
 }
 
@@ -600,9 +620,9 @@ pub(super) async fn read(
             json!({
                 "ordinal": figure.ordinal,
                 "id": id,
-                "label": figure.label,
-                "caption": figure.caption,
-                "description": figure.description,
+                "label": clip(&figure.label, 64),
+                "caption": clip(&figure.caption, 4000),
+                "description": clip(&figure.description, 4000),
                 "page": figure.page,
                 "image": id.is_some() && figure.image_url.is_some(),
                 "width": figure.width.filter(|w| (1..=20_000).contains(w)),
@@ -613,7 +633,7 @@ pub(super) async fn read(
     let tables: Vec<Value> = read
         .tables
         .iter()
-        .map(|table| json!({"ordinal": table.ordinal, "label": table.label, "caption": table.caption, "page": table.page}))
+        .map(|table| json!({"ordinal": table.ordinal, "label": clip(&table.label, 64), "caption": clip(&table.caption, 4000), "page": table.page}))
         .collect();
     let body = serde_json::to_vec(&json!({"reading": {
         "sections": sections,
@@ -645,6 +665,7 @@ pub(super) async fn figure_image(
 ) -> Result<Response, ApiError> {
     let document_id = open_document(&state, &headers, &lab, paper).await?;
     let service = service(&state, &lab)?;
+    let permit = reserve(&state, IMAGE_WEIGHT_KIB).await?;
     let wanted = figure.to_string();
     let mut offset = 0usize;
     let mut found = false;
@@ -665,7 +686,6 @@ pub(super) async fn figure_image(
     if !found {
         return Err(ApiError::not_found("figure_image_not_found"));
     }
-    let permit = reserve(&state, IMAGE_WEIGHT_KIB).await?;
     let (bytes, media) = service
         .figure_image(&lab, figure)
         .await
@@ -741,6 +761,26 @@ pub(super) async fn table(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A reader's memory share returns only when the response bytes are released, and the body keeps its exact length
+    /// so conditional GET still applies (r48 review round 2).
+    #[tokio::test]
+    async fn a_held_body_keeps_its_share_until_its_bytes_are_dropped() {
+        let budget = std::sync::Arc::new(tokio::sync::Semaphore::new(10));
+        let permit = budget.clone().acquire_many_owned(4).await.unwrap();
+        let body = held_body(vec![1, 2, 3], permit);
+        assert_eq!(axum::body::HttpBody::size_hint(&body).exact(), Some(3));
+        assert_eq!(budget.available_permits(), 6);
+        let bytes = axum::body::to_bytes(body, 100).await.unwrap();
+        assert_eq!(&bytes[..], &[1, 2, 3]);
+        assert_eq!(
+            budget.available_permits(),
+            6,
+            "the share is held while the bytes live"
+        );
+        drop(bytes);
+        assert_eq!(budget.available_permits(), 10);
+    }
 
     #[test]
     fn uploads_are_weighed_by_the_memory_they_can_hold() {

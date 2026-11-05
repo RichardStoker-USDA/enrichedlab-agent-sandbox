@@ -202,9 +202,10 @@
       {/if}
     </header>
 
-    {#if view.outline_error === "library_unavailable" && readingPhase !== "ready"}
+    {#if view.outline_error === "library_unavailable" && readingPhase !== "ready" && !paper.removed}
       <p class="notice error" role="alert">The paper's text could not be read right now. The paper itself is unchanged.</p>
     {/if}
+    {#if !paper.removed}
     <div class="reader" class:with-contents={contents.length > 2}>
       {#if contents.length > 2}
         <nav class="contents" aria-label="Contents of the paper">
@@ -313,6 +314,7 @@
         {/if}
       </div>
     </div>
+    {/if}
 
     <section aria-labelledby="labels-title">
       <h2 id="labels-title" class="group-title">Labels</h2>
