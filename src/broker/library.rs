@@ -360,6 +360,11 @@ impl LibraryService {
         self.labs.contains_key(lab)
     }
 
+    /// The labs with a corpus, in order.
+    pub fn labs(&self) -> Vec<String> {
+        self.labs.keys().cloned().collect()
+    }
+
     /// The corpus that holds `lab`'s library, when the lab has one.
     pub fn corpus(&self, lab: &str) -> Option<&str> {
         self.labs.get(lab).map(|entry| entry.corpus.as_str())

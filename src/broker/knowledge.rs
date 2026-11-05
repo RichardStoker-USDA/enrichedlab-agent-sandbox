@@ -518,6 +518,11 @@ impl KnowledgeService {
         }
     }
 
+    /// The labs whose leads search the service, in order.
+    pub fn labs(&self) -> Vec<String> {
+        self.labs.iter().cloned().collect()
+    }
+
     /// The coordinator's retrieval generation, `None` for search v1.
     pub fn default_generation(&self) -> Option<&str> {
         self.generation.as_deref()

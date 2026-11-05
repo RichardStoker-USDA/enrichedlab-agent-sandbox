@@ -15,6 +15,7 @@ use super::model::Model;
 use super::supervisor;
 use crate::broker::canonical::canonical_json;
 use crate::broker::knowledge::KnowledgeService;
+use crate::broker::library::LibraryService;
 
 /// The manifest's schema version.
 pub(super) const SCHEMA_VERSION: u32 = 1;
@@ -41,12 +42,35 @@ pub(crate) struct Manifest {
 }
 
 fn number(value: usize, range: Option<(usize, usize)>, person_required: bool) -> Value {
-    let mut surface = json!({"kind": "number", "value": value, "editable": true,
-        "person_required": person_required});
-    if let Some((low, high)) = range {
-        surface["range"] = json!([low, high]);
+    match range {
+        // No override is valid when the lowest allowed value passes the highest (a small lead budget leaves a section
+        // only its default): the surface is fixed at its value.
+        Some((low, high)) if low > high => {
+            json!({"kind": "number", "value": value, "editable": false})
+        }
+        Some((low, high)) => {
+            json!({"kind": "number", "value": value, "range": [low, high], "editable": true,
+            "person_required": person_required})
+        }
+        None => {
+            json!({"kind": "number", "value": value, "editable": true, "person_required": person_required})
+        }
     }
-    surface
+}
+
+/// A model name as served, when it reads as a public identifier (printable ASCII, no space, not a path or URL);
+/// otherwise only its digest, so a filesystem path or address used as a served name never enters the manifest.
+fn model_name(name: &str) -> Value {
+    let public = name.len() <= 128
+        && name.bytes().all(|b| b.is_ascii_graphic())
+        && !name.starts_with(['/', '.', '~'])
+        && !name.contains("://")
+        && !name.contains('\\');
+    if public {
+        json!({"kind": "string", "value": name, "editable": true, "person_required": true})
+    } else {
+        json!({"kind": "string", "sha256": digest(name.as_bytes()), "editable": true, "person_required": true})
+    }
 }
 
 fn list(values: &[String], person_required: bool) -> Value {
@@ -65,6 +89,7 @@ pub(super) fn compute(
     args: &CoordinatorArgs,
     model: &Model,
     knowledge: Option<&KnowledgeService>,
+    library: Option<&LibraryService>,
 ) -> Result<Manifest> {
     let config = &model.config;
     let system = model.lead_system.as_bytes();
@@ -78,10 +103,7 @@ pub(super) fn compute(
             "source": if args.lead_system_file.is_some() { "lead_system_file" } else { "compiled" },
             "editable": true, "person_required": false}),
     );
-    surfaces.insert(
-        "model.name".into(),
-        json!({"kind": "string", "value": config.model, "editable": true, "person_required": true}),
-    );
+    surfaces.insert("model.name".into(), model_name(&config.model));
     surfaces.insert(
         "model.max_input_bytes".into(),
         number(config.max_input_bytes, None, false),
@@ -187,7 +209,7 @@ pub(super) fn compute(
         "model.profile".into(),
         match &model.profile {
             Some(p) => {
-                json!({"kind": "object", "name": p.name, "sha256": format!("sha256:{}", p.sha256),
+                json!({"kind": "object", "name": p.name, "sha256": p.sha256,
                 "editable": true, "person_required": false})
             }
             None => {
@@ -246,11 +268,25 @@ pub(super) fn compute(
     surfaces.insert(
         "retrieval.generation".into(),
         match knowledge {
-            Some(k) => json!({"kind": "string", "per_lab": true, "value": k.default_generation(),
-                "labs": k.lab_generations(), "editable": true, "person_required": false}),
-            None => json!({"kind": "string", "per_lab": true, "value": null, "labs": {}, "editable": true,
+            Some(k) => json!({"kind": "string", "per_lab": true, "configured": true,
+                "value": k.default_generation(), "labs": k.lab_generations(), "editable": true,
                 "person_required": false}),
+            None => json!({"kind": "string", "per_lab": true, "configured": false, "value": null, "labs": {},
+                "editable": true, "person_required": false}),
         },
+    );
+    // Which labs search the knowledge service and which have a library corpus; without a service, none.
+    surfaces.insert(
+        "knowledge.labs".into(),
+        json!({"kind": "list", "configured": knowledge.is_some(),
+            "value": knowledge.map(KnowledgeService::labs).unwrap_or_default(), "editable": true,
+            "person_required": true}),
+    );
+    surfaces.insert(
+        "library.labs".into(),
+        json!({"kind": "list", "configured": library.is_some(),
+            "value": library.map(LibraryService::labs).unwrap_or_default(), "editable": true,
+            "person_required": true}),
     );
     // Tool groups are catalog rows granted per lab, versioned in the database and named on each task; the manifest
     // lists the surface, not a copy of the catalog.

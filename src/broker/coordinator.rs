@@ -1228,7 +1228,8 @@ pub(super) async fn run_prepared(args: CoordinatorArgs, mut ready: ReadyFile) ->
         bail!("coordinator_config_invalid")
     }
     // The harness this coordinator runs under, stored once by digest before any claim and named on every turn record.
-    let manifest = harness_manifest::compute(&args, &model, knowledge.as_deref())?;
+    let manifest =
+        harness_manifest::compute(&args, &model, knowledge.as_deref(), library.as_deref())?;
     tracing::info!(harness_manifest_sha256 = %manifest.sha256, "harness manifest");
     model.harness_manifest_sha256 = Some(manifest.sha256.clone());
     let model = Arc::new(model);

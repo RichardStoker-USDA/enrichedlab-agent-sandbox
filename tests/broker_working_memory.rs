@@ -301,6 +301,20 @@ async fn a_checked_memory_is_kept_on_the_turn_and_the_runs_next_lead_call_reads_
         refused.as_db_error().map(|e| e.message()),
         Some("broker:harness_manifest_invalid")
     );
+    // A schema version written as a string is refused, even with its own digest.
+    let text = br#"{"schema_version":"1","surfaces":{}}"#.to_vec();
+    let digest = format!("sha256:{}", hex::encode(Sha256::digest(&text)));
+    let refused = owner
+        .query_one(
+            "SELECT enrichedlab_agent.broker_record_harness_manifest('research-site',$1,$2)",
+            &[&digest, &text],
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refused.as_db_error().map(|e| e.message()),
+        Some("broker:harness_manifest_invalid")
+    );
 
     // 2. A sound memory follows the decision and is kept on its record with its digest; the run's first call had
     // none to read.

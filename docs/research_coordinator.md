@@ -695,18 +695,22 @@ accepted lane, before any release.
 At start, before it claims a run, a coordinator computes its harness manifest (`coordinator/harness_manifest.rs`): the
 index of every surface that shapes its model calls, each marked `editable` (a measured proposal may change it) or
 fixed, and whether a change needs a person (`person_required`). It lists the lead system text by digest, length and
-source (compiled or `--lead-system-file`); the model's name, input and output limits and timeout; every section budget
-with its value and allowed range; the request settings and profile by digest; the supervisor's bounds; which labs each
+source (compiled or `--lead-system-file`); the model's served name (only its digest when the name reads as a path or
+address), input and output limits and timeout; every section budget with its value and allowed range (fixed at its
+value when the lead budget leaves no valid override); the request settings and profile by digest; the supervisor's bounds; which labs each
 feature reaches (lead text, unreviewed papers, literature claims, catalog, reading, literature review, supervisor,
-orientation, working memory); the reading and review byte allowances; the study fields; the retrieval generation, the
-coordinator's and each lab's own; and the catalog's tool groups as a surface. The step checks, number binding, SQL
+orientation, working memory); the reading and review byte allowances; the study fields; whether a knowledge service
+and a library are configured and which labs each reaches; the retrieval generation, the coordinator's and each lab's
+own; and the catalog's tool groups as a surface. The step checks, number binding, SQL
 guard, grants, isolation and egress, custody and receipts, the acceptance rule and held-out keys are listed with
 `editable: false`. It holds digests, numbers, names and lab keys only: no path, endpoint, credential or research
 value. Its canonical JSON (RFC 8785) is stored once in `broker_harness_manifests` (migration 089), whose check
-recomputes the digest from the stored bytes and whose rows cannot change, and every turn record names it as
+recomputes the digest from the stored bytes, whose record function requires a JSON object with the number 1 as its
+`schema_version`, and whose rows cannot change; every turn record names it as
 `harness_manifest_sha256`. Two coordinators with the same inputs compute the same digest; changing one surface changes
 it. Only the coordinator role writes manifests; no person or API role reads them, and the retrospective tooling reads
-them under operator custody.
+them under operator custody. A manifest lists every lab's settings, so it is no one lab's record: the evidence capture
+lists its table as `operator` and keeps it out of lab evidence streams.
 
 ## Lab files
 

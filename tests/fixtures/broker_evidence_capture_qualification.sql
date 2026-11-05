@@ -665,9 +665,10 @@ END $$;
 
 -- 12. Every row trigger in the broker schema that runs BEFORE an update or a delete, whatever its name, is in the
 -- reviewed list broker_evidence_capture_guards.txt with its disposition: `captured` (the table's inserts are recorded),
--- `captured+<change>` (its one permitted update is recorded too) or `mutable` (a table whose rows change by design,
--- not append-guarded). A new trigger or table fails here until it is reviewed, and the dispositions must match the
--- capture triggers that exist.
+-- `captured+<change>` (its one permitted update is recorded too), `mutable` (a table whose rows change by design,
+-- not append-guarded) or `operator` (append-guarded but no one lab's record: the harness manifests, which list every
+-- lab's settings, stay under operator custody and out of lab evidence streams). A new trigger or table fails here until
+-- it is reviewed, and the dispositions must match the capture triggers that exist.
 \set expected_guards `cat /workspace/tests/fixtures/broker_evidence_capture_guards.txt`
 SELECT set_config('capture.expected_guards', :'expected_guards', false);
 DO $$ DECLARE added text; removed text; wrong text; BEGIN
@@ -693,7 +694,7 @@ DO $$ DECLARE added text; removed text; wrong text; BEGIN
     SELECT table_name, min(disposition) AS disposition, count(DISTINCT disposition) AS kinds FROM listed GROUP BY 1)
   SELECT string_agg(table_name || ' ' || disposition, ', ' ORDER BY table_name) INTO wrong FROM per_table pt
     WHERE pt.kinds <> 1
-       OR pt.disposition NOT IN ('captured', 'mutable') AND pt.disposition NOT LIKE 'captured+%'
+       OR pt.disposition NOT IN ('captured', 'mutable', 'operator') AND pt.disposition NOT LIKE 'captured+%'
        OR (pt.disposition LIKE 'captured%') <> EXISTS (SELECT 1 FROM evidence.capture_tables() ct
             WHERE ct.table_name = pt.table_name)
        OR (pt.disposition LIKE 'captured%') <> EXISTS (SELECT 1 FROM pg_trigger x JOIN pg_class c ON c.oid = x.tgrelid

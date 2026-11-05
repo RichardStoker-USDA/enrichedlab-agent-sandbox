@@ -27,8 +27,9 @@ DROP TRIGGER IF EXISTS immutable_record ON enrichedlab_agent.broker_harness_mani
 CREATE TRIGGER immutable_record BEFORE UPDATE OR DELETE ON enrichedlab_agent.broker_harness_manifests
   FOR EACH ROW EXECUTE FUNCTION enrichedlab_agent.reject_broker_event_mutation();
 
--- Keeps one manifest, once: the bytes must be a JSON object of schema version 1 whose SHA-256 is the digest given. A
--- second call with the same digest keeps the first row (the same bytes by construction) and returns true.
+-- Keeps one manifest, once: the bytes must be a JSON object whose schema_version is the number 1 and whose SHA-256 is
+-- the digest given. A second call with the same digest keeps the first row (the same bytes by construction) and
+-- returns true.
 CREATE OR REPLACE FUNCTION enrichedlab_agent.broker_record_harness_manifest(
   p_tenant text, p_sha256 text, p_content bytea)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, enrichedlab_agent AS $$
@@ -44,7 +45,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'broker:harness_manifest_invalid';
   END;
-  IF jsonb_typeof(doc) IS DISTINCT FROM 'object' OR doc->>'schema_version' IS DISTINCT FROM '1'
+  IF jsonb_typeof(doc) IS DISTINCT FROM 'object' OR doc->'schema_version' IS DISTINCT FROM '1'::jsonb
     OR jsonb_typeof(doc->'surfaces') IS DISTINCT FROM 'object' THEN
     RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'broker:harness_manifest_invalid';
   END IF;
