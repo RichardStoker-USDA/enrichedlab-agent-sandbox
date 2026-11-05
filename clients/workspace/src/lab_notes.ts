@@ -76,6 +76,10 @@ const taskOf = (ref: string) => /^artifact:\/\/tasks\/([0-9a-f-]{36})\//i.exec(r
 export function shareBlocker(lesson: { kind: string; evidence_refs: string[] }, reviews: Record<string, TaskReview>,
   titleFor: (task: string) => string): string {
   if (lesson.kind !== "observation") return "Only an observation can be shared with the lab.";
+  // A part of a paper the lead read stays with this project: a lab note rests only on the project's analyses and
+  // inputs, which the broker checks.
+  if (lesson.evidence_refs.some((r) => r.startsWith("library://")))
+    return "A note that cites a part of a paper stays with this project; a lab note rests on analyses and inputs only.";
   const tasks = [...new Set(lesson.evidence_refs.map(taskOf).filter((t): t is string => !!t))];
   if (!tasks.length) return "Only a note that rests on an analysis can be shared with the lab.";
   const waiting = tasks.filter((t) => {

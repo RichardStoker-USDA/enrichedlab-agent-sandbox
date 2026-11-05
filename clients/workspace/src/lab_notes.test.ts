@@ -46,6 +46,11 @@ test("a note is offered for sharing only when a person accepted every analysis i
   const lesson = { kind: "observation", evidence_refs: [ref(task), ref(other), "input://synthetic/diet-study"] };
   assert.match(shareBlocker({ ...lesson, kind: "hypothesis" }, {}, title), /Only an observation/);
   assert.match(shareBlocker({ kind: "observation", evidence_refs: ["input://synthetic/diet-study"] }, {}, title), /rests on an analysis/);
+  // A lesson that cites a part of a paper, alone or beside an accepted analysis, is never offered for sharing.
+  const part = "library://0192f0aa-1111-7222-8333-944455556666/section/methods@2";
+  assert.match(shareBlocker({ kind: "observation", evidence_refs: [part] }, {}, title), /part of a paper/);
+  assert.match(shareBlocker({ kind: "observation", evidence_refs: [ref(task), part] }, { [task]: review("accepted") }, title),
+    /part of a paper/);
   assert.equal(shareBlocker(lesson, { [task]: review("accepted") }, title), "A person must accept “Comparison” before this note can be shared with the lab.");
   assert.equal(shareBlocker(lesson, {}, title), "A person must accept “Summary” and “Comparison” before this note can be shared with the lab.");
   const accepted = { [task]: review("accepted"), [other]: review("accepted", { task_id: other }) };

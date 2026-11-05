@@ -705,7 +705,8 @@ fn a_lesson_may_rest_on_a_library_part_the_lead_read_but_a_step_may_not() {
     let paper = "0192f0aa-1111-7222-8333-944455556666";
     let mut state: ResearchState = serde_json::from_value(json!({"schema_version":1,"goal":"g","constraints":[],"plan":[],
         "lessons":[{"kind": "observation", "statement": "s",
-            "evidence_refs": [format!("library://{paper}/section/3"), format!("library://{paper}")]}],
+            "evidence_refs": [format!("library://{paper}/section/3"), format!("library://{paper}"),
+                format!("library://{paper}/section/methods-2@4")]}],
         "next_action":"n","workspace":{"schema_version":1,"profile":"p",
         "image_digest":format!("sha256:{}","a".repeat(64)),"source_digest":format!("sha256:{}","b".repeat(64)),
         "input_refs":[],"tool_refs":[],"preparation_receipt":null}}))
@@ -718,6 +719,11 @@ fn a_lesson_may_rest_on_a_library_part_the_lead_read_but_a_step_may_not() {
     assert_eq!(state.validate(), Ok(()));
     // Not a part ref: a paper id that is not a canonical UUID, a space, a query.
     for bad in [
+        "library://0192f0aa-1111-7222-8333-944455556666/section/m@",
+        "library://0192f0aa-1111-7222-8333-944455556666/section/m@x",
+        "library://0192f0aa-1111-7222-8333-944455556666/figure/1@2",
+        "library://0192f0aa-1111-7222-8333-944455556666/section/m@1@2",
+        "library://user@0192f0aa-1111-7222-8333-944455556666/section/m@1",
         "library://smith2020/section/1",
         "library://0192F0AA-1111-7222-8333-944455556666",
         "library://0192f0aa-1111-7222-8333-944455556666/a b",

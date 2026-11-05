@@ -189,18 +189,31 @@ fn reference(value: &str) -> bool {
         .any(|prefix| value.starts_with(prefix))
         && !value.contains(['?', '#', '@'])
 }
-/// A part of a library paper: `library://<paper uuid>`, optionally with the part's path, at most 512 bytes, without
-/// spaces, `?`, `#` or `@`. Only a lesson may cite one: the lead check admits a part only when the lead read it in its
-/// turn, so a lesson can rest on what a paper it read did.
+/// A part of a library paper as the reader writes it: `library://<paper uuid>`, optionally with the part's path, and for a
+/// section's continuation a final `@<paragraph>` after a `/section/` path (`reading_parts.rs`); at most 512 bytes,
+/// otherwise without spaces, `?`, `#` or `@`. Only a lesson may cite one: the lead check admits a part only when the lead
+/// read it in its turn, so a lesson can rest on what a paper it read did.
 fn library_part_reference(value: &str) -> bool {
+    let body = match value.rsplit_once('@') {
+        Some((body, paragraph))
+            if !paragraph.is_empty()
+                && paragraph.bytes().all(|b| b.is_ascii_digit())
+                && body.contains("/section/") =>
+        {
+            body
+        }
+        Some(_) => return false,
+        None => value,
+    };
     text(value, 512)
         && !value.chars().any(char::is_whitespace)
-        && !value.contains(['?', '#', '@'])
-        && value.strip_prefix("library://").is_some_and(|rest| {
+        && !body.contains(['?', '#', '@'])
+        && body.strip_prefix("library://").is_some_and(|rest| {
             let paper = rest.split('/').next().unwrap_or_default();
             Uuid::parse_str(paper).is_ok_and(|id| id.to_string() == paper)
         })
 }
+
 fn references(values: &[String]) -> bool {
     values.len() <= 64 && values.iter().all(|s| reference(s))
 }
