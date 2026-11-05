@@ -187,8 +187,9 @@ pub(super) async fn yield_context_too_large(
 /// A lead context that no longer fits first moves the plan's finished steps into an archive page (a segment
 /// boundary), and the next attempt compiles from the smaller plan; only a context with no step left to move leaves the
 /// run to a person (`context_too_large`). The boundary yields `checkpoint_changed`, which counts no failure; each one
-/// moves at least one step out of a plan of at most `PLAN_STEPS_MAX`, so the attempts end. A checkpoint that changed
-/// meanwhile yields the same way and the next attempt decides again.
+/// moves at least one step out of a plan of at most `PLAN_STEPS_MAX` and never a key already archived, so the attempts
+/// end. A checkpoint that moved on meanwhile yields the same way and the next attempt decides again; any other conflict
+/// is returned as a fault.
 pub(super) async fn segment_boundary(
     store: &Store,
     run: Uuid,
@@ -208,7 +209,8 @@ pub(super) async fn segment_boundary(
             tracing::info!(%run, generation, steps = keys.len(), page = %archived["page"],
                 "research plan archived at a segment boundary");
         }
-        Err(e) if e.kind == StoreErrorKind::Conflict => {}
+        // Only a checkpoint that moved on is retried; any other conflict is a fault, never a silent retry.
+        Err(e) if e.code == "checkpoint_conflict" => {}
         Err(e) => return Err(e.into()),
     }
     store

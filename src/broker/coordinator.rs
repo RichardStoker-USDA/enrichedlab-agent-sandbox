@@ -252,19 +252,25 @@ async fn advance(
     // the steps an earlier finding reads stay. The database takes the steps from the checkpoint.
     let mut pages = claim["plan_pages"].clone();
     let mut results = store.research_run_results(run, worker, generation).await?;
-    let keys = plan_archive_keys(
-        &state,
-        &claim["task_facts"],
-        parallel,
-        &bound_tasks(&results),
-    );
+    // What no archive may move (`HeldSteps`), including the kept orientation's profiling steps.
+    let orientation_record = match claim["project"]["group_key"].as_str() {
+        Some(lab) if lab_text.orientation.contains(lab) => {
+            store
+                .orientation_for_run(run, worker, generation, None)
+                .await?
+        }
+        _ => None,
+    };
+    let mut held = held_steps(&results, &pages, orientation_record.as_ref());
+    let keys = plan_archive_keys(&state, &claim["task_facts"], parallel, &held);
     if !keys.is_empty() {
         let archived = match store
             .archive_research_plan(run, worker, generation, revision, &keys)
             .await
         {
             Ok(archived) => archived,
-            Err(e) if e.kind == StoreErrorKind::Conflict => {
+            // Only a checkpoint that moved on is retried; any other conflict is a fault, never a silent retry.
+            Err(e) if e.code == "checkpoint_conflict" => {
                 store
                     .yield_research_run(run, worker, generation, "checkpoint_changed", None)
                     .await?;
@@ -285,6 +291,7 @@ async fn advance(
         pages = with_archived_page(&pages, &moved, &claim["task_facts"]);
         tracing::info!(%run, generation, steps = moved.len(), page = %archived["page"], "research plan archived");
         results = store.research_run_results(run, worker, generation).await?;
+        held = held_steps(&results, &pages, orientation_record.as_ref());
     }
     let archived: HashSet<String> = pages["keys"]
         .as_array()
@@ -302,7 +309,12 @@ async fn advance(
                 worker,
                 generation,
                 revision,
-                &plan_segment_keys(&state, &claim["task_facts"], &bound_tasks(&results)),
+                &plan_segment_keys(
+                    &state,
+                    &claim["task_facts"],
+                    &held,
+                    &settled_tasks(&results),
+                ),
             )
             .await;
         }
@@ -544,7 +556,12 @@ async fn advance(
             worker,
             generation,
             revision,
-            &plan_segment_keys(&state, &claim["task_facts"], &bound_tasks(&results)),
+            &plan_segment_keys(
+                &state,
+                &claim["task_facts"],
+                &held,
+                &settled_tasks(&results),
+            ),
         )
         .await;
     }
@@ -673,7 +690,12 @@ async fn advance(
             worker,
             generation,
             revision,
-            &plan_segment_keys(&state, &claim["task_facts"], &bound_tasks(&results)),
+            &plan_segment_keys(
+                &state,
+                &claim["task_facts"],
+                &held,
+                &settled_tasks(&results),
+            ),
         )
         .await;
     }

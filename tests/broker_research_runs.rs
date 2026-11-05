@@ -1,17 +1,17 @@
 use enrichedlab_agent_sandbox::broker::{
     configured::contract_configuration,
     coordinator::{
-        Binding, CheckedLead, CodeRefused, CompiledContext, LeadCheck, PLAN_STEPS_MAX, Proposal,
-        READ_ATTEMPTS, Redirect, Refusal, ResultIndex, StartRun, UnreadRefs, ask_again,
+        Binding, CheckedLead, CodeRefused, CompiledContext, HeldSteps, LeadCheck, PLAN_STEPS_MAX,
+        Proposal, READ_ATTEMPTS, Redirect, Refusal, ResultIndex, StartRun, UnreadRefs, ask_again,
         bound_tasks, check_lead_replies, check_lead_reply, check_method_review,
         check_method_review_in, code_request_digest, compile_context, context_evidence,
-        context_literature, finding_fault_counts, knowledge_hits, lead_system_bytes,
+        context_literature, finding_fault_counts, held_steps, knowledge_hits, lead_system_bytes,
         method_review_context, methods_view, newest_tasks, own_query_views, past_research_tasks,
         plan_archive_keys, plan_segment_keys, profile_configurations, profile_templates,
         project_tasks, proposal_schema_names as schema_names_with_guidance, query_step_shape,
         read_reply, reconcile, refusal as refusal_with_guidance, refused_numbers, rejection_reason,
         repeated_queries, requires_execution_review, review_input_bytes, review_outcome,
-        review_targets, unreadable_reply, with_archived_page, with_prior_attempt,
+        review_targets, settled_tasks, unreadable_reply, with_archived_page, with_prior_attempt,
         with_unreadable_note,
     },
     model::SubmitTaskRequest,
@@ -6239,7 +6239,7 @@ fn a_full_working_plan_archives_its_oldest_finished_steps_and_keeps_what_finding
         bound,
         HashSet::from([bound_task.to_string(), table_task.to_string()])
     );
-    let keys = plan_archive_keys(&state, &facts, 2, &bound);
+    let keys = plan_archive_keys(&state, &facts, 2, &held_steps(&results, &json!(null), None));
     let expected: Vec<String> = (0..PLAN_STEPS_MAX)
         .filter(|i| ![3, 4, 10, 11].contains(i))
         .take(PLAN_STEPS_MAX - 96)
@@ -6249,19 +6249,30 @@ fn a_full_working_plan_archives_its_oldest_finished_steps_and_keeps_what_finding
     assert!(keys.contains(&"q-5".to_owned()) && keys.contains(&"q-7".to_owned()));
     // A plan with room for the run's parallel steps moves nothing, and neither does one with nothing finished.
     let (roomy, roomy_facts) = long_plan(PLAN_STEPS_MAX - 2, |_| ("completed", Some("completed")));
-    assert!(plan_archive_keys(&roomy, &roomy_facts, 2, &HashSet::new()).is_empty());
+    assert!(plan_archive_keys(&roomy, &roomy_facts, 2, &HeldSteps::default()).is_empty());
     assert_eq!(
-        plan_archive_keys(&roomy, &roomy_facts, 3, &HashSet::new()).len(),
+        plan_archive_keys(&roomy, &roomy_facts, 3, &HeldSteps::default()).len(),
         30
     );
     let (busy, busy_facts) = long_plan(PLAN_STEPS_MAX, |_| ("active", Some("running")));
-    assert!(plan_archive_keys(&busy, &busy_facts, 1, &HashSet::new()).is_empty());
+    assert!(plan_archive_keys(&busy, &busy_facts, 1, &HeldSteps::default()).is_empty());
+}
+
+/// Results read for `tasks`, each with one result created at `at`, and an answer recorded at `answered`.
+fn settled_results(tasks: &[Uuid], at: &str, answered: Option<&str>) -> serde_json::Value {
+    let items: Vec<serde_json::Value> = tasks
+        .iter()
+        .map(|t| json!({"task_id": t, "ref": format!("artifact://tasks/{t}/r1"), "created_at": at}))
+        .collect();
+    json!({"results": items, "earlier_findings": answered.map(|a| json!({"recorded_at": a, "findings": []}))})
 }
 
 #[test]
-fn a_segment_boundary_moves_every_finished_step_no_finding_reads() {
-    // When a lead context no longer fits, every finished step moves, not only enough to leave 96: an analysis still
-    // running or waiting for a person stays, and so does a step an earlier finding reads.
+fn a_segment_boundary_moves_only_settled_steps_and_holds_what_a_person_or_the_lead_still_needs() {
+    // At a segment boundary a step moves only when nothing still depends on it: a failed or skipped step, or a
+    // completed one whose results came before the run's newest answer. Held: an analysis still running or waiting for
+    // a person, one an earlier finding reads, one whose newest person review is not accepted, one the methods revision
+    // request cites, the orientation's profiling steps, and keys already archived.
     let (state, facts) = long_plan(40, |i| match i {
         5 => ("failed", Some("failed")),
         7 => ("skipped", None),
@@ -6270,80 +6281,92 @@ fn a_segment_boundary_moves_every_finished_step_no_finding_reads() {
         i if i >= 36 => ("pending", None),
         _ => ("completed", Some("completed")),
     });
-    let bound = HashSet::from([state.plan[3].task_id.unwrap().to_string()]);
-    let keys = plan_segment_keys(&state, &facts, &bound);
+    let task = |i: usize| state.plan[i].task_id.unwrap();
+    let all: Vec<Uuid> = (0..36).filter_map(|i| state.plan[i].task_id).collect();
+    let mut results = settled_results(
+        &all,
+        "2026-11-05T04:00:00.000000Z",
+        Some("2026-11-05T04:30:00.123456+00:00"),
+    );
+    // Step 30's result arrived after the answer: the lead has not answered with it yet.
+    for item in results["results"].as_array_mut().unwrap() {
+        if item["task_id"] == json!(task(30)) {
+            item["created_at"] = json!("2026-11-05T04:45:00.000000Z");
+        }
+    }
+    results["earlier_findings"]["findings"] = json!([{"statement": "{a} leads.",
+        "bindings": {"a": {"ref": format!("artifact://tasks/{}/r1", task(3)), "table": "t.csv", "row": 1, "column": "x"}}}]);
+    results["reviews"] = json!([
+        {"task_id": task(12), "decision": "needs_changes", "recorded_at": "2026-11-05T04:10:00Z", "note": "Pool the doses."},
+        {"task_id": task(13), "decision": "needs_changes", "recorded_at": "2026-11-05T04:10:00Z", "note": "Redo."},
+        {"task_id": task(13), "decision": "accepted", "recorded_at": "2026-11-05T04:20:00Z", "note": null},
+        {"task_id": task(14), "decision": "rejected", "recorded_at": "2026-11-05T04:10:00Z", "note": "Wrong cohort."}]);
+    results["revision_request"] = json!({"turn": 3, "reason": "Check the contrast.",
+        "findings": [{"refs": [format!("artifact://tasks/{}/r1", task(15))]}]});
+    let pages = json!({"keys": ["q-16"]});
+    let orientation = json!({"status": "read", "step_keys": ["q-17"]});
+    let held = held_steps(&results, &pages, Some(&orientation));
+    let settled = settled_tasks(&results);
+    assert!(settled.contains(&task(0).to_string()) && !settled.contains(&task(30).to_string()));
+    let keys = plan_segment_keys(&state, &facts, &held, &settled);
     let expected: Vec<String> = (0..36)
-        .filter(|i| ![3, 10, 11].contains(i))
+        .filter(|i| ![3, 10, 11, 12, 14, 15, 16, 17, 30].contains(i))
         .map(|i| format!("q-{i}"))
         .collect();
     assert_eq!(keys, expected);
-    // The count rule moves nothing from the same plan: it has room for more steps.
-    assert!(plan_archive_keys(&state, &facts, 2, &bound).is_empty());
-    // One archive call takes at most 128 keys.
-    let (full, full_facts) = long_plan(PLAN_STEPS_MAX, |_| ("completed", Some("completed")));
+    assert!(
+        keys.contains(&"q-13".to_owned()),
+        "a review resolved as accepted no longer holds its step"
+    );
+    // With no answer yet nothing completed is settled: only the failed and skipped steps can move.
+    let unanswered = settled_tasks(&settled_results(&all, "2026-11-05T04:00:00Z", None));
     assert_eq!(
-        plan_segment_keys(&full, &full_facts, &HashSet::new()).len(),
+        plan_segment_keys(&state, &facts, &held, &unanswered),
+        vec!["q-5".to_owned(), "q-7".to_owned()]
+    );
+    // One archive call takes at most 128 keys, and nothing finished means nothing to move.
+    let (full, full_facts) = long_plan(PLAN_STEPS_MAX, |_| ("completed", Some("completed")));
+    let full_tasks: Vec<Uuid> = full.plan.iter().filter_map(|s| s.task_id).collect();
+    let full_settled = settled_tasks(&settled_results(
+        &full_tasks,
+        "2026-11-05T04:00:00Z",
+        Some("2026-11-05T05:00:00Z"),
+    ));
+    assert_eq!(
+        plan_segment_keys(&full, &full_facts, &HeldSteps::default(), &full_settled).len(),
         PLAN_STEPS_MAX
     );
-    // Nothing finished, nothing to move: the run waits for a person.
     let (busy, busy_facts) = long_plan(8, |_| ("active", Some("running")));
-    assert!(plan_segment_keys(&busy, &busy_facts, &HashSet::new()).is_empty());
+    assert!(plan_segment_keys(&busy, &busy_facts, &HeldSteps::default(), &full_settled).is_empty());
 }
 
 #[test]
-fn a_context_that_does_not_fit_fits_once_its_finished_steps_move() {
-    // The project that could not fit (sixteen finished steps, each with a person's 2,000-byte request for changes):
-    // its steps can all move at a segment boundary, and the context compiled from the plan without them fits, because
-    // a moved step's analysis and review leave the lead context with it.
-    let mut state = research();
-    let (mut facts, mut reviews) = (Vec::new(), Vec::new());
-    for i in 0..16 {
-        let task = Uuid::new_v4();
-        state.plan.push(
-            serde_json::from_value(json!({"action_key":format!("step-{i}"),"title":format!("Step {i}"),
-                "status":"pending","task_id":task,"evidence_refs":[],"rationale":"Estimate the contrast."}))
-            .unwrap(),
-        );
-        let reference = format!("artifact://tasks/{task}/{}", Uuid::new_v4());
-        facts.push(
-            json!({"task_id":task,"status":"completed","result_class":"success","error_code":null,
-            "evidence_refs":[reference]}),
-        );
-        reviews.push(json!({"task_id":task,"review_id":Uuid::new_v4(),"decision":"needs_changes",
-            "recorded_at":"2026-10-04T00:00:00Z","covers_current_outputs":true,"note":"n".repeat(2000)}));
+fn a_view_that_does_not_fit_fits_once_its_settled_steps_move() {
+    // Sixteen failed steps keep their full rationales in the checkpoint view (completed and skipped steps are shown
+    // compactly), so the view outgrows its share of a 27,695-byte budget (`context_budget_too_small`). Failed steps have
+    // no results to settle, so all sixteen move at a segment boundary and the view without them fits; a pending step
+    // stays.
+    let (mut state, facts) = long_plan(17, |i| {
+        if i < 16 {
+            ("failed", Some("failed"))
+        } else {
+            ("pending", None)
+        }
+    });
+    for step in &mut state.plan {
+        step.rationale = "r".repeat(1500);
     }
-    let facts = json!(facts);
-    reconcile(&mut state, &facts).unwrap();
     let budget = 27_695;
-    let compile = |state: &ResearchState| {
-        let titles: HashMap<String, String> = state
-            .plan
-            .iter()
-            .map(|s| (s.action_key.clone(), s.title.clone()))
-            .collect();
-        let view = state.context(3, budget * 2 / 3).unwrap();
-        compile_context(
-            &view,
-            &titles,
-            &json!([]),
-            &facts,
-            &json!({"results": [], "earlier_findings": null, "reviews": reviews}),
-            1,
-            budget,
-        )
-    };
-    assert!(!compile(&state).fits(budget));
-    let keys = plan_segment_keys(&state, &facts, &HashSet::new());
+    assert_eq!(
+        state.context(3, budget * 2 / 3).err(),
+        Some("context_budget_too_small")
+    );
+    let keys = plan_segment_keys(&state, &facts, &HeldSteps::default(), &HashSet::new());
     assert_eq!(keys.len(), 16);
     let mut archived = state.clone();
     archived.plan.retain(|s| !keys.contains(&s.action_key));
-    let compiled = compile(&archived);
-    assert!(compiled.fits(budget));
-    assert!(
-        compiled.value["analyses"]
-            .as_array()
-            .is_none_or(|a| a.iter().all(|x| x["review"].is_null()))
-    );
+    assert_eq!(archived.plan.len(), 1);
+    assert!(archived.context(3, budget * 2 / 3).is_ok());
 }
 
 #[test]
