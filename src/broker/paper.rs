@@ -300,8 +300,8 @@ pub async fn read(
             .map_or(0, |n| n as usize)
     };
     let mut blocks: Vec<Block> = items(&first["blocks"]);
-    let mut figures: Vec<Figure> = items(&first["figures"]);
-    let mut tables: Vec<Table> = items(&first["tables"]);
+    let mut figures: Vec<Figure> = clip_figures(items(&first["figures"]));
+    let mut tables: Vec<Table> = clip_tables(items(&first["tables"]));
     while blocks.len() < total("blocks").min(MAX_BLOCKS) {
         let page = service
             .document_page(lab, document, "blocks", blocks.len())
@@ -317,7 +317,7 @@ pub async fn read(
         let page = service
             .document_page(lab, document, "figures", figures.len())
             .await?;
-        let more: Vec<Figure> = items(&page["figures"]);
+        let more: Vec<Figure> = clip_figures(items(&page["figures"]));
         if more.is_empty() {
             break;
         }
@@ -328,7 +328,7 @@ pub async fn read(
         let page = service
             .document_page(lab, document, "tables", tables.len())
             .await?;
-        let more: Vec<Table> = items(&page["tables"]);
+        let more: Vec<Table> = clip_tables(items(&page["tables"]));
         if more.is_empty() {
             break;
         }
@@ -336,6 +336,36 @@ pub async fn read(
     }
     tables.truncate(MAX_PARTS);
     Ok(assemble(&first, &blocks, figures, tables))
+}
+
+/// The most characters a figure's or table's label, caption and description keep, applied as each page arrives so a
+/// whole read stays within its memory share (r48 review round 3).
+pub const MAX_LABEL_CHARS: usize = 64;
+pub const MAX_CAPTION_CHARS: usize = 4000;
+
+fn clip(text: &mut Option<String>, chars: usize) {
+    if let Some(t) = text.as_mut()
+        && t.chars().count() > chars
+    {
+        *t = t.chars().take(chars).collect();
+    }
+}
+
+fn clip_figures(mut figures: Vec<Figure>) -> Vec<Figure> {
+    for f in &mut figures {
+        clip(&mut f.label, MAX_LABEL_CHARS);
+        clip(&mut f.caption, MAX_CAPTION_CHARS);
+        clip(&mut f.description, MAX_CAPTION_CHARS);
+    }
+    figures
+}
+
+fn clip_tables(mut tables: Vec<Table>) -> Vec<Table> {
+    for t in &mut tables {
+        clip(&mut t.label, MAX_LABEL_CHARS);
+        clip(&mut t.caption, MAX_CAPTION_CHARS);
+    }
+    tables
 }
 
 fn items<T: DeserializeOwned>(value: &Value) -> Vec<T> {

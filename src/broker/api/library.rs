@@ -539,9 +539,14 @@ const MAX_READING_BYTES: usize = 6 * 1024 * 1024;
 /// (its bytes plus headroom), a whole-paper read (the parsed blocks, the reading and its JSON) and a table grid.
 const IMAGE_WEIGHT_KIB: u32 = (crate::broker::library::MAX_FIGURE_IMAGE_BYTES / 1024) as u32 + 512;
 // A whole-paper read's worst case: 3,000 blocks of 2,048 four-byte characters (24 MiB), the sections copied from them
-// (24 MiB), and the trimmed reading and its JSON (6 MiB each), with headroom for one 2 MiB service page.
-const READING_WEIGHT_KIB: u32 = 64 * 1024;
-const TABLE_WEIGHT_KIB: u32 = 6 * 1024;
+// (24 MiB), 200 figures and 200 tables with captions and descriptions clipped as each page arrives (`paper::clip_*`,
+// about 10 MiB), the trimmed reading as JSON values and bytes (6 MiB each), one 2 MiB service page and its parsed
+// form, rounded up for allocator overhead.
+const READING_WEIGHT_KIB: u32 = 96 * 1024;
+// A table grid's worst case: the service's 2 MiB answer parsed into JSON values (about 700,000 minimal cells at about
+// 40 bytes each, 28 MiB), the clipped output cells (at most the input's text plus value overhead, 6 MiB) and their
+// bytes (4 MiB), rounded up.
+const TABLE_WEIGHT_KIB: u32 = 48 * 1024;
 
 /// A share of the library's memory budget, waited for at most `PERMIT_WAIT`; a busy library answers `library_busy`.
 async fn reserve(
