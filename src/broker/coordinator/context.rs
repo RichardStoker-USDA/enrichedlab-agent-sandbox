@@ -953,11 +953,12 @@ fn compile_at_level(
         .filter_map(|id| id.as_str().map(str::to_owned))
         .collect();
     // The checkpoint view's lessons: its constraint lessons are always shown; its observations and hypotheses are
-    // optional and give way at each yield level, newest kept first in the view's order, none at the last level.
+    // optional and give way at each yield level, newest kept first in the view's order, none at the last level. A lesson
+    // the view marks stale is optional whatever its kind.
     let all_lessons: Vec<Value> = view["lessons"].as_array().cloned().unwrap_or_default();
     let (rules, optional): (Vec<Value>, Vec<Value>) = all_lessons
         .into_iter()
-        .partition(|l| l["kind"] == "constraint");
+        .partition(|l| l["kind"] == "constraint" && l["stale"] != true);
     let share = yielded(
         optional
             .iter()

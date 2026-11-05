@@ -223,23 +223,33 @@ pub enum LessonPlacement {
     OutOfScope,
 }
 
-/// Which lessons of a checkpoint written outside the coordinator carry code-written fields (`validated_snapshot`,
-/// `counter_refs`) that no lesson of the checkpoint it replaces carries identically: only the coordinator writes them,
-/// so a person's save may keep them as they were but not add or change them. Named by position.
-pub fn code_fields_changed(prior: &[Lesson], next: &[Lesson]) -> Vec<String> {
+/// What a checkpoint saved outside the coordinator may do to its lessons. Once the checkpoint it replaces numbers its
+/// lessons (one uses a scoped field), they are a record: the save keeps them in order and may only add lessons after
+/// them, so a lesson's number and every dispute between numbered lessons keep their meaning. A lesson the save adds may
+/// not carry the fields only the coordinator writes (`validated_snapshot`, `counter_refs`). Named, never quoted.
+pub fn saved_lessons_faults(prior: &[Lesson], next: &[Lesson]) -> Vec<String> {
+    let mut faults = Vec::new();
+    let kept = if prior.iter().any(Lesson::uses_scoped_fields) {
+        if next.len() < prior.len() || next[..prior.len()] != prior[..] {
+            faults.push(
+                "lessons: numbered lessons keep their order and fields; a save may only add lessons after them"
+                    .to_owned(),
+            );
+        }
+        prior.len().min(next.len())
+    } else {
+        0
+    };
     let total = next.len();
-    next.iter()
-        .enumerate()
-        .filter(|(_, l)| {
-            (l.validated_snapshot.is_some() || !l.counter_refs.is_empty()) && !prior.contains(l)
-        })
-        .map(|(i, _)| {
-            format!(
+    for (i, lesson) in next.iter().enumerate().skip(kept) {
+        if lesson.validated_snapshot.is_some() || !lesson.counter_refs.is_empty() {
+            faults.push(format!(
                 "lesson {} of {total}: code-written fields are not the saved ones",
                 i + 1
-            )
-        })
-        .collect()
+            ));
+        }
+    }
+    faults
 }
 
 /// A scope key: 1 to 200 bytes without whitespace or NUL.
@@ -371,6 +381,9 @@ fn refs_fault(
 pub(crate) fn lesson_field_faults(name: &str, lesson: &Lesson, index: usize) -> Vec<String> {
     let mut faults = Vec::new();
     if let Some(scope) = &lesson.scope {
+        if lesson.kind == LessonKind::Constraint {
+            faults.push(format!("{name} scope: a constraint holds everywhere"));
+        }
         if scope.is_empty() {
             faults.push(format!("{name} scope: names no key"));
         }
@@ -650,6 +663,10 @@ impl ResearchState {
             .iter()
             .filter(|p| **p == LessonPlacement::OutOfScope)
             .count();
+        // The count is part of the view the budget measures, so it is in place before any lesson is admitted.
+        if out_of_scope > 0 {
+            result["out_of_scope_lessons"] = json!(out_of_scope);
+        }
         let order = [
             (LessonKind::Constraint, LessonPlacement::Fresh),
             (LessonKind::Observation, LessonPlacement::Fresh),
@@ -686,9 +703,6 @@ impl ResearchState {
         }
         result["omitted_lessons"] =
             json!(self.lessons.len() - out_of_scope - result["lessons"].as_array().unwrap().len());
-        if out_of_scope > 0 {
-            result["out_of_scope_lessons"] = json!(out_of_scope);
-        }
         if serde_json::to_vec(&result).unwrap().len() > max_bytes {
             return Err("context_budget_too_small");
         }

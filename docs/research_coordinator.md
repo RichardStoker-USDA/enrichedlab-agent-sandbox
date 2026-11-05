@@ -726,14 +726,15 @@ entry; a collection's reference, title and summary, never its file count, sizes 
 call did not show, a condition ref of a rejected analysis, an outcome class outside that list and a dispute of a lesson
 the call did not number are refused as `proposal_lesson_invalid`, each named by lesson and field. The condition and
 counter refs of a lesson the call showed count as shown. The stored checkpoint holds the same bounds for any writer
-(`checkpoint_invalid`), including a complete snapshot on every scoped lesson, and a checkpoint saved through the API may
-keep a lesson's code-written fields as the checkpoint it replaces holds them but not add or change them, so only the
-coordinator writes scoped lessons.
+(`checkpoint_invalid`), including a complete snapshot on every scoped lesson and no scope on a constraint, which holds
+everywhere. A checkpoint saved through the API keeps a numbered checkpoint's lessons in order with their fields and may
+only add lessons after them, never one carrying a code-written field, so a lesson's number and every dispute keep their
+meaning and only the coordinator writes scoped lessons.
 
 When a checkpoint holds a scoped lesson, the coordinator builds its view again once the run's methods are read and
 places each lesson before the view is cut to its budget: a lesson whose keys the methods do not all show is left out and
-counted in `earlier_readings.out_of_scope_lessons`; a lesson whose named definition changed, is gone or has no recorded
-digest is shown with `stale: true` after every fresh lesson, so it gives way first. The view numbers its lessons (`n`)
+counted in `earlier_readings.out_of_scope_lessons` (inside the view's budget); a lesson whose named definition changed,
+is gone or has no recorded digest is shown with `stale: true` after every fresh lesson, so it gives way first. The view numbers its lessons (`n`)
 and never shows a snapshot. A checkpoint with no lesson using a scoped field takes the view it always had and compiles to
 the same bytes, and a lesson without the fields keeps its shape. A project's lessons reach only that project's runs, all
 in one lab, so a scope names no lab. A lesson shared as a lab note keeps its statement, kind and evidence only.

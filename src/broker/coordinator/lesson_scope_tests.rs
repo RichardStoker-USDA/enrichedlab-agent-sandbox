@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use serde_json::json;
 
 use super::*;
-use crate::broker::project::{LessonKind, ResearchState, code_fields_changed};
+use crate::broker::project::{LessonKind, ResearchState, saved_lessons_faults};
 
 const CARD: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 const OTHER_CARD: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
@@ -263,31 +263,97 @@ fn a_scoped_lesson_without_a_complete_snapshot_is_refused_when_stored_and_stale_
 }
 
 #[test]
-fn a_save_keeps_code_written_fields_but_cannot_add_or_change_them() {
+fn a_save_keeps_numbered_lessons_in_order_and_adds_only_plain_lessons_after_them() {
     let methods = profiles(CARD, 2, &["a.csv"]);
     let mut prior = vec![Lesson::new("First.", LessonKind::Hypothesis, vec![])];
     let mut dispute = scoped(&[("method", "lab-sql")]);
     dispute.contradicts = Some(1);
     commit(&mut prior, &[dispute], &methods);
-    assert!(code_fields_changed(&prior, &prior).is_empty());
+    assert!(saved_lessons_faults(&prior, &prior).is_empty());
+    let mut appended = prior.clone();
+    appended.push(Lesson::new(
+        "Added by a person.",
+        LessonKind::Hypothesis,
+        vec![],
+    ));
+    assert!(saved_lessons_faults(&prior, &appended).is_empty());
+    let order = "lessons: numbered lessons keep their order and fields; a save may only add lessons after them";
+    // Inserting a lesson first renumbers the dispute: refused.
+    let mut inserted = vec![Lesson::new("Inserted.", LessonKind::Hypothesis, vec![])];
+    inserted.extend(prior.clone());
+    assert_eq!(
+        saved_lessons_faults(&prior, &inserted),
+        vec![
+            order.to_owned(),
+            "lesson 3 of 3: code-written fields are not the saved ones".to_owned(),
+        ]
+    );
     let mut forged = prior.clone();
     forged[1].validated_snapshot = Some(BTreeMap::from([(
         "method:lab-sql".to_owned(),
         OTHER_CARD.to_owned(),
     )]));
-    forged[0].counter_refs.push("input://x".into());
+    assert_eq!(saved_lessons_faults(&prior, &forged), vec![order]);
+    assert_eq!(saved_lessons_faults(&prior, &prior[..1]), vec![order]);
+    // A copy of a code-written lesson added after the record is refused too.
+    let mut duplicated = prior.clone();
+    duplicated.push(prior[1].clone());
     assert_eq!(
-        code_fields_changed(&prior, &forged),
-        vec![
-            "lesson 1 of 2: code-written fields are not the saved ones",
-            "lesson 2 of 2: code-written fields are not the saved ones",
-        ]
+        saved_lessons_faults(&prior, &duplicated),
+        vec!["lesson 3 of 3: code-written fields are not the saved ones"]
     );
-    let mut added = prior.clone();
-    let mut copy = prior[1].clone();
-    copy.statement = "Another.".into();
-    added.push(copy);
-    assert_eq!(code_fields_changed(&prior, &added).len(), 1);
+    // Before any lesson is numbered, a save may reorder lessons but never add code-written fields.
+    let plain = vec![
+        Lesson::new("A.", LessonKind::Hypothesis, vec![]),
+        Lesson::new("B.", LessonKind::Hypothesis, vec![]),
+    ];
+    assert!(saved_lessons_faults(&plain, &[plain[1].clone(), plain[0].clone()]).is_empty());
+}
+
+#[test]
+fn the_out_of_scope_count_is_inside_the_budget_and_a_constraint_takes_no_scope() {
+    let methods = profiles(CARD, 2, &["a.csv"]);
+    let mut lessons = Vec::new();
+    commit(
+        &mut lessons,
+        &[
+            scoped(&[("method", "lab-objects")]),
+            Lesson::new(
+                "Kept when it fits.",
+                LessonKind::Observation,
+                vec!["input://lab/example".into()],
+            ),
+        ],
+        &methods,
+    );
+    let mut research = state(lessons);
+    research.goal = "Which samples were weighed? ".repeat(160);
+    let later = json!([methods[0].clone()]);
+    let full = research
+        .context_placed(1, 65536, &placement(&later))
+        .unwrap();
+    let bytes = |v: &Value| serde_json::to_vec(v).unwrap().len();
+    // At exactly the full view's size it fits; one byte less, the optional lesson gives way instead of the view failing.
+    assert!(
+        research
+            .context_placed(1, bytes(&full), &placement(&later))
+            .is_ok()
+    );
+    let tight = research
+        .context_placed(1, bytes(&full) - 1, &placement(&later))
+        .unwrap();
+    assert_eq!(tight["out_of_scope_lessons"], 1);
+    assert_eq!(tight["lessons"].as_array().unwrap().len(), 0);
+    let mut constraint = scoped(&[("method", "lab-sql")]);
+    constraint.kind = LessonKind::Constraint;
+    constraint.validated_snapshot = Some(BTreeMap::from([(
+        "method:lab-sql".to_owned(),
+        definitions(&methods)["method:lab-sql"].clone(),
+    )]));
+    assert_eq!(
+        state(vec![constraint]).checkpoint_faults(),
+        vec!["lesson 1 of 1 scope: a constraint holds everywhere"]
+    );
 }
 
 #[test]
