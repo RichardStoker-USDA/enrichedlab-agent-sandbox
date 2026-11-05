@@ -94,6 +94,9 @@ pub fn check_lead_reply(check: &LeadCheck<'_>, reply: &Value) -> Result<CheckedL
         )
     };
     validate(&proposal, &as_written)?;
+    // A lesson's scoped fields, as written: scope keys and condition refs the call showed, an outcome class, a dispute
+    // of a numbered lesson, and none of the fields code writes.
+    lesson_scope::faults(&proposal.lessons, check.context, &evidence)?;
     let lessons_trimmed = ref_faults::trim_lessons(&mut proposal.lessons, &evidence, &unread);
     validate(&proposal, &evidence)?;
     // An archived step's key stays used: its analysis and plan ledger rows keep it.

@@ -121,6 +121,10 @@ pub(super) const LESSON_FIELDS: Fields = &[
     ("statement", true, Shape::Text),
     ("kind", true, Shape::LessonWord),
     ("evidence_refs", true, Shape::TextList),
+    ("scope", false, Shape::Map),
+    ("condition", false, Shape::TextList),
+    ("outcome_class", false, Shape::Text),
+    ("contradicts", false, Shape::Count),
 ];
 
 pub(super) const SCHEMA_NAMES_MAX: usize = 12;

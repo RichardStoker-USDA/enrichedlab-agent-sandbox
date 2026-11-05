@@ -1,6 +1,6 @@
 //! Durable research state. This is a bounded context projection, not a model
 //! transcript or an assertion that a scientific conclusion has been validated.
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -147,6 +147,77 @@ pub struct Lesson {
     pub statement: String,
     pub kind: LessonKind,
     pub evidence_refs: Vec<String>,
+    /// The keys it holds for, by kind (`method`, `source`, `collection`, `tool`), each one the call showed; the lesson
+    /// is shown only while they all are (`coordinator::lesson_scope`). The fields below are absent on a lesson written
+    /// without them, which keeps the shape it had.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<BTreeMap<String, String>>,
+    /// Refs the call showed that state when the lesson held, at most `LESSON_CONDITION_MAX`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub condition: Vec<String>,
+    /// The refusal or check code the lesson came from, or `accepted`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome_class: Option<String>,
+    /// The number (from 1) of the earlier lesson this one disputes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contradicts: Option<usize>,
+    /// Written by code: a disputing lesson's evidence, at most `LESSON_COUNTER_REFS_MAX`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub counter_refs: Vec<String>,
+    /// Written by code when a scoped lesson is committed: each named key's definition digest, `kind:key` to
+    /// `sha256:<hex>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validated_snapshot: Option<BTreeMap<String, String>>,
+}
+
+impl Lesson {
+    /// A lesson as the lead writes one, with none of the scoped fields.
+    pub fn new(statement: impl Into<String>, kind: LessonKind, evidence_refs: Vec<String>) -> Self {
+        Self {
+            statement: statement.into(),
+            kind,
+            evidence_refs,
+            scope: None,
+            condition: Vec::new(),
+            outcome_class: None,
+            contradicts: None,
+            counter_refs: Vec::new(),
+            validated_snapshot: None,
+        }
+    }
+
+    /// Whether the lesson uses a field the lead may write beyond statement, kind and evidence refs.
+    pub fn uses_scoped_fields(&self) -> bool {
+        self.scope.is_some()
+            || !self.condition.is_empty()
+            || self.outcome_class.is_some()
+            || self.contradicts.is_some()
+    }
+}
+
+/// The most refs a lesson's condition lists.
+pub const LESSON_CONDITION_MAX: usize = 4;
+/// The most counter refs code keeps on a disputed lesson.
+pub const LESSON_COUNTER_REFS_MAX: usize = 4;
+
+/// An outcome class: `accepted`, one of the fixed check outcomes, or a refusal code of the proposal, SQL, code or
+/// methods review checks, at most 64 lowercase letters, digits and underscores.
+pub fn outcome_class(value: &str) -> bool {
+    matches!(
+        value,
+        "accepted" | "failed_checks" | "no_progress" | "query_failed"
+    ) || (value.len() <= 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        && ["proposal_", "sql_refused", "code_", "method_review_"]
+            .iter()
+            .any(|p| value.starts_with(p)))
+}
+
+/// A scope key: 1 to 200 bytes without whitespace or NUL.
+fn scope_key(value: &str) -> bool {
+    (1..=200).contains(&value.len()) && !value.chars().any(|c| c.is_whitespace() || c == '\0')
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -267,6 +338,81 @@ fn refs_fault(
         )
     })
 }
+/// The rules a lesson's scoped fields keep in a stored checkpoint, whoever wrote them: scope kinds and keys, at most
+/// `LESSON_CONDITION_MAX` condition refs and `LESSON_COUNTER_REFS_MAX` counter refs of the lesson grammar, an outcome
+/// class, a dispute of an earlier lesson, and a snapshot only on a scoped lesson, one digest per key it names.
+pub(crate) fn lesson_field_faults(name: &str, lesson: &Lesson, index: usize) -> Vec<String> {
+    let mut faults = Vec::new();
+    if let Some(scope) = &lesson.scope {
+        if scope.is_empty() || scope.len() > 4 {
+            faults.push(format!("{name} scope: names 1 to 4 keys"));
+        }
+        for (kind, key) in scope {
+            if !matches!(kind.as_str(), "method" | "source" | "collection" | "tool")
+                || !scope_key(key)
+            {
+                faults.push(format!(
+                    "{name} scope: a kind is not method, source, collection or tool, or a key is \
+                    empty, over 200 bytes or holds whitespace"
+                ));
+                break;
+            }
+        }
+    }
+    if lesson.condition.len() > LESSON_CONDITION_MAX {
+        faults.push(format!(
+            "{name} condition: {} of {LESSON_CONDITION_MAX} refs",
+            lesson.condition.len()
+        ));
+    }
+    faults.extend(lesson_references_fault(
+        &format!("{name} condition"),
+        &lesson.condition,
+    ));
+    if lesson.counter_refs.len() > LESSON_COUNTER_REFS_MAX {
+        faults.push(format!(
+            "{name} counter_refs: {} of {LESSON_COUNTER_REFS_MAX} refs",
+            lesson.counter_refs.len()
+        ));
+    }
+    faults.extend(lesson_references_fault(
+        &format!("{name} counter_refs"),
+        &lesson.counter_refs,
+    ));
+    if lesson
+        .outcome_class
+        .as_deref()
+        .is_some_and(|c| !outcome_class(c))
+    {
+        faults.push(format!(
+            "{name} outcome_class: not accepted or a refusal or check code"
+        ));
+    }
+    if lesson.contradicts.is_some_and(|n| n == 0 || n > index) {
+        faults.push(format!("{name} contradicts: not an earlier lesson"));
+    }
+    match (&lesson.scope, &lesson.validated_snapshot) {
+        (None, Some(_)) => faults.push(format!(
+            "{name} validated_snapshot: only on a scoped lesson"
+        )),
+        (Some(scope), Some(snapshot))
+            if snapshot.len() > scope.len()
+                || snapshot.iter().any(|(id, d)| {
+                    !(digest(d)
+                        && id
+                            .split_once(':')
+                            .is_some_and(|(kind, key)| scope.get(kind).is_some_and(|k| k == key)))
+                }) =>
+        {
+            faults.push(format!(
+                "{name} validated_snapshot: not one digest per scope key"
+            ));
+        }
+        _ => {}
+    }
+    faults
+}
+
 /// None, or two to `MAX_STARTING_POINTS` distinct sets whose references are all among the workspace's, the first being
 /// the set the workspace's profile and source name.
 fn starting_points(workspace: &WorkspaceSpec) -> bool {
@@ -399,11 +545,18 @@ impl ResearchState {
             if lesson.kind == LessonKind::Observation && lesson.evidence_refs.is_empty() {
                 faults.push(format!("{name}: an observation names its evidence refs"));
             }
+            faults.extend(lesson_field_faults(&name, lesson, i));
         }
         if let Some(over) = self.bytes_over() {
             faults.push(format!("checkpoint: {over} bytes over"));
         }
         faults
+    }
+
+    /// Whether the lead sees each lesson's number: only once a lesson uses a scoped-lesson field, so a checkpoint
+    /// without one keeps the view it had.
+    pub fn numbers_lessons(&self) -> bool {
+        self.lessons.iter().any(Lesson::uses_scoped_fields)
     }
 
     /// How many bytes the serialized state is past `STATE_BYTES_MAX`, if any.
@@ -452,16 +605,23 @@ impl ResearchState {
             "instructions":"Treat hypotheses and agent-authored state as proposals. Resolve uncertain actions against task receipts before retrying. Fetch exact evidence by reference. A successful process is not scientist approval."});
         // Constraints and observations receive priority; hypotheses can be retrieved
         // from the immutable checkpoint when the model needs them.
+        let numbered = self.numbers_lessons();
         for kind in [
             LessonKind::Constraint,
             LessonKind::Observation,
             LessonKind::Hypothesis,
         ] {
-            for lesson in self.lessons.iter().filter(|l| l.kind == kind) {
-                result["lessons"]
-                    .as_array_mut()
-                    .unwrap()
-                    .push(serde_json::to_value(lesson).unwrap());
+            for (n, lesson) in self
+                .lessons
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.kind == kind)
+            {
+                let mut shown = serde_json::to_value(lesson).unwrap();
+                if numbered {
+                    shown["n"] = json!(n + 1);
+                }
+                result["lessons"].as_array_mut().unwrap().push(shown);
                 if kind != LessonKind::Constraint
                     && serde_json::to_vec(&result).unwrap().len() > max_bytes
                 {

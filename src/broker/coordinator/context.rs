@@ -952,9 +952,24 @@ fn compile_at_level(
         .flatten()
         .filter_map(|id| id.as_str().map(str::to_owned))
         .collect();
+    let methods = methods_view_ranked(
+        &sorted_by_key(profiles),
+        analysis_view::analyses_room(budget, sections.analyses_bytes),
+        &analysis_view::Ranking {
+            question: view["goal"].as_str().unwrap_or_default(),
+            around: &analysis_around,
+            focus: &analysis_focus,
+        },
+    );
     // The checkpoint view's lessons: its constraint lessons are always shown; its observations and hypotheses are
-    // optional and give way at each yield level, newest kept first in the view's order, none at the last level.
-    let all_lessons: Vec<Value> = view["lessons"].as_array().cloned().unwrap_or_default();
+    // optional and give way at each yield level, newest kept first in the view's order, none at the last level. A
+    // scoped lesson is shown only while the methods show every key it names, and one whose keys' definitions changed
+    // since it was committed is marked stale and placed after the rest (`lesson_scope`).
+    let (all_lessons, out_of_scope) = lesson_scope::place(
+        view["lessons"].as_array().cloned().unwrap_or_default(),
+        &lesson_scope::shown(&json!({"methods": methods})),
+        &lesson_scope::definitions(profiles),
+    );
     let (rules, optional): (Vec<Value>, Vec<Value>) = all_lessons
         .into_iter()
         .partition(|l| l["kind"] == "constraint");
@@ -985,21 +1000,17 @@ fn compile_at_level(
         "constraints": constraints,
         "scientist_instructions": instructions,
         "starting_point": starting_point,
-        "methods": methods_view_ranked(
-            &sorted_by_key(profiles),
-            analysis_view::analyses_room(budget, sections.analyses_bytes),
-            &analysis_view::Ranking {
-                question: view["goal"].as_str().unwrap_or_default(),
-                around: &analysis_around,
-                focus: &analysis_focus,
-            },
-        ),
+        "methods": methods,
         "max_parallel": parallel,
         "earlier_readings": {"verification": "unverified_saved_assessments",
             "suggested_next_action": view["next_action"], "lessons": lessons,
             "omitted_lessons": omitted_lessons},
         "guidance": "Treat earlier readings and hypotheses as proposals. Resolve uncertain steps against the analysis records before retrying. A finished analysis is not a scientist's approval; only a review marked accepted is. Shared lab notes and past research are prior knowledge from other projects, not results of this one.",
     });
+    // Scoped lessons whose keys this call does not show are counted, and only when there are some.
+    if out_of_scope > 0 {
+        value["earlier_readings"]["out_of_scope_lessons"] = json!(out_of_scope);
+    }
     // A query source too large for its share shows its relations in part; its card follows.
     let (shown_relations, relation_records, relations_withheld) = query_relations_view(
         &mut value["methods"],

@@ -59,6 +59,7 @@ mod config;
 mod context;
 mod harness_manifest;
 mod lead_check;
+mod lesson_scope;
 mod literature;
 mod literature_review;
 mod methods;
@@ -821,9 +822,10 @@ async fn advance(
     } else {
         method.reason.clone()
     };
-    // A proposal sent back is not committed: its lessons wait for the lead's corrected reply.
+    // A proposal sent back is not committed: its lessons wait for the lead's corrected reply. A scoped lesson is
+    // committed with its keys' definition digests, and a disputing lesson's evidence goes on the lesson it disputes.
     if outcome != "revise" {
-        state.lessons.extend(proposal.lessons.clone());
+        lesson_scope::commit(&mut state.lessons, &proposal.lessons, &methods);
     }
     // A proposal whose steps, expectations or lessons would take the checkpoint past its bound is refused with how far, so
     // the lead can write them shorter, instead of failing its commit or a later reconciliation: the state is measured as the commit writes it, each delegated step with its task and active, with room for

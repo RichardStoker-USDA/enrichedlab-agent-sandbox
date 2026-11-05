@@ -39,6 +39,87 @@ fn context_keeps_uncertainty_action_identity_and_source_without_transcripts() {
 }
 
 #[test]
+fn a_checkpoint_without_scoped_lessons_keeps_its_view_and_numbers_lessons_once_one_is_scoped() {
+    let research = state();
+    let before = research.context(4, 8192).unwrap();
+    assert_eq!(
+        before["lessons"],
+        json!([{"statement":"The input may require a paired design.","kind":"hypothesis","evidence_refs":[]}])
+    );
+    let mut scoped = research.clone();
+    scoped.lessons.push(serde_json::from_value(json!({"statement":"The source holds one row per animal.",
+        "kind":"observation","evidence_refs":["input://public/example"],"scope":{"source":"public"},
+        "outcome_class":"accepted","validated_snapshot":{"source:public":format!("sha256:{}","c".repeat(64))}})).unwrap());
+    scoped.validate().unwrap();
+    let after = scoped.context(4, 8192).unwrap();
+    let numbers: Vec<u64> = after["lessons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["n"].as_u64().unwrap())
+        .collect();
+    // Observations come before hypotheses in the view; each keeps its checkpoint number.
+    assert_eq!(numbers, vec![2, 1]);
+}
+
+#[test]
+fn a_stored_checkpoint_refuses_scoped_fields_that_break_their_rules() {
+    let bad = |lesson: serde_json::Value| {
+        let mut research = state();
+        research
+            .lessons
+            .push(serde_json::from_value(lesson).unwrap());
+        research.checkpoint_faults()
+    };
+    let base = json!({"statement":"s","kind":"hypothesis","evidence_refs":[]});
+    let with = |field: &str, value: serde_json::Value| {
+        let mut lesson = base.clone();
+        lesson[field] = value;
+        lesson
+    };
+    assert_eq!(
+        bad(with("scope", json!({"lab":"lab-a"}))),
+        vec![
+            "lesson 2 of 2 scope: a kind is not method, source, collection or tool, or a key is empty, over 200 bytes or holds whitespace"
+        ]
+    );
+    assert_eq!(
+        bad(with("outcome_class", json!("made_up"))),
+        vec!["lesson 2 of 2 outcome_class: not accepted or a refusal or check code"]
+    );
+    assert_eq!(
+        bad(with("contradicts", json!(2))),
+        vec!["lesson 2 of 2 contradicts: not an earlier lesson"]
+    );
+    assert_eq!(
+        bad(with(
+            "validated_snapshot",
+            json!({"source:x": format!("sha256:{}","d".repeat(64))})
+        )),
+        vec!["lesson 2 of 2 validated_snapshot: only on a scoped lesson"]
+    );
+    let mut wrong_key = with("scope", json!({"source":"public"}));
+    wrong_key["validated_snapshot"] = json!({"source:other": format!("sha256:{}","d".repeat(64))});
+    assert_eq!(
+        bad(wrong_key),
+        vec!["lesson 2 of 2 validated_snapshot: not one digest per scope key"]
+    );
+    assert_eq!(
+        bad(with(
+            "condition",
+            json!([
+                "input://a",
+                "input://b",
+                "input://c",
+                "input://d",
+                "input://e"
+            ])
+        )),
+        vec!["lesson 2 of 2 condition: 5 of 4 refs"]
+    );
+}
+
+#[test]
 fn state_refuses_duplicate_work_and_unsupported_completed_claims() {
     let mut research = state();
     research.plan.push(research.plan[0].clone());
