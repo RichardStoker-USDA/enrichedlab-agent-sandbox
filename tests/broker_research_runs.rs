@@ -7042,9 +7042,10 @@ async fn a_decision_with_answer_tables_alone_reaches_the_next_runs_results() {
 #[tokio::test]
 #[ignore = "isolated PostgreSQL through qualify_remote_broker.sh research-runs"]
 async fn a_rejection_reaches_the_next_run_after_an_answer_tables_analysis_is_archived() {
-    // An analysis read only by an earlier answer table may leave the working plan (a broker
-    // without answer tables archives it); migration 064 still returns the person's review of it, so the coordinator withdraws
-    // the table instead of letting the lead give it again.
+    // An analysis read only by an earlier answer table may leave the working plan before anyone reviews it (a broker
+    // without answer tables archives it); migration 064 still returns a person's later review of it, so the coordinator
+    // withdraws the table instead of letting the lead give it again. (Once reviewed and not accepted, a step cannot
+    // leave the working plan at all: migration 087, tests/broker_plan_pages.rs.)
     let dsn = fs::read_to_string(env::var_os("BROKER_QUALIFICATION_MIGRATION_DSN_FILE").unwrap())
         .unwrap();
     let config: Config = dsn.parse().unwrap();
@@ -7169,7 +7170,7 @@ async fn a_rejection_reaches_the_next_run_after_an_answer_tables_analysis_is_arc
         .await
         .unwrap();
 
-    // 2. The answer gives a table from that analysis alone, and a person then rejects the analysis.
+    // 2. The answer gives a table from that analysis alone.
     let table = json!({"ref":format!("artifact://tasks/{task}/{}", Uuid::new_v4()),"table":"results/top.csv",
         "columns":["food"],"lead_in":"Foods in the top quarter","rows":42});
     let ended = coordinator
@@ -7185,11 +7186,9 @@ async fn a_rejection_reaches_the_next_run_after_an_answer_tables_analysis_is_arc
         )
         .await
         .unwrap();
-    api.record_task_review(me, task, "rejected", Some("Wrong data."), Uuid::new_v4())
-        .await
-        .unwrap();
 
-    // 3. The next run moves the analysis's step out of the working plan; its results still carry the rejection.
+    // 3. The next run moves the analysis's step out of the working plan, a person then rejects the analysis, and the
+    // run's results carry the rejection.
     let next = api
         .start_research_run(me, project, &start(ended["revision"].as_i64().unwrap()))
         .await
@@ -7211,6 +7210,9 @@ async fn a_rejection_reaches_the_next_run_after_an_answer_tables_analysis_is_arc
         .await
         .unwrap();
     assert_eq!(archived["steps"], 1);
+    api.record_task_review(me, task, "rejected", Some("Wrong data."), Uuid::new_v4())
+        .await
+        .unwrap();
     let results = coordinator
         .research_run_results(next, "lead-archive-c", generation(&claim))
         .await
