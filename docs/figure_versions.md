@@ -108,9 +108,37 @@ The package is a deterministic gzip tar:
 | `code/params.json` | the exact settings the template read |
 | `spec.json` | the request, the settings as asked for and as used (with `font_face`, the typeface R drew with, when the service names it), the service's notes, the source table and the service's version |
 | `README.md` | how to check the files and draw the figure again with R |
+| `explorer/app.R`, `settings.R`, `controls.json`, `params.json`, `figure.R.txt`, `_common.R.txt`, `data.csv` | the figure's browser explorer, when the service wrote one (below) |
 | `SHA256SUMS` | every other member's SHA-256 |
 
-The table is not copied. The package names it by path and SHA-256; it stays in the source analysis's package.
+Outside `explorer/` the table is not copied: the package names it by path and SHA-256, and it stays in the source
+analysis's package. The explorer's `data.csv` holds the rows the figure drew, as the service wrote them, so the browser
+can redraw; it is read under the same project access as the version.
+
+## The explorer
+
+A version asks the service for its explorer too (render-service 0.9.0, decision 103): the Shinylive app files that redraw
+the figure in the browser from the same template, settings and rows, with a control for each setting the chart declares.
+The worker keeps them under `explorer/` and records in `spec.json` the explorer's version and SHA-256, which it checks
+against the files in the service's canonical form (sorted keys, compact UTF-8). An explorer that fails the check, names
+other files or is larger than 8 MiB is left out and `spec.json` says why (`explorer_unreadable`, `explorer_too_large`); a
+service that refuses one as too large (HTTP 413) draws the version again without it. The figure stands either way.
+Previews never ask for an explorer.
+
+The broker serves a version's explorer on the workspace origin, beside the cluster's webR mirror:
+
+| Route | Returns |
+|---|---|
+| `GET /explorer/{task}/{artifact}/` | the page: Shinylive's styles and loader from `/webr-mirror/shinylive/`, its service worker folder named `/explorer` |
+| `GET /explorer/{task}/{artifact}/app.json` | the explorer's files, read from the package and checked against its listing |
+| `GET /explorer/page.js` | the page's start script (no data) |
+
+The page and `app.json` need the same read access as the package (`get_artifact`), and the package must hold all seven
+files (`explorer_not_found` otherwise). Every route sends the explorer content policy (scripts, workers, connections and
+frames from the origin only, with the `wasm-unsafe-eval` webR needs), `nosniff`, `no-referrer` and same-origin resource
+policy; the page and `app.json` are not cached. The service worker (`/explorer/shinylive-sw.js`) and the runtime and
+packages come from the mirror, so nothing loads from a third-party origin. The browser draws previews; the R figure stays
+the master, and the workspace's editor draws a new version.
 
 ## Previews
 

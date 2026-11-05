@@ -138,6 +138,7 @@ The remote broker is a separate Axum service behind Cloudflare Access. It does n
 | GET | `/api/v1/tasks/{task}/generated-code` | `{"generated_code": …}`: the model-written block, template and admission record, or `null` for a fixed method |
 | GET | `/api/v1/tasks/{task}/query` | `{"query": …}`: the database query the lead wrote and the text that ran, its source, snapshot and receipts, or `null` for a task that ran no query ([guarded database queries](reference_sql.md)) |
 | GET | `/api/v1/tasks/{task}/figure` | `{"figure": …}`: a figure version's request, its source analysis and every receipt, or `null` for any other task ([figure versions](figure_versions.md)) |
+| GET | `/explorer/{task}/{artifact}/`, `/explorer/{task}/{artifact}/app.json`, `/explorer/page.js` | a figure version's browser explorer page, its Shinylive files from the version's package, and the page's start script, under the package's read access ([figure versions](figure_versions.md#the-explorer)) |
 | GET | `/api/v1/tasks/{task}/figures` | `{"versions": […]}`: the figure versions made from an analysis that the reader may open, newest first |
 | GET | `/api/v1/tasks/{task}/document` | `{"document": …}`: an answer document's request and every receipt, or `null` for any other task ([answer documents](answer_documents.md)) |
 | GET | `/api/v1/research-runs/{run}/documents` | `{"documents": […]}`: the newest 50 answer documents made from a run that the reader may open, each with its newest receipt |
