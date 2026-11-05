@@ -73,8 +73,12 @@ async fn fake_model(bodies: Arc<Mutex<Vec<Value>>>, scenario: Scenario) -> u16 {
                 } else {
                     axum::http::StatusCode::OK
                 };
-                (status, axum::Json(json!({"model": "qualification-model", "choices": [{"message":
-                    {"content": content.to_string()}, "finish_reason": "stop"}],
+                let mut message = json!({"content": content.to_string()});
+                if role == "working_memory" {
+                    message["reasoning_content"] = json!("The memory call's own reasoning.");
+                }
+                (status, axum::Json(json!({"model": "qualification-model", "choices": [{"message": message,
+                    "finish_reason": "stop"}],
                     "usage": {"prompt_tokens": 10, "completion_tokens": 5}})))
             }
         }),
@@ -306,6 +310,63 @@ async fn a_checked_memory_is_kept_on_the_turn_and_the_runs_next_lead_call_reads_
     assert!(
         read["context"].get("methods").is_none(),
         "the call reads only its view of the context"
+    );
+    // A package with reasoning lists the memory call's reasoning, and the run's orientation calls' too.
+    let orientation_reasoning = "The orientation call's own reasoning.";
+    let digest: String = owner
+        .query_one(
+            "INSERT INTO enrichedlab_agent.broker_research_contexts(tenant_id,sha256,content)
+             VALUES ('research-site','sha256:'||encode(sha256($1::bytea),'hex'),$1::bytea) RETURNING sha256",
+            &[&orientation_reasoning.as_bytes()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    owner
+        .execute(
+            "INSERT INTO enrichedlab_agent.broker_research_orientations(tenant_id,run_id,record) VALUES ('research-site',$1,$2)",
+            &[&run, &json!({"schema_version": 1, "status": "refused", "faults": ["shape"],
+                "specialist": [{"reasoning_sha256": digest}]})],
+        )
+        .await
+        .unwrap();
+    let project: Uuid = owner
+        .query_one(
+            "SELECT project_id FROM enrichedlab_agent.broker_research_runs WHERE run_id=$1",
+            &[&run],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let components: Value = owner
+        .query_one(
+            "SELECT enrichedlab_agent.broker_project_package_components('research-site',$1,$2)",
+            &[&me, &project],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let reasoning: Vec<(String, String)> = components["reasoning"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            (
+                r["role"].as_str().unwrap().to_owned(),
+                r["text"].as_str().unwrap().to_owned(),
+            )
+        })
+        .filter(|(role, _)| role == "working_memory" || role == "orientation")
+        .collect();
+    assert_eq!(
+        reasoning,
+        vec![
+            ("orientation".to_owned(), orientation_reasoning.to_owned()),
+            (
+                "working_memory".to_owned(),
+                "The memory call's own reasoning.".to_owned()
+            ),
+        ]
     );
 
     // 3. A memory kept by an earlier turn of the run is read back under the run's lease and placed in the next lead

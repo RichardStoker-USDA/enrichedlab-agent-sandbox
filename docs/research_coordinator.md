@@ -848,20 +848,29 @@ and correct ever.
 Off by default (`--working-memory-labs`), and a measured candidate: it stays off unless a keyed suite shows it helps.
 For a run in a listed lab, after each lead decision that will be committed (not one the methods review sends back,
 and not a profiling turn, which has no lead call), a working memory call (`coordinator/working_memory.rs`, its own
-short instructions, profile role `working_memory`) reads the context the lead decided from, without its steering
-notes, and the decision itself (summary, answer state, the delegated steps by key and title, the findings'
-statements), never a transcript. It returns what the lead is in the middle of: open threads (at most 6), what the
+short instructions, profile role `working_memory`) reads a field-by-field view of the context the lead decided from
+and the decision itself (summary, answer state, the delegated steps by key and title, the findings' statements), never
+a transcript. The view holds the question, constraints and scientist instructions, the plan's analyses by key, status
+and title with their results by ref, label and status, passages and earlier research by ref and title, earlier
+findings' statements with the refs they bind, and the kept memory. Result tables and cells, passage text, research
+summaries and steering notes stay out, so no research value or manuscript text reaches the call. It returns what the lead is in the middle of: open threads (at most 6), what the
 evidence ruled out (at most 8, each with the one ref that shows why and the refs it was ruled out under), what planned
 steps depend on (at most 4, each a plan step's key and the refs it needs) and unknowns (at most 4). Code checks every
-ref against the refs that context shows and every step key against its plan, holds each text to orientation's text rule
+ref against the refs the view shows in those fixed places (each must read as `scheme://…`) and every step key against
+the analyses' keys, holds each text to orientation's text rule
 (at most 300 characters, no control characters or instruction-like text, no number the question, constraints or
 scientist instructions do not state), refuses another field or shape, and refuses a memory whose section would pass
 `sections.working_memory_bytes` (default 3,072). A refused memory is asked again once with its faults named by list,
 position and fixed code; refused again, or after a failed call, the turn record keeps only `working_memory_call`
-(status, codes, receipts) and the last accepted memory stands. Neither counts as a failure of the run.
+(status, codes, receipts) and the last accepted memory stands. Neither counts as a failure of the run. The memory is
+added to the record only while the record still fits its 128 KiB bound after the step checks give way; otherwise
+`working_memory_call` says `left_out` (`record_too_large`), so the memory never costs a decision its commit.
 
 An accepted memory is kept on the turn record (`working_memory`, `working_memory_sha256`, and `working_memory_call` with
-status `accepted`); the calls' contexts are kept by digest like every model call's. The next lead call of the run reads
+status `accepted`); the calls' contexts, replies and reasoning are kept by digest like every model call's. Migration
+088 lets a lab member read them (`broker_research_context`, which also now lists the run's orientation calls) and adds
+their reasoning, and the orientation calls', to a package that carries reasoning (roles `working_memory` and
+`orientation`). The next lead call of the run reads
 the newest accepted memory (`broker_research_run_working_memory`, migration 088, under the run's lease) as one pinned
 section, `working_memory`: its bytes are set aside before the context is compiled, and the section carries its label
 and one sentence of instructions, so a lead call without it keeps its instructions byte for byte. A kept memory larger
