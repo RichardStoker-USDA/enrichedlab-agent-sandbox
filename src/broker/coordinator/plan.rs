@@ -114,38 +114,6 @@ pub fn held_steps(results: &Value, pages: &Value, orientation: Option<&Value>) -
     HeldSteps { tasks, keys }
 }
 
-/// Completed analyses the lead has settled: the run's newest answer was recorded after every one of the analysis's
-/// results, so each was in front of the lead (shown or counted as left out) when it answered. An analysis with no
-/// result in the read, a result newer than the answer, or a run with no answer yet settles nothing; a timestamp that
-/// does not parse settles nothing.
-pub fn settled_tasks(results: &Value) -> HashSet<String> {
-    let parse = |v: &Value| {
-        v.as_str().and_then(|s| {
-            time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
-        })
-    };
-    let Some(answered) = parse(&results["earlier_findings"]["recorded_at"]) else {
-        return HashSet::new();
-    };
-    let mut newest: HashMap<&str, Option<time::OffsetDateTime>> = HashMap::new();
-    for item in results["results"].as_array().into_iter().flatten() {
-        let Some(task) = item["task_id"].as_str() else {
-            continue;
-        };
-        let at = parse(&item["created_at"]);
-        let entry = newest.entry(task).or_insert(at);
-        *entry = match (*entry, at) {
-            (Some(a), Some(b)) => Some(a.max(b)),
-            _ => None,
-        };
-    }
-    newest
-        .into_iter()
-        .filter(|(_, at)| at.is_some_and(|at| at <= answered))
-        .map(|(task, _)| task.to_owned())
-        .collect()
-}
-
 /// This project's analyses, archived and in the working plan: an archived analysis is still this
 /// project's own work, so the lab's earlier research leaves it out. The order is not age; `newest_tasks` gives that.
 pub fn project_tasks(state: &ResearchState, pages: &Value) -> Vec<Uuid> {
@@ -231,23 +199,24 @@ pub fn plan_archive_keys(
         .collect()
 }
 
-/// The steps to move out at a segment boundary, when a lead context no longer fits its budget: every movable step in
-/// plan order whose evidence is settled (a failed or skipped step, or a completed one in `settled_tasks`), at most
-/// `PLAN_STEPS_MAX` (one archive call takes 1 to 128 keys). A moved step's analysis and its review
-/// leave the lead context with it; the newest moved steps stay visible by title in the archive summary
-/// (`plan_pages`), and held steps stay in the plan. Empty when no step can move.
-pub fn plan_segment_keys(
-    state: &ResearchState,
-    facts: &Value,
-    held: &HeldSteps,
-    settled: &HashSet<String>,
-) -> Vec<String> {
+/// The steps to move out at a segment boundary, when a lead context no longer fits its budget: every movable failed or
+/// skipped step that holds no evidence (its analysis left no researcher result), in plan order, at most
+/// `PLAN_STEPS_MAX` (one archive call takes 1 to 128 keys). A completed step never moves at a boundary, so no result
+/// leaves the lead's context before it has been answered with; held steps stay too. Empty when no step can move.
+pub fn plan_segment_keys(state: &ResearchState, facts: &Value, held: &HeldSteps) -> Vec<String> {
+    let with_evidence: HashSet<&str> = facts
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|f| f["evidence_refs"].as_array().is_some_and(|r| !r.is_empty()))
+        .filter_map(|f| f["task_id"].as_str())
+        .collect();
     movable_steps(state, facts, held)
         .into_iter()
-        // A completed step moves only once the lead has settled its results; a failed or skipped one has none to read.
+        .filter(|s| matches!(s.status, StepStatus::Failed | StepStatus::Skipped))
         .filter(|s| {
-            s.status != StepStatus::Completed
-                || s.task_id.is_some_and(|t| settled.contains(&t.to_string()))
+            s.task_id
+                .is_none_or(|t| !with_evidence.contains(t.to_string().as_str()))
         })
         .take(PLAN_STEPS_MAX)
         .map(|s| s.action_key.clone())

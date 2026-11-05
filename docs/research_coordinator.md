@@ -123,14 +123,16 @@ The accepted flow is implemented as follows; site deployment and model behavior 
    orientation is made after the context was compiled, so no room was set aside for it: when it does not fit, the run
    waits 15 seconds with no failure counted (`checkpoint_changed`) and the next attempt compiles within the kept
    orientation's reserve. When the context still does not fit, or the checkpoint view cannot fit its share, the plan's
-   settled steps move into an archive page at a segment boundary, at most 128 in one move: a failed or skipped step,
-   or a completed one whose results all came before the run's newest answer (`settled_tasks`). Held steps never move,
-   at a boundary or when a full plan archives (`HeldSteps`): an analysis still running or waiting for a person, one an
-   earlier finding or answer table reads, one whose newest person review is not `accepted`, one the methods revision
-   request cites, the orientation's profiling steps, and keys already archived. A moved step's analysis leaves the lead
-   context with it; the run waits 15 seconds with no failure counted (`checkpoint_changed`) and the next attempt
-   compiles from the smaller plan. Only a checkpoint that moved on is retried that way; any other conflict is a fault.
-   When no step can move, the run stops for a person as `review_required` with reason `context_too_large`, before any
+   failed and skipped steps that left no result move into an archive page at a segment boundary, at most 128 in one
+   move; a completed step never moves at a boundary, so no result leaves the lead's context before it has been
+   answered with. Held steps never move, at a boundary or when a full plan archives (`HeldSteps`): an analysis still
+   running or waiting for a person, one an earlier finding or answer table reads, one whose newest person review is
+   not `accepted`, one the methods revision request cites, the orientation's profiling steps, and keys already
+   archived. The archive function also refuses a step whose newest review is not accepted, under a lock that orders it
+   against review writes (migration 087, `plan_archive_reviewed`), so a review recorded after the coordinator's read
+   still holds its step. After a move, or either refusal of a checkpoint that moved on, the run waits 15 seconds with
+   no failure counted (`checkpoint_changed`) and the next attempt reads again; any other conflict is a fault. When no
+   step can move, the run stops for a person as `review_required` with reason `context_too_large`, before any
    model call. A model call writes the
    context's top-level sections in a fixed order (`context::stable_prefix_text`), most stable first: the guidance,
    schema version, question, constraints, scientist instructions, starting data and parallel limit, which never change

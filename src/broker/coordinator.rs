@@ -270,7 +270,7 @@ async fn advance(
         {
             Ok(archived) => archived,
             // Only a checkpoint that moved on is retried; any other conflict is a fault, never a silent retry.
-            Err(e) if e.code == "checkpoint_conflict" => {
+            Err(e) if matches!(e.code, "checkpoint_conflict" | "plan_archive_reviewed") => {
                 store
                     .yield_research_run(run, worker, generation, "checkpoint_changed", None)
                     .await?;
@@ -309,12 +309,7 @@ async fn advance(
                 worker,
                 generation,
                 revision,
-                &plan_segment_keys(
-                    &state,
-                    &claim["task_facts"],
-                    &held,
-                    &settled_tasks(&results),
-                ),
+                &plan_segment_keys(&state, &claim["task_facts"], &held),
             )
             .await;
         }
@@ -556,12 +551,7 @@ async fn advance(
             worker,
             generation,
             revision,
-            &plan_segment_keys(
-                &state,
-                &claim["task_facts"],
-                &held,
-                &settled_tasks(&results),
-            ),
+            &plan_segment_keys(&state, &claim["task_facts"], &held),
         )
         .await;
     }
@@ -690,12 +680,7 @@ async fn advance(
             worker,
             generation,
             revision,
-            &plan_segment_keys(
-                &state,
-                &claim["task_facts"],
-                &held,
-                &settled_tasks(&results),
-            ),
+            &plan_segment_keys(&state, &claim["task_facts"], &held),
         )
         .await;
     }

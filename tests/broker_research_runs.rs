@@ -11,7 +11,7 @@ use enrichedlab_agent_sandbox::broker::{
         project_tasks, proposal_schema_names as schema_names_with_guidance, query_step_shape,
         read_reply, reconcile, refusal as refusal_with_guidance, refused_numbers, rejection_reason,
         repeated_queries, requires_execution_review, review_input_bytes, review_outcome,
-        review_targets, settled_tasks, unreadable_reply, with_archived_page, with_prior_attempt,
+        review_targets, unreadable_reply, with_archived_page, with_prior_attempt,
         with_unreadable_note,
     },
     model::SubmitTaskRequest,
@@ -6258,94 +6258,86 @@ fn a_full_working_plan_archives_its_oldest_finished_steps_and_keeps_what_finding
     assert!(plan_archive_keys(&busy, &busy_facts, 1, &HeldSteps::default()).is_empty());
 }
 
-/// Results read for `tasks`, each with one result created at `at`, and an answer recorded at `answered`.
-fn settled_results(tasks: &[Uuid], at: &str, answered: Option<&str>) -> serde_json::Value {
-    let items: Vec<serde_json::Value> = tasks
+/// `facts` with the evidence of the listed plan positions removed (an analysis that left no researcher result).
+fn without_evidence(
+    state: &ResearchState,
+    facts: &serde_json::Value,
+    positions: &[usize],
+) -> serde_json::Value {
+    let tasks: HashSet<String> = positions
         .iter()
-        .map(|t| json!({"task_id": t, "ref": format!("artifact://tasks/{t}/r1"), "created_at": at}))
+        .filter_map(|i| state.plan[*i].task_id)
+        .map(|t| t.to_string())
         .collect();
-    json!({"results": items, "earlier_findings": answered.map(|a| json!({"recorded_at": a, "findings": []}))})
-}
-
-#[test]
-fn a_segment_boundary_moves_only_settled_steps_and_holds_what_a_person_or_the_lead_still_needs() {
-    // At a segment boundary a step moves only when nothing still depends on it: a failed or skipped step, or a
-    // completed one whose results came before the run's newest answer. Held: an analysis still running or waiting for
-    // a person, one an earlier finding reads, one whose newest person review is not accepted, one the methods revision
-    // request cites, the orientation's profiling steps, and keys already archived.
-    let (state, facts) = long_plan(40, |i| match i {
-        5 => ("failed", Some("failed")),
-        7 => ("skipped", None),
-        10 => ("completed", Some("review_required")),
-        11 => ("active", Some("running")),
-        i if i >= 36 => ("pending", None),
-        _ => ("completed", Some("completed")),
-    });
-    let task = |i: usize| state.plan[i].task_id.unwrap();
-    let all: Vec<Uuid> = (0..36).filter_map(|i| state.plan[i].task_id).collect();
-    let mut results = settled_results(
-        &all,
-        "2026-11-05T04:00:00.000000Z",
-        Some("2026-11-05T04:30:00.123456+00:00"),
-    );
-    // Step 30's result arrived after the answer: the lead has not answered with it yet.
-    for item in results["results"].as_array_mut().unwrap() {
-        if item["task_id"] == json!(task(30)) {
-            item["created_at"] = json!("2026-11-05T04:45:00.000000Z");
+    let mut facts = facts.clone();
+    for f in facts.as_array_mut().unwrap() {
+        if f["task_id"].as_str().is_some_and(|t| tasks.contains(t)) {
+            f["evidence_refs"] = json!([]);
         }
     }
-    results["earlier_findings"]["findings"] = json!([{"statement": "{a} leads.",
-        "bindings": {"a": {"ref": format!("artifact://tasks/{}/r1", task(3)), "table": "t.csv", "row": 1, "column": "x"}}}]);
-    results["reviews"] = json!([
-        {"task_id": task(12), "decision": "needs_changes", "recorded_at": "2026-11-05T04:10:00Z", "note": "Pool the doses."},
-        {"task_id": task(13), "decision": "needs_changes", "recorded_at": "2026-11-05T04:10:00Z", "note": "Redo."},
-        {"task_id": task(13), "decision": "accepted", "recorded_at": "2026-11-05T04:20:00Z", "note": null},
-        {"task_id": task(14), "decision": "rejected", "recorded_at": "2026-11-05T04:10:00Z", "note": "Wrong cohort."}]);
-    results["revision_request"] = json!({"turn": 3, "reason": "Check the contrast.",
-        "findings": [{"refs": [format!("artifact://tasks/{}/r1", task(15))]}]});
-    let pages = json!({"keys": ["q-16"]});
-    let orientation = json!({"status": "read", "step_keys": ["q-17"]});
-    let held = held_steps(&results, &pages, Some(&orientation));
-    let settled = settled_tasks(&results);
-    assert!(settled.contains(&task(0).to_string()) && !settled.contains(&task(30).to_string()));
-    let keys = plan_segment_keys(&state, &facts, &held, &settled);
-    let expected: Vec<String> = (0..36)
-        .filter(|i| ![3, 10, 11, 12, 14, 15, 16, 17, 30].contains(i))
-        .map(|i| format!("q-{i}"))
-        .collect();
-    assert_eq!(keys, expected);
-    assert!(
-        keys.contains(&"q-13".to_owned()),
-        "a review resolved as accepted no longer holds its step"
-    );
-    // With no answer yet nothing completed is settled: only the failed and skipped steps can move.
-    let unanswered = settled_tasks(&settled_results(&all, "2026-11-05T04:00:00Z", None));
-    assert_eq!(
-        plan_segment_keys(&state, &facts, &held, &unanswered),
-        vec!["q-5".to_owned(), "q-7".to_owned()]
-    );
-    // One archive call takes at most 128 keys, and nothing finished means nothing to move.
-    let (full, full_facts) = long_plan(PLAN_STEPS_MAX, |_| ("completed", Some("completed")));
-    let full_tasks: Vec<Uuid> = full.plan.iter().filter_map(|s| s.task_id).collect();
-    let full_settled = settled_tasks(&settled_results(
-        &full_tasks,
-        "2026-11-05T04:00:00Z",
-        Some("2026-11-05T05:00:00Z"),
-    ));
-    assert_eq!(
-        plan_segment_keys(&full, &full_facts, &HeldSteps::default(), &full_settled).len(),
-        PLAN_STEPS_MAX
-    );
-    let (busy, busy_facts) = long_plan(8, |_| ("active", Some("running")));
-    assert!(plan_segment_keys(&busy, &busy_facts, &HeldSteps::default(), &full_settled).is_empty());
+    facts
 }
 
 #[test]
-fn a_view_that_does_not_fit_fits_once_its_settled_steps_move() {
+fn a_segment_boundary_moves_only_failed_or_skipped_steps_without_evidence_and_never_a_held_one() {
+    // At a segment boundary only a failed or skipped step that left no result moves: a completed step never does, so no
+    // result leaves the lead's context before it has been answered with. Held steps stay: one whose newest person
+    // review is not accepted, one the methods revision request cites, the orientation's profiling steps, keys already
+    // archived and one an earlier finding reads.
+    let (state, facts) = long_plan(40, |i| match i {
+        0..=19 => ("failed", Some("failed")),
+        20..=24 => ("skipped", None),
+        25..=34 => ("completed", Some("completed")),
+        35 => ("active", Some("running")),
+        _ => ("pending", None),
+    });
+    let task = |i: usize| state.plan[i].task_id.unwrap();
+    // Steps 0 to 9 failed without a result; 10 to 19 failed but left one.
+    let facts = without_evidence(&state, &facts, &(0..10).collect::<Vec<_>>());
+    let results = json!({
+        "earlier_findings": {"findings": [{"statement": "{a} leads.",
+            "bindings": {"a": {"ref": format!("artifact://tasks/{}/r1", task(1)), "table": "t.csv", "row": 1, "column": "x"}}}]},
+        "reviews": [
+            {"task_id": task(2), "decision": "needs_changes", "recorded_at": "2026-11-05T04:10:00Z", "note": "Rerun it."},
+            {"task_id": task(3), "decision": "rejected", "recorded_at": "2026-11-05T04:10:00Z", "note": "Wrong table."},
+            {"task_id": task(4), "decision": "needs_changes", "recorded_at": "2026-11-05T04:10:00Z", "note": "Redo."},
+            {"task_id": task(4), "decision": "accepted", "recorded_at": "2026-11-05T04:20:00Z", "note": null}],
+        "revision_request": {"turn": 3, "reason": "Check it.", "findings": [{"refs": [format!("artifact://tasks/{}/r1", task(5))]}]}});
+    let held = held_steps(
+        &results,
+        &json!({"keys": ["q-6"]}),
+        Some(&json!({"status": "read", "step_keys": ["q-7"]})),
+    );
+    let keys = plan_segment_keys(&state, &facts, &held);
+    let expected: Vec<String> = [0, 4, 8, 9, 20, 21, 22, 23, 24]
+        .iter()
+        .map(|i| format!("q-{i}"))
+        .collect();
+    assert_eq!(
+        keys, expected,
+        "q-4's review was accepted, so it no longer holds"
+    );
+    // The count rule still moves completed steps from a full plan, and it respects the same holds.
+    let (full, full_facts) = long_plan(PLAN_STEPS_MAX, |_| ("completed", Some("completed")));
+    let full_held = held_steps(
+        &json!({"reviews": [{"task_id": full.plan[0].task_id.unwrap(),
+        "decision": "needs_changes", "recorded_at": "2026-11-05T04:10:00Z", "note": "Again."}]}),
+        &json!(null),
+        None,
+    );
+    let counted = plan_archive_keys(&full, &full_facts, 2, &full_held);
+    assert!(!counted.contains(&"q-0".to_owned()) && counted.contains(&"q-1".to_owned()));
+    // A boundary never moves a completed step, and nothing finished means nothing to move.
+    assert!(plan_segment_keys(&full, &full_facts, &HeldSteps::default()).is_empty());
+    let (busy, busy_facts) = long_plan(8, |_| ("active", Some("running")));
+    assert!(plan_segment_keys(&busy, &busy_facts, &HeldSteps::default()).is_empty());
+}
+
+#[test]
+fn a_view_that_does_not_fit_fits_once_its_failed_steps_move() {
     // Sixteen failed steps keep their full rationales in the checkpoint view (completed and skipped steps are shown
-    // compactly), so the view outgrows its share of a 27,695-byte budget (`context_budget_too_small`). Failed steps have
-    // no results to settle, so all sixteen move at a segment boundary and the view without them fits; a pending step
-    // stays.
+    // compactly), so the view outgrows its share of a 27,695-byte budget (`context_budget_too_small`). They left no
+    // result, so all sixteen move at a segment boundary and the view without them fits; the pending step stays.
     let (mut state, facts) = long_plan(17, |i| {
         if i < 16 {
             ("failed", Some("failed"))
@@ -6356,12 +6348,13 @@ fn a_view_that_does_not_fit_fits_once_its_settled_steps_move() {
     for step in &mut state.plan {
         step.rationale = "r".repeat(1500);
     }
+    let facts = without_evidence(&state, &facts, &(0..16).collect::<Vec<_>>());
     let budget = 27_695;
     assert_eq!(
         state.context(3, budget * 2 / 3).err(),
         Some("context_budget_too_small")
     );
-    let keys = plan_segment_keys(&state, &facts, &HeldSteps::default(), &HashSet::new());
+    let keys = plan_segment_keys(&state, &facts, &HeldSteps::default());
     assert_eq!(keys.len(), 16);
     let mut archived = state.clone();
     archived.plan.retain(|s| !keys.contains(&s.action_key));

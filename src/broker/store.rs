@@ -159,6 +159,8 @@ const MIGRATION_084: &str = include_str!("../../migrations/postgres/084_lab_obje
 const MIGRATION_085: &str = include_str!("../../migrations/postgres/085_research_run_lanes.sql");
 const MIGRATION_086: &str =
     include_str!("../../migrations/postgres/086_evidence_capture_lab_objects.sql");
+const MIGRATION_087: &str =
+    include_str!("../../migrations/postgres/087_plan_archive_review_hold.sql");
 
 #[derive(Clone)]
 pub struct Store {
@@ -441,12 +443,14 @@ impl Store {
     /// reasoning in its deferral (061), and reads each digest's column summaries without a lab's values for its step
     /// checks (073), and keeps a run's orientation and counts its faults (074), and reads each source's card and data
     /// versions to say when a card is behind its data (082), and commits a lab objects step (083) with the columns it
-    /// keeps (084), whose request rows the research record captures (086). A coordinator without them must not claim runs.
+    /// keeps (084), whose request rows the research record captures (086), and whose plan archive refuses a reviewed
+    /// step (087). A coordinator without them must not claim runs.
     pub async fn ready_for_research_results(&self) -> StoreResult<()> {
         let client = self.pool.get().await.map_err(pool_error)?;
         let row = client
             .query_one(
-                "SELECT enrichedlab_agent.broker_schema_ready(86) \
+                "SELECT enrichedlab_agent.broker_schema_ready(87) \
+                 AND enrichedlab_agent.broker_schema_ready(86) \
                  AND enrichedlab_agent.broker_schema_ready(85) \
                  AND enrichedlab_agent.broker_schema_ready(84) \
                  AND enrichedlab_agent.broker_schema_ready(83) \
@@ -1712,6 +1716,10 @@ pub async fn migrate(args: MigrationArgs) -> Result<()> {
         .batch_execute(MIGRATION_086)
         .await
         .context("failed to apply PostgreSQL migration 086")?;
+    client
+        .batch_execute(MIGRATION_087)
+        .await
+        .context("failed to apply PostgreSQL migration 087")?;
     Ok(())
 }
 
@@ -2213,6 +2221,7 @@ fn database_error(error: tokio_postgres::Error) -> StoreError {
         }
         "broker:project_export_invalid" => (StoreErrorKind::Invalid, "project_export_invalid"),
         "broker:checkpoint_conflict" => (StoreErrorKind::Conflict, "checkpoint_conflict"),
+        "broker:plan_archive_reviewed" => (StoreErrorKind::Conflict, "plan_archive_reviewed"),
         "broker:checkpoint_invalid" => (StoreErrorKind::Invalid, "checkpoint_invalid"),
         "broker:plan_archive_invalid" => (StoreErrorKind::Invalid, "plan_archive_invalid"),
         "broker:plan_archive_unfinished" => (StoreErrorKind::Invalid, "plan_archive_unfinished"),
@@ -2387,6 +2396,7 @@ fn static_code(code: &str) -> &'static str {
         "project_package_scope_changed" => "project_package_scope_changed",
         "project_export_invalid" => "project_export_invalid",
         "checkpoint_conflict" => "checkpoint_conflict",
+        "plan_archive_reviewed" => "plan_archive_reviewed",
         "checkpoint_invalid" => "checkpoint_invalid",
         "plan_archive_invalid" => "plan_archive_invalid",
         "plan_archive_unfinished" => "plan_archive_unfinished",

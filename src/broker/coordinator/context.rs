@@ -210,7 +210,8 @@ pub(super) async fn segment_boundary(
                 "research plan archived at a segment boundary");
         }
         // Only a checkpoint that moved on is retried; any other conflict is a fault, never a silent retry.
-        Err(e) if e.code == "checkpoint_conflict" => {}
+        // A review recorded since the read refuses the move (`plan_archive_reviewed`); the next read holds that step.
+        Err(e) if matches!(e.code, "checkpoint_conflict" | "plan_archive_reviewed") => {}
         Err(e) => return Err(e.into()),
     }
     store
