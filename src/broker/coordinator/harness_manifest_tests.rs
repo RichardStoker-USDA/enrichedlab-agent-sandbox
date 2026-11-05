@@ -126,21 +126,31 @@ fn SYSTEM_BYTES() -> usize {
 
 #[test]
 fn a_path_or_address_served_as_the_model_name_is_kept_only_as_a_digest() {
-    for name in ["/srv/models/glm", "./weights", "http://10.0.0.5/v1", "a b"] {
+    for name in [
+        "/srv/models/glm",
+        "./weights",
+        "http://10.0.0.5/v1",
+        "a b",
+        "C:/models/model",
+        "10.0.0.5:8000/v1",
+        "10.0.0.5/v1",
+        "models.example.invalid/v1",
+        "10.0.0.5",
+        "org/a/b",
+        "vendor/../x",
+        "~/m",
+        "-x",
+    ] {
         let m = compute(&args(&[]), &model_named(name, 196_608, "{}"), None, None).unwrap();
         let s = surfaces(&m);
         assert!(s["model.name"].get("value").is_none(), "{name}");
         assert_eq!(s["model.name"]["sha256"], digest(name.as_bytes()));
         assert!(!String::from_utf8(m.bytes).unwrap().contains(name));
     }
-    let m = compute(
-        &args(&[]),
-        &model_named("vendor/model-1.5", 196_608, "{}"),
-        None,
-        None,
-    )
-    .unwrap();
-    assert_eq!(surfaces(&m)["model.name"]["value"], "vendor/model-1.5");
+    for name in ["vendor/model-1.5", "glm-5.3-flash", "Qwen3_8B"] {
+        let m = compute(&args(&[]), &model_named(name, 196_608, "{}"), None, None).unwrap();
+        assert_eq!(surfaces(&m)["model.name"]["value"], name);
+    }
 }
 
 #[test]

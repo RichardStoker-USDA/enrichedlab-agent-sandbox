@@ -58,15 +58,29 @@ fn number(value: usize, range: Option<(usize, usize)>, person_required: bool) ->
     }
 }
 
-/// A model name as served, when it reads as a public identifier (printable ASCII, no space, not a path or URL);
-/// otherwise only its digest, so a filesystem path or address used as a served name never enters the manifest.
+/// A model name as served, when it reads as a public model identifier: `name` or `org/name`, where `org` is letters,
+/// digits, `_` and `-`, and `name` is letters, digits, `.`, `_` and `-`, starts with a letter or digit, has no `..` and is
+/// not only digits and dots. Anything else (a path, a drive, an address with or without a port, a URL) is kept only as
+/// its digest, so it never enters the manifest.
+fn public_model_name(name: &str) -> bool {
+    let word = |s: &str, extra: &[u8]| {
+        s.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || extra.contains(&b))
+    };
+    let (org, model) = match name.split_once('/') {
+        Some((org, model)) => (Some(org), model),
+        None => (None, name),
+    };
+    name.len() <= 128
+        && org.is_none_or(|o| word(o, &[]))
+        && word(model, b".")
+        && !model.contains("..")
+        && !model.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+}
+
 fn model_name(name: &str) -> Value {
-    let public = name.len() <= 128
-        && name.bytes().all(|b| b.is_ascii_graphic())
-        && !name.starts_with(['/', '.', '~'])
-        && !name.contains("://")
-        && !name.contains('\\');
-    if public {
+    if public_model_name(name) {
         json!({"kind": "string", "value": name, "editable": true, "person_required": true})
     } else {
         json!({"kind": "string", "sha256": digest(name.as_bytes()), "editable": true, "person_required": true})

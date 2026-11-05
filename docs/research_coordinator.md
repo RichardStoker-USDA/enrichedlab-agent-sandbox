@@ -695,8 +695,8 @@ accepted lane, before any release.
 At start, before it claims a run, a coordinator computes its harness manifest (`coordinator/harness_manifest.rs`): the
 index of every surface that shapes its model calls, each marked `editable` (a measured proposal may change it) or
 fixed, and whether a change needs a person (`person_required`). It lists the lead system text by digest, length and
-source (compiled or `--lead-system-file`); the model's served name (only its digest when the name reads as a path or
-address), input and output limits and timeout; every section budget with its value and allowed range (fixed at its
+source (compiled or `--lead-system-file`); the model's served name (only its digest unless it reads as `name` or
+`org/name`), input and output limits and timeout; every section budget with its value and allowed range (fixed at its
 value when the lead budget leaves no valid override); the request settings and profile by digest; the supervisor's bounds; which labs each
 feature reaches (lead text, unreviewed papers, literature claims, catalog, reading, literature review, supervisor,
 orientation, working memory); the reading and review byte allowances; the study fields; whether a knowledge service
