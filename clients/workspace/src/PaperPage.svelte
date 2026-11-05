@@ -70,7 +70,12 @@
   }
   $effect(() => {
     const p = paper;
-    if (p && !p.removed && readFor !== paperId) { readFor = paperId; untrack(() => { reading = null; grids = {}; void loadReading(); }); }
+    // A removed paper shows none of its text: drop what was read, stop a read in flight, and read again if restored.
+    if (p?.removed) {
+      untrack(() => { readController?.abort(); readController = null; reading = null; grids = {}; readingPhase = "idle"; readFor = ""; });
+      return;
+    }
+    if (p && readFor !== paperId) { readFor = paperId; untrack(() => { reading = null; grids = {}; void loadReading(); }); }
   });
   onDestroy(() => readController?.abort());
   // Sections with text, without a second abstract when the catalog already shows one.
@@ -95,7 +100,11 @@
     const key = group?.key;
     if (!key || grids[ordinal] === "loading") return;
     grids[ordinal] = "loading";
-    try { grids[ordinal] = await library.table(key, paperId, ordinal); } catch { grids[ordinal] = "failed"; }
+    const forPaper = readFor;
+    try {
+      const grid = await library.table(key, paperId, ordinal);
+      if (readFor === forPaper && !paper?.removed) grids[ordinal] = grid;
+    } catch { if (readFor === forPaper) grids[ordinal] = "failed"; }
   }
 
   // Labels: one request key per distinct change, so a repeated click saves once.

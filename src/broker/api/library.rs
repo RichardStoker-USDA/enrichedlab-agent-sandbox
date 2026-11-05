@@ -529,6 +529,34 @@ async fn open_document(
 
 /// The most bytes a reading may hold; a longer one keeps its first sections and says it was cut.
 const MAX_READING_BYTES: usize = 6 * 1024 * 1024;
+/// What one read may hold while it is fetched and answered, in KiB of the library's shared memory budget (uploads
+/// take theirs from the same budget), so many readers at once cannot pass the API's memory limit: a figure image
+/// (its bytes plus headroom), a whole-paper read (the parsed blocks, the reading and its JSON) and a table grid.
+const IMAGE_WEIGHT_KIB: u32 = (crate::broker::library::MAX_FIGURE_IMAGE_BYTES / 1024) as u32 + 512;
+const READING_WEIGHT_KIB: u32 = 20 * 1024;
+const TABLE_WEIGHT_KIB: u32 = 6 * 1024;
+
+/// A share of the library's memory budget, waited for at most `PERMIT_WAIT`; a busy library answers `library_busy`.
+async fn reserve(
+    state: &ApiState,
+    kib: u32,
+) -> Result<tokio::sync::OwnedSemaphorePermit, ApiError> {
+    tokio::time::timeout(
+        PERMIT_WAIT,
+        state.library_permits.clone().acquire_many_owned(kib),
+    )
+    .await
+    .map_err(|_| library_error(LibraryError::Busy))?
+    .map_err(|_| ApiError::internal())
+}
+
+/// A response body that keeps its memory share until the body is handed to the connection.
+fn held_body(bytes: Vec<u8>, permit: tokio::sync::OwnedSemaphorePermit) -> Body {
+    Body::from_stream(futures_util::stream::once(async move {
+        let _held = permit;
+        Ok::<_, std::convert::Infallible>(axum::body::Bytes::from(bytes))
+    }))
+}
 
 /// `GET /api/v1/labs/{lab}/library/papers/{paper}/read`: the whole paper as its parse holds it, for reading in the
 /// workspace: sections in order with the parser's role, figures with whether an image is on file and any description
@@ -540,6 +568,7 @@ pub(super) async fn read(
 ) -> Result<impl IntoResponse, ApiError> {
     let document_id = open_document(&state, &headers, &lab, paper).await?;
     let service = service(&state, &lab)?;
+    let permit = reserve(&state, READING_WEIGHT_KIB).await?;
     let read = crate::broker::paper::read(service, &lab, document_id)
         .await
         .map_err(library_error)?;
@@ -586,7 +615,7 @@ pub(super) async fn read(
         .iter()
         .map(|table| json!({"ordinal": table.ordinal, "label": table.label, "caption": table.caption, "page": table.page}))
         .collect();
-    Ok(Json(json!({"reading": {
+    let body = serde_json::to_vec(&json!({"reading": {
         "sections": sections,
         "figures": figures,
         "tables": tables,
@@ -595,7 +624,16 @@ pub(super) async fn read(
         "blocks_read": read.blocks_read,
         "blocks_total": read.blocks_total,
         "complete": read.complete() && !cut_sections,
-    }})))
+    }}))
+    .map_err(|_| ApiError::internal())?;
+    drop(read);
+    Ok((
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        )],
+        held_body(body, permit),
+    ))
 }
 
 /// `GET /api/v1/labs/{lab}/library/papers/{paper}/figures/{figure}/image`: one figure's image, when the figure is one of
@@ -627,6 +665,7 @@ pub(super) async fn figure_image(
     if !found {
         return Err(ApiError::not_found("figure_image_not_found"));
     }
+    let permit = reserve(&state, IMAGE_WEIGHT_KIB).await?;
     let (bytes, media) = service
         .figure_image(&lab, figure)
         .await
@@ -647,7 +686,7 @@ pub(super) async fn figure_image(
                 HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; sandbox"),
             ),
         ],
-        bytes,
+        held_body(bytes, permit),
     )
         .into_response())
 }
@@ -663,6 +702,7 @@ pub(super) async fn table(
     }
     let document_id = open_document(&state, &headers, &lab, paper).await?;
     let service = service(&state, &lab)?;
+    let permit = reserve(&state, TABLE_WEIGHT_KIB).await?;
     let grid = service
         .table(&lab, document_id, ordinal)
         .await
@@ -679,14 +719,23 @@ pub(super) async fn table(
             })
             .unwrap_or_default()
     };
-    Ok(Json(json!({"table": {
+    let body = serde_json::to_vec(&json!({"table": {
         "ordinal": ordinal,
         "label": text(&grid["label"]),
         "caption": text(&grid["caption"]),
         "header": cells(&grid["header"]),
         "rows": grid["rows"].as_array().map(|rows| rows.iter().take(2000).map(|r| Value::Array(cells(r))).collect::<Vec<_>>()).unwrap_or_default(),
         "rows_total": grid["rows"].as_array().map_or(0, Vec::len),
-    }})))
+    }}))
+    .map_err(|_| ApiError::internal())?;
+    drop(grid);
+    Ok((
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        )],
+        held_body(body, permit),
+    ))
 }
 
 #[cfg(test)]

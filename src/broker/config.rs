@@ -103,12 +103,6 @@ pub struct DigestPackagesArgs {
 
 #[derive(Clone, Debug, Args)]
 pub struct ServeArgs {
-    /// Serve the packaged research UI at this API origin. No artifact directory is served.
-    #[arg(
-        long,
-        env = "AGENT_SANDBOX_BROKER_WORKSPACE_UI",
-        default_value_t = false
-    )]
     /// Offer each figure version's browser explorer (render-service explorer bundles, decision 103). Off until the
     /// explorer has its own origin without workspace authority and its data contract is settled (security review
     /// November 5, 2026): when off the worker never asks for an explorer and the explorer routes answer not found.
@@ -118,6 +112,12 @@ pub struct ServeArgs {
         default_value_t = false
     )]
     pub figure_explorer: bool,
+    /// Serve the packaged research UI at this API origin. No artifact directory is served.
+    #[arg(
+        long,
+        env = "AGENT_SANDBOX_BROKER_WORKSPACE_UI",
+        default_value_t = false
+    )]
     pub workspace_ui: bool,
     /// Serve each reader's change stream, `GET /api/v1/changes/stream`. When off, `/api/v1/me`
     /// says `change_stream: false` and the workspace reads on its timers as before.
@@ -957,6 +957,56 @@ fn read_ca_bundle(path: &Path) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+
+    /// Each argument with an environment variable is bound to the variable that names it, so an attribute block
+    /// cannot slide onto a neighbouring field (r48 review: `--workspace-ui` once landed on `figure_explorer`).
+    #[test]
+    fn each_argument_reads_the_variable_named_for_it() {
+        use clap::{CommandFactory, Parser};
+        #[derive(Parser)]
+        struct Serve {
+            #[command(flatten)]
+            args: ServeArgs,
+        }
+        #[derive(Parser)]
+        struct Worker {
+            #[command(flatten)]
+            args: super::WorkerArgs,
+        }
+        let mut mismatched = Vec::new();
+        for command in [Serve::command(), Worker::command()] {
+            for argument in command.get_arguments() {
+                let Some(env) = argument.get_env() else {
+                    continue;
+                };
+                let env = env.to_string_lossy().to_ascii_lowercase();
+                let id = argument.get_id().as_str();
+                if !env.contains(id) && !ENV_NAME_EXCEPTIONS.contains(&(id, env.as_str())) {
+                    mismatched.push(format!("{id} <- {env}"));
+                }
+            }
+        }
+        assert!(mismatched.is_empty(), "{mismatched:?}");
+        let serve = Serve::command();
+        let env = |id: &str| {
+            serve
+                .get_arguments()
+                .find(|a| a.get_id() == id)
+                .and_then(|a| a.get_env())
+                .map(|e| e.to_string_lossy().into_owned())
+        };
+        assert_eq!(
+            env("workspace_ui").as_deref(),
+            Some("AGENT_SANDBOX_BROKER_WORKSPACE_UI")
+        );
+        assert_eq!(
+            env("figure_explorer").as_deref(),
+            Some("AGENT_SANDBOX_BROKER_FIGURE_EXPLORER")
+        );
+    }
+
+    /// Arguments whose variable is named differently from the field, each checked by eye.
+    const ENV_NAME_EXCEPTIONS: &[(&str, &str)] = &[("public_url", "agent_sandbox_broker_url")];
 
     use super::{ApiAuthentication, ServeArgs, ServeAuthMode, parse_https_url};
 

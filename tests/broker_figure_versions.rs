@@ -1083,6 +1083,69 @@ async fn a_person_draws_a_figure_version_from_a_finished_table() {
         "{drawn}"
     );
     assert!(!gaps.iter().any(|g| g == "no_outputs_recorded"), "{drawn}");
+    // A version whose explorer the service refuses as too large (413) is drawn again without one, and says why.
+    let huge = ask(
+        a,
+        request(
+            "results/query_result.csv",
+            "scatter",
+            json!({"x": "amount", "y": "amount", "x_label": "huge explorer"}),
+            Some(version),
+            Uuid::new_v4(),
+        ),
+        source,
+    )
+    .await
+    .unwrap();
+    let claimed = worker
+        .claim_task("render-worker", 120)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed.id, huge);
+    figure_run::execute(worker.clone(), &config, claimed, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(
+        api.task_lineage(a, huge).await.unwrap()["task"]["status"],
+        "completed"
+    );
+    assert!(
+        seen.lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .get("explorer")
+            .is_none(),
+        "the second request asks for no explorer"
+    );
+    let package = api
+        .list_artifacts(a, huge)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|x| x.role == "result")
+        .unwrap();
+    let bytes = fs::read(root.join("artifacts").join(&package.relative_path)).unwrap();
+    let mut spec = Value::Null;
+    let mut explorer_members = 0;
+    for entry in tar::Archive::new(flate2::read::GzDecoder::new(bytes.as_slice()))
+        .entries()
+        .unwrap()
+    {
+        let mut entry = entry.unwrap();
+        let name = entry.path().unwrap().to_string_lossy().into_owned();
+        if name.starts_with("explorer/") {
+            explorer_members += 1;
+        }
+        if name == "spec.json" {
+            let mut text = String::new();
+            entry.read_to_string(&mut text).unwrap();
+            spec = serde_json::from_str(&text).unwrap();
+        }
+    }
+    assert_eq!(explorer_members, 0);
+    assert_eq!(spec["explorer"], json!({"skipped": "explorer_too_large"}));
     // Previews: a version's checks, then a drawing from the worker that reaches the render service,
     // handed over once; refusals in the broker's words; one open preview and 30 a minute per person; no task kept.
     api.ready_for_figure_previews(true).await.unwrap();
