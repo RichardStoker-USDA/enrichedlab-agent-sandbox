@@ -1604,6 +1604,7 @@ mod tests {
             image_digest: Some(format!("sha256:{}", "e".repeat(64))),
             notes: vec!["'dpi' was 1200, above the 600 maximum; 600 was used".into()],
             font_face: Some("DejaVu Sans".into()),
+            explorer: Err("explorer_not_asked"),
         }
     }
 
@@ -2001,5 +2002,59 @@ mod tests {
         assert_eq!(read(4096).unwrap_err(), MemberError::TooLarge);
         assert_eq!(read(scanned - 1).unwrap_err(), MemberError::TooLarge);
         assert!(read(scanned).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod explorer_tests {
+    use super::*;
+
+    /// Made by the render service's rule (`json.dumps(files, sort_keys=True, separators=(",", ":"),
+    /// ensure_ascii=False)`), with quotes, backslashes, a tab, non-ASCII text and a control character.
+    const VECTOR: &str = r##"{"version": 1, "sha256": "661f79f9bb6abfb2605f01cc36ca4c40fcf8d33d2b8bf938c96fc087fdc0c24e", "files": [{"name": "app.R", "content": "library(shiny)\n", "type": "text"}, {"name": "settings.R", "content": "# \"settings\"\n", "type": "text"}, {"name": "controls.json", "content": "{\"controls\": []}\n", "type": "text"}, {"name": "params.json", "content": "{}", "type": "text"}, {"name": "figure.R.txt", "content": "ggplot() # µg ≤ 5\n", "type": "text"}, {"name": "_common.R.txt", "content": "x <- '\\\\'\t\n", "type": "text"}, {"name": "data.csv", "content": "a,b\n1,é\n\u0001\n", "type": "text"}]}"##;
+
+    fn vector() -> Value {
+        serde_json::from_str(VECTOR).unwrap()
+    }
+
+    #[test]
+    fn service_digest_is_reproduced() {
+        let explorer = checked_explorer(&vector()).unwrap();
+        assert_eq!(explorer.files.len(), EXPLORER_FILES.len());
+        assert_eq!(explorer.files[4].1, "ggplot() # \u{b5}g \u{2264} 5\n");
+    }
+
+    #[test]
+    fn changed_or_malformed_explorers_are_left_out() {
+        let edits: Vec<Box<dyn Fn(&mut Value)>> = vec![
+            Box::new(|v| v["files"][6]["content"] = json!("a,b\n1,2\n")),
+            Box::new(|v| v["version"] = json!(2)),
+            Box::new(|v| v["sha256"] = json!(v["sha256"].as_str().unwrap().to_uppercase())),
+            Box::new(|v| {
+                v["files"].as_array_mut().unwrap().pop();
+            }),
+            Box::new(|v| v["files"][1]["name"] = json!("app.R")),
+            Box::new(|v| v["files"][0]["name"] = json!("../app.R")),
+            Box::new(|v| v["files"][0]["type"] = json!("binary")),
+            Box::new(|v| v["files"][0]["extra"] = json!(1)),
+            Box::new(|v| v["files"] = json!("app.R")),
+        ];
+        for (i, edit) in edits.iter().enumerate() {
+            let mut value = vector();
+            edit(&mut value);
+            assert_eq!(
+                checked_explorer(&value),
+                Err("explorer_unreadable"),
+                "edit {i}"
+            );
+        }
+        assert_eq!(checked_explorer(&json!(null)), Err("explorer_unreadable"));
+    }
+
+    #[test]
+    fn oversized_explorer_is_too_large() {
+        let mut value = vector();
+        value["files"][6]["content"] = json!("x".repeat(MAX_EXPLORER_BYTES + 1));
+        assert_eq!(checked_explorer(&value), Err("explorer_too_large"));
     }
 }
