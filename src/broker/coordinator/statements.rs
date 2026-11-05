@@ -676,12 +676,19 @@ fn number_place(field: &str, chars: &[char], start: usize, end: usize) -> String
 
 /// The fixed text a refusal's next call is told it may do, for the reasons that have one.
 pub(super) fn fix_for(reason: &str) -> Option<&'static str> {
-    matches!(
-        reason,
-        "proposal_prose_number" | "method_review_prose_number"
-    )
-    .then_some(NUMBER_FIX)
+    match reason {
+        "proposal_prose_number" | "method_review_prose_number" => Some(NUMBER_FIX),
+        "checkpoint_invalid" => Some(CHECKPOINT_FIX),
+        _ => None,
+    }
 }
+
+/// What a checkpoint refusal's next call is told (`prior_attempt.fix`): the saved state's bounds, as `checkpoint_faults`
+/// names them.
+pub(super) const CHECKPOINT_FIX: &str = "Correct each named item and keep the rest: a step title holds at most 512 \
+    bytes, a step rationale, lesson statement or summary at most 2048; each ref is an artifact://, input://, \
+    receipt://, tool://, profile:// or source:// ref shown in this context; an observation lesson names its evidence \
+    refs; a step key is used once.";
 
 /// What a number refusal's next call is told it may do (`prior_attempt.fix`), stating the prose rule as the checks apply
 /// it (`ResultIndex::number_refused`).

@@ -587,3 +587,112 @@ fn an_earlier_runs_failures_never_take_this_runs_places() {
         json!((0..3).map(|i| json!({"task_id": format!("t{i}"), "ref": format!("artifact://tasks/t{i}/r")})).collect::<Vec<_>>())
     );
 }
+
+#[test]
+fn a_checkpoint_refusal_names_each_broken_rule_without_its_text() {
+    use crate::broker::project::ResearchState;
+    let mut state: ResearchState = serde_json::from_value(json!({"schema_version":1,"goal":"g","constraints":[],"plan":[],
+        "lessons":[],"next_action":"n","workspace":{"schema_version":1,"profile":"p",
+        "image_digest":format!("sha256:{}","a".repeat(64)),"source_digest":format!("sha256:{}","b".repeat(64)),
+        "input_refs":[],"tool_refs":[],"preparation_receipt":null}}))
+    .unwrap();
+    assert!(state.checkpoint_faults().is_empty());
+    assert_eq!(state.validate(), Ok(()));
+    state.plan.push(serde_json::from_value(json!({"action_key": "load_cohort", "title": "t".repeat(513),
+        "status": "pending", "task_id": null, "evidence_refs": ["paper:smith2020"], "rationale": "r"})).unwrap());
+    state.lessons.push(
+        serde_json::from_value(
+            json!({"kind": "observation", "statement": "s", "evidence_refs": []}),
+        )
+        .unwrap(),
+    );
+    state.next_action = "n".repeat(2049);
+    let faults = state.checkpoint_faults();
+    assert_eq!(state.validate(), Err("checkpoint_invalid"));
+    assert!(
+        faults.contains(&"step load_cohort title: 513 of 512 bytes".to_owned()),
+        "{faults:?}"
+    );
+    assert!(
+        faults
+            .iter()
+            .any(|f| f.starts_with("step load_cohort evidence_refs: ref 1 is not")),
+        "{faults:?}"
+    );
+    assert!(
+        faults.contains(&"lesson 1 of 1: an observation names its evidence refs".to_owned()),
+        "{faults:?}"
+    );
+    assert!(
+        faults
+            .iter()
+            .any(|f| f.starts_with("next_action") && f.ends_with("2049 of 2048 bytes")),
+        "{faults:?}"
+    );
+    // Names carry keys, positions and sizes, never the item's text.
+    assert!(
+        faults
+            .iter()
+            .all(|f| !f.contains("ttt") && !f.contains("smith2020") && !f.contains("nnn"))
+    );
+    assert!(
+        faults.iter().all(|f| f.chars().count() <= 240),
+        "each name fits the prior-attempt name length"
+    );
+}
+
+#[test]
+fn a_record_over_its_bound_gives_way_in_the_brokers_parts_before_refusing() {
+    let ledger = |n: usize| {
+        json!({"schema_version": 2, "rounds": [{"lead": {"context_sha256": "c", "reasoning_sha256": "r"},
+        "requested": (0..n).map(|i| json!({"ref": format!("library://{i}"), "ref_sha256": "x".repeat(64)})).collect::<Vec<_>>(),
+        "refused": [], "withheld": [], "evicted": (0..n).map(|i| json!({"ref_sha256": format!("{i:064}")})).collect::<Vec<_>>(),
+        "dropped": [], "shown": [{"ref": "library://00000000-0000-0000-0000-000000000001/outline", "bytes": 10}]}]})
+    };
+    // The literature review's copy of its ledger goes first.
+    let mut record = json!({"proposal": {"summary": "s"},
+        "literature_review": {"specialist": [{"context_sha256": "a"}], "reading": ledger(720), "status": "read"},
+        "reading": ledger(10)});
+    let size = crate::broker::digest::stored_bytes(&record);
+    assert!(size > TURN_RECORD_BYTES, "{size}");
+    assert_eq!(fit_record(&mut record, &json!({})), None);
+    assert!(record["literature_review"].get("reading").is_none());
+    assert_eq!(
+        record["literature_review"]["reading_kept_with_review"],
+        json!(true)
+    );
+    assert_eq!(
+        record["literature_review"]["specialist"][0]["context_sha256"],
+        "a"
+    );
+    assert_eq!(
+        record["reading"]["rounds"][0]["requested"]
+            .as_array()
+            .unwrap()
+            .len(),
+        10,
+        "not needed, so kept whole"
+    );
+    // Then each lead round keeps its call digests and shown parts and its other lists become count and digest.
+    let mut record = json!({"proposal": {"summary": "s"}, "reading": ledger(900)});
+    assert!(crate::broker::digest::stored_bytes(&record) > TURN_RECORD_BYTES);
+    assert_eq!(fit_record(&mut record, &json!({})), None);
+    let round = &record["reading"]["rounds"][0];
+    assert_eq!(round["lead"]["context_sha256"], "c");
+    assert_eq!(round["shown"].as_array().unwrap().len(), 1);
+    assert_eq!(round["requested"], json!([]));
+    assert_eq!(round["lists_kept_as_digests"]["requested"]["count"], 900);
+    assert!(
+        round["lists_kept_as_digests"]["evicted"]["sha256"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    assert!(
+        round["lists_kept_as_digests"].get("refused").is_none(),
+        "an empty list stays as it is"
+    );
+    // A proposal that is itself over is still refused with how far.
+    let mut record = json!({"proposal": {"summary": "s".repeat(130 * 1024)}, "reading": ledger(5)});
+    assert!(fit_record(&mut record, &json!({})).is_some_and(|n| n > 0));
+}

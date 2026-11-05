@@ -732,7 +732,14 @@ at most 8 of its results' references in the plan (the claim gives up to 64; the 
 results by task). A finished step's list never grows: artifacts are registered only under a task's lease, and recovery
 adds them only to a failed or cancelled task, which stays so.
 A turn record past PostgreSQL's 128 KiB, measured with the tasks, actor and outcome the commit adds, first drops checks
-from its end (counted in `omitted`) and is then refused the same way (`record: N bytes over`).
+from its end (counted in `omitted`). Then the parts the broker wrote give way, since the lead cannot shorten them: the
+literature review's copy of its reading ledger (kept whole with the review; `reading_kept_with_review`), then each lead
+reading round's `requested`, `refused`, `withheld`, `evicted` and `dropped` lists, which become their count and digest
+under `lists_kept_as_digests` while `lead` and `shown` stay for packages and access checks. Only a record still over is
+refused the same way (`record: N bytes over`).
+A plan that breaks another checkpoint rule is refused as `checkpoint_invalid` with each rule and item named (`step
+<key> title: 513 of 512 bytes`, `lesson 4 of 9: an observation names its evidence refs`, a ref named by its position)
+and a fixed `fix` text in `prior_attempt`; the names hold keys, positions and sizes, never the text.
 
 The lead's instructions grew by 1,429 bytes for this. That text changes every run's call, so the autonomy suite runs on
 the release before it is accepted (`the_system_text_is_the_one_the_suite_accepted`). The methods review sends back an

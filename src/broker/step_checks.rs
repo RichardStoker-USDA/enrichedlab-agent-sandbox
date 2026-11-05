@@ -589,8 +589,49 @@ pub fn fit_record(record: &mut Value, added: &Value) -> Option<usize> {
         let omitted = record["step_checks"]["omitted"].as_u64().unwrap_or(0) + 1;
         record["step_checks"]["omitted"] = json!(omitted);
     }
+    // The literature review's own reading ledger is kept whole with the review (`broker_literature_reviews`), so the
+    // turn's copy gives way next; then each lead reading round keeps its call digests and shown parts (what packages
+    // and access checks read) while its other lists become their count and digest. Only then is the proposal refused:
+    // these parts are the broker's, and the lead cannot shorten them (r41: four first-turn refusals, up to 24 KiB over).
+    if stored(record) > TURN_RECORD_BYTES
+        && let Some(review) = record
+            .get_mut("literature_review")
+            .and_then(Value::as_object_mut)
+        && review.remove("reading").is_some()
+    {
+        review.insert("reading_kept_with_review".into(), json!(true));
+    }
+    if stored(record) > TURN_RECORD_BYTES
+        && let Some(rounds) = record
+            .get_mut("reading")
+            .and_then(|r| r.get_mut("rounds"))
+            .and_then(Value::as_array_mut)
+    {
+        for round in rounds.iter_mut() {
+            for key in ROUND_LISTS_YIELDED {
+                let Some(list) = round.get(key).and_then(Value::as_array) else {
+                    continue;
+                };
+                if list.is_empty() {
+                    continue;
+                }
+                let kept = json!({"count": list.len(),
+                    "sha256": format!("sha256:{}", super::evidence_objects::sha256_hex(&list_bytes(list)))});
+                round["lists_kept_as_digests"][key] = kept;
+                round[key] = json!([]);
+            }
+        }
+    }
     let over = stored(record).saturating_sub(TURN_RECORD_BYTES);
     (over > 0).then_some(over)
+}
+
+/// The lists of a lead reading round that give way to their count and digest when a turn record is over its bound;
+/// `lead` and `shown` stay.
+const ROUND_LISTS_YIELDED: [&str; 5] = ["requested", "refused", "withheld", "evicted", "dropped"];
+
+fn list_bytes(list: &[Value]) -> Vec<u8> {
+    serde_json::to_vec(list).unwrap_or_default()
 }
 
 /// How many of a call's results passed, failed or could not be checked, for the turn's record of its context.

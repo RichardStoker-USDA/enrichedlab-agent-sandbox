@@ -192,6 +192,37 @@ fn reference(value: &str) -> bool {
 fn references(values: &[String]) -> bool {
     values.len() <= 64 && values.iter().all(|s| reference(s))
 }
+/// The rule `text` applies, as the fault a checkpoint refusal names, or none.
+fn text_fault(name: &str, value: &str, max: usize) -> Option<String> {
+    if value.trim().is_empty() {
+        Some(format!("{name}: empty"))
+    } else if value.contains('\0') {
+        Some(format!("{name}: holds a NUL character"))
+    } else if value.len() > max {
+        Some(format!("{name}: {} of {max} bytes", value.len()))
+    } else {
+        None
+    }
+}
+/// The rule `references` applies, naming each refused ref by its position, or none.
+fn references_fault(name: &str, values: &[String]) -> Option<String> {
+    if values.len() > 64 {
+        return Some(format!("{name}: {} of 64 refs", values.len()));
+    }
+    let refused: Vec<String> = values
+        .iter()
+        .enumerate()
+        .filter(|(_, value)| !reference(value))
+        .map(|(i, _)| (i + 1).to_string())
+        .collect();
+    (!refused.is_empty()).then(|| {
+        format!(
+            "{name}: ref {} is not an artifact://, input://, receipt://, tool://, profile:// or source:// ref of at most \
+             512 bytes without spaces, ?, # or @",
+            refused.join(", ")
+        )
+    })
+}
 /// None, or two to `MAX_STARTING_POINTS` distinct sets whose references are all among the workspace's, the first being
 /// the set the workspace's profile and source name.
 fn starting_points(workspace: &WorkspaceSpec) -> bool {
@@ -223,57 +254,112 @@ fn starting_points(workspace: &WorkspaceSpec) -> bool {
 
 impl ResearchState {
     pub fn validate(&self) -> Result<(), &'static str> {
-        let mut keys = HashSet::new();
-        if self.schema_version != 1
-            || !text(&self.goal, 8192)
-            || !text(&self.next_action, 2048)
-            || self.constraints.len() > 32
-            || !self.constraints.iter().all(|s| text(s, 1024))
-            || self.plan.len() > 128
-            || self.lessons.len() > 128
-            || self.workspace.schema_version != 1
-            || !text(&self.workspace.profile, 128)
-            || !digest(&self.workspace.image_digest)
-            || !digest(&self.workspace.source_digest)
-            || !references(&self.workspace.input_refs)
-            || !references(&self.workspace.tool_refs)
-            || self
-                .workspace
+        if self.checkpoint_faults().is_empty() {
+            Ok(())
+        } else {
+            Err("checkpoint_invalid")
+        }
+    }
+
+    /// Every rule `validate` applies, each broken one named by its item and the bound it passed, so a proposal refused for
+    /// its checkpoint (`checkpoint_invalid`) tells the lead what to correct instead of repeating the same reply. A name
+    /// holds keys, positions, counts and sizes, never the item's text.
+    pub fn checkpoint_faults(&self) -> Vec<String> {
+        let mut faults = Vec::new();
+        if self.schema_version != 1 {
+            faults.push("schema_version".to_owned());
+        }
+        faults.extend(text_fault("goal", &self.goal, 8192));
+        faults.extend(text_fault(
+            "next_action (the summary, or the review's reason)",
+            &self.next_action,
+            2048,
+        ));
+        if self.constraints.len() > 32 {
+            faults.push(format!("constraints: {} of 32", self.constraints.len()));
+        }
+        for (i, constraint) in self.constraints.iter().enumerate() {
+            faults.extend(text_fault(
+                &format!("constraint {}", i + 1),
+                constraint,
+                1024,
+            ));
+        }
+        if self.plan.len() > 128 {
+            faults.push(format!("plan: {} of 128 steps", self.plan.len()));
+        }
+        if self.lessons.len() > 128 {
+            faults.push(format!("lessons: {} of 128", self.lessons.len()));
+        }
+        let workspace = &self.workspace;
+        if workspace.schema_version != 1
+            || !text(&workspace.profile, 128)
+            || !digest(&workspace.image_digest)
+            || !digest(&workspace.source_digest)
+            || !references(&workspace.input_refs)
+            || !references(&workspace.tool_refs)
+            || workspace
                 .preparation_receipt
                 .as_ref()
                 .is_some_and(|r| !reference(r))
-            || !starting_points(&self.workspace)
+            || !starting_points(workspace)
         {
-            return Err("checkpoint_invalid");
+            faults.push("workspace".to_owned());
         }
-        for step in &self.plan {
-            if !action_key(&step.action_key)
-                || !keys.insert(&step.action_key)
-                || !text(&step.title, 512)
-                || !text(&step.rationale, 2048)
-                || !references(&step.evidence_refs)
-                || step
-                    .expect
-                    .as_ref()
-                    .is_some_and(|e| super::step_checks::invalid(e).is_some())
-                || (step.status == StepStatus::Completed
-                    && (step.evidence_refs.is_empty() || step.task_id.is_none()))
+        let mut keys = HashSet::new();
+        for (i, step) in self.plan.iter().enumerate() {
+            let valid_key = action_key(&step.action_key);
+            let name = if valid_key {
+                format!("step {}", step.action_key)
+            } else {
+                format!("step {}", i + 1)
+            };
+            if !valid_key {
+                faults.push(format!(
+                    "{name}: action_key must be 1 to 100 letters, digits, _ or -"
+                ));
+            } else if !keys.insert(&step.action_key) {
+                faults.push(format!("{name}: action_key repeated"));
+            }
+            faults.extend(text_fault(&format!("{name} title"), &step.title, 512));
+            faults.extend(text_fault(
+                &format!("{name} rationale"),
+                &step.rationale,
+                2048,
+            ));
+            faults.extend(references_fault(
+                &format!("{name} evidence_refs"),
+                &step.evidence_refs,
+            ));
+            if let Some(reason) = step.expect.as_ref().and_then(super::step_checks::invalid) {
+                faults.push(format!("{name} expect: {reason}"));
+            }
+            if step.status == StepStatus::Completed
+                && (step.evidence_refs.is_empty() || step.task_id.is_none())
             {
-                return Err("checkpoint_invalid");
+                faults.push(format!("{name}: completed without evidence refs or a task"));
             }
         }
-        for lesson in &self.lessons {
-            if !text(&lesson.statement, 2048)
-                || !references(&lesson.evidence_refs)
-                || (lesson.kind == LessonKind::Observation && lesson.evidence_refs.is_empty())
-            {
-                return Err("checkpoint_invalid");
+        let total = self.lessons.len();
+        for (i, lesson) in self.lessons.iter().enumerate() {
+            let name = format!("lesson {} of {total}", i + 1);
+            faults.extend(text_fault(
+                &format!("{name} statement"),
+                &lesson.statement,
+                2048,
+            ));
+            faults.extend(references_fault(
+                &format!("{name} evidence_refs"),
+                &lesson.evidence_refs,
+            ));
+            if lesson.kind == LessonKind::Observation && lesson.evidence_refs.is_empty() {
+                faults.push(format!("{name}: an observation names its evidence refs"));
             }
         }
-        if self.bytes_over().is_some() {
-            return Err("checkpoint_invalid");
+        if let Some(over) = self.bytes_over() {
+            faults.push(format!("checkpoint: {over} bytes over"));
         }
-        Ok(())
+        faults
     }
 
     /// How many bytes the serialized state is past `STATE_BYTES_MAX`, if any.

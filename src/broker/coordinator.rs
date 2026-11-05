@@ -795,9 +795,16 @@ async fn advance(
         }
         .into());
     }
-    state
-        .validate()
-        .map_err(|_| anyhow!("checkpoint_invalid"))?;
+    // A step or lesson that breaks a checkpoint rule is refused with each rule and item named, so the lead corrects it
+    // rather than sending the same reply until the run pauses (r41: two runs paused after four unnamed refusals each).
+    let faults = state.checkpoint_faults();
+    if !faults.is_empty() {
+        return Err(CodeRefused {
+            code: "checkpoint_invalid",
+            names: faults,
+        }
+        .into());
+    }
     // One call keeps at most eight texts (migration 032), so the decision's and the literature specialist's texts go
     // in groups of eight.
     let (mut texts, mut expected) = if profiling_turn {
