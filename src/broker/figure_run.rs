@@ -2036,7 +2036,8 @@ mod explorer_tests {
 
     #[test]
     fn changed_or_malformed_explorers_are_left_out() {
-        let edits: Vec<Box<dyn Fn(&mut Value)>> = vec![
+        type Edit = Box<dyn Fn(&mut Value)>;
+        let edits: Vec<Edit> = vec![
             Box::new(|v| v["files"][6]["content"] = json!("a,b\n1,2\n")),
             Box::new(|v| v["version"] = json!(2)),
             Box::new(|v| v["sha256"] = json!(v["sha256"].as_str().unwrap().to_uppercase())),

@@ -511,88 +511,6 @@ pub(super) async fn label(
     Ok(Json(json!({ "paper": paper })))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn uploads_are_weighed_by_the_memory_they_can_hold() {
-        let mib = |kib: u32| f64::from(kib) / 1024.0;
-        assert_eq!(
-            mib(upload_weight_kib(1024)),
-            16.0,
-            "a small upload takes the minimum"
-        );
-        let largest = upload_weight_kib(MAX_PAPER_BYTES);
-        assert!((233.0..234.0).contains(&mib(largest)), "{}", mib(largest));
-        assert!(
-            largest as usize <= UPLOAD_BUDGET_KIB && 2 * largest as usize > UPLOAD_BUDGET_KIB,
-            "one largest upload at a time"
-        );
-        assert!(
-            (UPLOAD_BUDGET_KIB / upload_weight_kib(1) as usize) <= 24,
-            "the minimum bounds how many run at once"
-        );
-    }
-
-    #[tokio::test]
-    async fn an_upload_is_read_only_to_its_limit_and_only_whole() {
-        let chunks = |n: usize| {
-            futures_util::stream::iter(
-                (0..n).map(|_| Ok::<_, std::io::Error>(axum::body::Bytes::from(vec![b'%'; 1000]))),
-            )
-        };
-        assert_eq!(
-            read_paper(Body::from_stream(chunks(3)), 3000)
-                .await
-                .unwrap()
-                .len(),
-            3000
-        );
-        assert_eq!(
-            read_paper(Body::from_stream(chunks(4)), 3000)
-                .await
-                .unwrap_err(),
-            LibraryError::TooLarge
-        );
-        let broken = futures_util::stream::iter([
-            Ok(axum::body::Bytes::from_static(b"%PDF-")),
-            Err(std::io::Error::other("connection reset")),
-        ]);
-        assert_eq!(
-            read_paper(Body::from_stream(broken), 3000)
-                .await
-                .unwrap_err(),
-            LibraryError::Incomplete
-        );
-    }
-
-    #[test]
-    fn only_a_paper_the_guard_checked_is_returned_or_restored() {
-        let evidence = json!({"intake": "0199b0f5-0000-7000-8000-000000000001",
-            "rebuilt_sha256": "a".repeat(64), "policy": "library-paper-2026-10-05.2", "findings": []});
-        assert_eq!(
-            known(&json!({"parse": {"guard": evidence}, "removed": null})),
-            Ok(Known::Present)
-        );
-        assert_eq!(
-            known(&json!({"parse": {"guard": evidence}, "removed": {"reason": "duplicate"}})),
-            Ok(Known::Removed)
-        );
-        for parse in [
-            json!({}),
-            json!({"guard": {"intake": "not-an-id", "rebuilt_sha256": "a".repeat(64)}}),
-            json!({"guard": {"intake": "0199b0f5-0000-7000-8000-000000000001"}}),
-        ] {
-            assert_eq!(
-                known(&json!({"parse": parse, "removed": {"reason": "duplicate"}})),
-                Err(LibraryError::Unchecked),
-                "a paper added before the guard is not restored"
-            );
-        }
-    }
-}
-
 /// The paper's document when the reader may open it and it is still in the library; a removed paper is not read.
 async fn open_document(
     state: &ApiState,
@@ -769,4 +687,86 @@ pub(super) async fn table(
         "rows": grid["rows"].as_array().map(|rows| rows.iter().take(2000).map(|r| Value::Array(cells(r))).collect::<Vec<_>>()).unwrap_or_default(),
         "rows_total": grid["rows"].as_array().map_or(0, Vec::len),
     }})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uploads_are_weighed_by_the_memory_they_can_hold() {
+        let mib = |kib: u32| f64::from(kib) / 1024.0;
+        assert_eq!(
+            mib(upload_weight_kib(1024)),
+            16.0,
+            "a small upload takes the minimum"
+        );
+        let largest = upload_weight_kib(MAX_PAPER_BYTES);
+        assert!((233.0..234.0).contains(&mib(largest)), "{}", mib(largest));
+        assert!(
+            largest as usize <= UPLOAD_BUDGET_KIB && 2 * largest as usize > UPLOAD_BUDGET_KIB,
+            "one largest upload at a time"
+        );
+        assert!(
+            (UPLOAD_BUDGET_KIB / upload_weight_kib(1) as usize) <= 24,
+            "the minimum bounds how many run at once"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_upload_is_read_only_to_its_limit_and_only_whole() {
+        let chunks = |n: usize| {
+            futures_util::stream::iter(
+                (0..n).map(|_| Ok::<_, std::io::Error>(axum::body::Bytes::from(vec![b'%'; 1000]))),
+            )
+        };
+        assert_eq!(
+            read_paper(Body::from_stream(chunks(3)), 3000)
+                .await
+                .unwrap()
+                .len(),
+            3000
+        );
+        assert_eq!(
+            read_paper(Body::from_stream(chunks(4)), 3000)
+                .await
+                .unwrap_err(),
+            LibraryError::TooLarge
+        );
+        let broken = futures_util::stream::iter([
+            Ok(axum::body::Bytes::from_static(b"%PDF-")),
+            Err(std::io::Error::other("connection reset")),
+        ]);
+        assert_eq!(
+            read_paper(Body::from_stream(broken), 3000)
+                .await
+                .unwrap_err(),
+            LibraryError::Incomplete
+        );
+    }
+
+    #[test]
+    fn only_a_paper_the_guard_checked_is_returned_or_restored() {
+        let evidence = json!({"intake": "0199b0f5-0000-7000-8000-000000000001",
+            "rebuilt_sha256": "a".repeat(64), "policy": "library-paper-2026-10-05.2", "findings": []});
+        assert_eq!(
+            known(&json!({"parse": {"guard": evidence}, "removed": null})),
+            Ok(Known::Present)
+        );
+        assert_eq!(
+            known(&json!({"parse": {"guard": evidence}, "removed": {"reason": "duplicate"}})),
+            Ok(Known::Removed)
+        );
+        for parse in [
+            json!({}),
+            json!({"guard": {"intake": "not-an-id", "rebuilt_sha256": "a".repeat(64)}}),
+            json!({"guard": {"intake": "0199b0f5-0000-7000-8000-000000000001"}}),
+        ] {
+            assert_eq!(
+                known(&json!({"parse": parse, "removed": {"reason": "duplicate"}})),
+                Err(LibraryError::Unchecked),
+                "a paper added before the guard is not restored"
+            );
+        }
+    }
 }
