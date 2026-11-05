@@ -299,10 +299,12 @@ pub async fn read(
             .as_u64()
             .map_or(0, |n| n as usize)
     };
-    let mut blocks: Vec<Block> = items(&first["blocks"]);
+    let mut blocks: Vec<Block> = Vec::new();
+    let mut retained = 0usize;
+    let mut room = keep_blocks(&mut blocks, &mut retained, items(&first["blocks"]));
     let mut figures: Vec<Figure> = clip_figures(items(&first["figures"]));
     let mut tables: Vec<Table> = clip_tables(items(&first["tables"]));
-    while blocks.len() < total("blocks").min(MAX_BLOCKS) {
+    while room && blocks.len() < total("blocks").min(MAX_BLOCKS) {
         let page = service
             .document_page(lab, document, "blocks", blocks.len())
             .await?;
@@ -310,7 +312,7 @@ pub async fn read(
         if more.is_empty() {
             break;
         }
-        blocks.extend(more);
+        room = keep_blocks(&mut blocks, &mut retained, more);
     }
     blocks.truncate(MAX_BLOCKS);
     while figures.len() < total("figures").min(MAX_PARTS) {
@@ -341,6 +343,34 @@ pub async fn read(
 /// The most characters a figure's or table's label, caption and description keep, applied as each page arrives so a
 /// whole read stays within its memory share (r48 review round 3).
 pub const MAX_LABEL_CHARS: usize = 64;
+/// The most bytes of block text, heading paths and labels one read keeps, whatever shape the blocks take; a paper past
+/// it is read in part and says so (r48 review round 4: heading paths have no bound of their own).
+pub const MAX_RETAINED_BLOCK_BYTES: usize = 24 * 1024 * 1024;
+
+fn block_bytes(block: &Block) -> usize {
+    block.text.len()
+        + block.kind.len()
+        + block.section.as_ref().map_or(0, String::len)
+        + block
+            .heading_path
+            .iter()
+            .map(|h| h.len() + 24)
+            .sum::<usize>()
+        + 96
+}
+
+/// Adds a page of blocks while the read stays within `MAX_RETAINED_BLOCK_BYTES`; false once it is full.
+fn keep_blocks(blocks: &mut Vec<Block>, retained: &mut usize, more: Vec<Block>) -> bool {
+    for block in more {
+        let size = block_bytes(&block);
+        if *retained + size > MAX_RETAINED_BLOCK_BYTES {
+            return false;
+        }
+        *retained += size;
+        blocks.push(block);
+    }
+    true
+}
 pub const MAX_CAPTION_CHARS: usize = 4000;
 
 fn clip(text: &mut Option<String>, chars: usize) {
@@ -544,5 +574,29 @@ mod tests {
         assert_eq!(pages(Some(3), Some(5)).as_deref(), Some("3-5"));
         assert_eq!(pages(Some(3), Some(3)).as_deref(), Some("3"));
         assert_eq!(pages(None, Some(3)), None);
+    }
+}
+
+#[cfg(test)]
+mod retained_tests {
+    use super::*;
+
+    #[test]
+    fn a_read_keeps_at_most_its_retained_bytes_of_blocks() {
+        let long = Block {
+            kind: "paragraph".into(),
+            text: "x".repeat(2048),
+            heading_path: vec!["h".repeat(2000); 30],
+            ..Default::default()
+        };
+        let mut blocks = Vec::new();
+        let mut retained = 0;
+        let mut pages = 0;
+        while keep_blocks(&mut blocks, &mut retained, vec![long.clone(); 25]) {
+            pages += 1;
+            assert!(pages < 10_000);
+        }
+        assert!(retained <= MAX_RETAINED_BLOCK_BYTES);
+        assert!(blocks.len() < 3000 && !blocks.is_empty());
     }
 }

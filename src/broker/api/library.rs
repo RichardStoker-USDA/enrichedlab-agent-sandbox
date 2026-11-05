@@ -538,8 +538,8 @@ const MAX_READING_BYTES: usize = 6 * 1024 * 1024;
 /// take theirs from the same budget), so many readers at once cannot pass the API's memory limit: a figure image
 /// (its bytes plus headroom), a whole-paper read (the parsed blocks, the reading and its JSON) and a table grid.
 const IMAGE_WEIGHT_KIB: u32 = (crate::broker::library::MAX_FIGURE_IMAGE_BYTES / 1024) as u32 + 512;
-// A whole-paper read's worst case: 3,000 blocks of 2,048 four-byte characters (24 MiB), the sections copied from them
-// (24 MiB), 200 figures and 200 tables with captions and descriptions clipped as each page arrives (`paper::clip_*`,
+// A whole-paper read's worst case: blocks capped at 24 MiB of text, headings and labels (`paper::MAX_RETAINED_BLOCK_BYTES`),
+// the sections copied from them (at most as much again), 200 figures and 200 tables with captions and descriptions clipped as each page arrives (`paper::clip_*`,
 // about 10 MiB), the trimmed reading as JSON values and bytes (6 MiB each), one 2 MiB service page and its parsed
 // form, rounded up for allocator overhead.
 const READING_WEIGHT_KIB: u32 = 96 * 1024;
