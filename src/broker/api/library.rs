@@ -533,16 +533,48 @@ fn clip(text: &Option<String>, chars: usize) -> Option<String> {
 }
 
 /// The most bytes a reading may hold; a longer one keeps its first sections and says it was cut.
-const MAX_READING_BYTES: usize = 6 * 1024 * 1024;
+const MAX_READING_BYTES: usize = 8 * 1024 * 1024;
+
+/// The exact number of bytes `value` serializes to, counted without building them.
+fn json_len(value: &Value) -> usize {
+    struct Count(usize);
+    impl std::io::Write for Count {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 += buf.len();
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut count = Count(0);
+    let _ = serde_json::to_writer(&mut count, value);
+    count.0
+}
+
+/// Adds each value while the reading stays within `MAX_READING_BYTES`, measured as serialized; false once one is left out.
+fn within(out: &mut Vec<Value>, bytes: &mut usize, values: impl Iterator<Item = Value>) -> bool {
+    for value in values {
+        let size = json_len(&value) + 1;
+        if *bytes + size > MAX_READING_BYTES {
+            return false;
+        }
+        *bytes += size;
+        out.push(value);
+    }
+    true
+}
 /// What one read may hold while it is fetched and answered, in KiB of the library's shared memory budget (uploads
 /// take theirs from the same budget), so many readers at once cannot pass the API's memory limit: a figure image
 /// (its bytes plus headroom), a whole-paper read (the parsed blocks, the reading and its JSON) and a table grid.
 const IMAGE_WEIGHT_KIB: u32 = (crate::broker::library::MAX_FIGURE_IMAGE_BYTES / 1024) as u32 + 512;
-// A whole-paper read's worst case: blocks capped at 24 MiB of text, headings and labels (`paper::MAX_RETAINED_BLOCK_BYTES`),
-// the sections copied from them (at most as much again), 200 figures and 200 tables with captions and descriptions clipped as each page arrives (`paper::clip_*`,
-// about 10 MiB), the trimmed reading as JSON values and bytes (6 MiB each), one 2 MiB service page and its parsed
-// form, rounded up for allocator overhead.
-const READING_WEIGHT_KIB: u32 = 96 * 1024;
+// A whole-paper read's worst case, by phase. While blocks arrive: the retained blocks (24 MiB charged,
+// `paper::MAX_RETAINED_BLOCK_BYTES`), one 2 MiB service page parsed into values and blocks (up to about 48 MiB for a
+// page of tiny strings) and the first page's clipped figures and tables. While the reading is built: the blocks, their
+// sections (body text at most the retained text, heading paths within `paper::MAX_SECTION_PATH_BYTES`), 200 clipped
+// figures and 200 clipped tables (about 10 MiB), the reading's values and its bytes (each within `MAX_READING_BYTES`
+// plus small overhead). Either phase stays under about 90 MiB; the share is 128 MiB for allocator overhead.
+const READING_WEIGHT_KIB: u32 = 128 * 1024;
 // A table grid's worst case: the service's 2 MiB answer parsed into JSON values (about 700,000 minimal cells at about
 // 40 bytes each, 28 MiB), the clipped output cells (at most the input's text plus value overhead, 6 MiB) and their
 // bytes (4 MiB), rounded up.
@@ -597,30 +629,16 @@ pub(super) async fn read(
     let read = crate::broker::paper::read(service, &lab, document_id)
         .await
         .map_err(library_error)?;
-    let mut sections = Vec::new();
+    // Figures and tables first: each is clipped to a few kilobytes, so the paper's parts are listed before its text
+    // takes the rest of the reading's bytes.
     let mut bytes = 0usize;
-    let mut cut_sections = false;
-    for section in &read.sections {
-        let size: usize = section.texts.iter().map(String::len).sum::<usize>() + 256;
-        if bytes + size > MAX_READING_BYTES {
-            cut_sections = true;
-            break;
-        }
-        bytes += size;
-        sections.push(json!({
-            "key": section.key,
-            "heading": section.heading(),
-            "path": section.path,
-            "role": section.role,
-            "paragraphs": section.texts,
-            "cut_paragraphs": section.cut,
-            "pages": section.pages(),
-        }));
-    }
-    let figures: Vec<Value> = read
-        .figures
-        .iter()
-        .map(|figure| {
+    let mut figures = Vec::new();
+    let mut tables = Vec::new();
+    let mut sections = Vec::new();
+    let parts_whole = within(
+        &mut figures,
+        &mut bytes,
+        read.figures.iter().map(|figure| {
             let id = figure.id.as_deref().and_then(|id| Uuid::parse_str(id).ok());
             json!({
                 "ordinal": figure.ordinal,
@@ -633,13 +651,30 @@ pub(super) async fn read(
                 "width": figure.width.filter(|w| (1..=20_000).contains(w)),
                 "height": figure.height.filter(|h| (1..=20_000).contains(h)),
             })
-        })
-        .collect();
-    let tables: Vec<Value> = read
-        .tables
-        .iter()
-        .map(|table| json!({"ordinal": table.ordinal, "label": clip(&table.label, 64), "caption": clip(&table.caption, 4000), "page": table.page}))
-        .collect();
+        }),
+    ) && within(
+        &mut tables,
+        &mut bytes,
+        read.tables.iter().map(|table| {
+            json!({"ordinal": table.ordinal, "label": clip(&table.label, 64), "caption": clip(&table.caption, 4000), "page": table.page})
+        }),
+    );
+    let sections_whole = parts_whole
+        && within(
+            &mut sections,
+            &mut bytes,
+            read.sections.iter().map(|section| {
+                json!({
+                    "key": section.key,
+                    "heading": section.heading(),
+                    "path": section.path,
+                    "role": section.role,
+                    "paragraphs": section.texts,
+                    "cut_paragraphs": section.cut,
+                    "pages": section.pages(),
+                })
+            }),
+        );
     let body = serde_json::to_vec(&json!({"reading": {
         "sections": sections,
         "figures": figures,
@@ -648,7 +683,7 @@ pub(super) async fn read(
         "tables_total": read.tables_total,
         "blocks_read": read.blocks_read,
         "blocks_total": read.blocks_total,
-        "complete": read.complete() && !cut_sections,
+        "complete": read.complete() && sections_whole,
     }}))
     .map_err(|_| ApiError::internal())?;
     drop(read);
@@ -768,6 +803,18 @@ mod tests {
     use super::*;
 
     /// A reader's memory share returns only when the response bytes are released, and the body keeps its exact length
+    #[test]
+    fn a_reading_counts_each_value_as_serialized() {
+        let value = json!({"heading": "Méthodes \"quoted\"\u{1}", "path": ["a", "b"]});
+        assert_eq!(json_len(&value), serde_json::to_vec(&value).unwrap().len());
+        let mut out = Vec::new();
+        let mut bytes = MAX_READING_BYTES - json_len(&value) - 1;
+        assert!(within(&mut out, &mut bytes, std::iter::once(value.clone())));
+        assert_eq!(bytes, MAX_READING_BYTES);
+        assert!(!within(&mut out, &mut bytes, std::iter::once(value)));
+        assert_eq!(out.len(), 1);
+    }
+
     /// so conditional GET still applies (r48 review round 2).
     #[tokio::test]
     async fn a_held_body_keeps_its_share_until_its_bytes_are_dropped() {

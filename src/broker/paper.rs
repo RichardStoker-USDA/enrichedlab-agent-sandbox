@@ -147,11 +147,14 @@ pub struct Paper {
     /// The blocks read and the document's block count; fewer read means the paper was read in part.
     pub blocks_read: usize,
     pub blocks_total: usize,
+    /// Sections left out to keep the paper's heading paths within `MAX_SECTION_PATH_BYTES`.
+    pub sections_cut: bool,
 }
 
 impl Paper {
     pub fn complete(&self) -> bool {
         self.blocks_read >= self.blocks_total
+            && !self.sections_cut
             && self.figures.len() >= self.figures_total
             && self.tables.len() >= self.tables_total
     }
@@ -188,6 +191,18 @@ pub fn section_key_valid(key: &str) -> bool {
 /// sets the current path (its own path, or its text alone), a body block without a path of its own takes the current
 /// one, and consecutive blocks with one path form one section. The same path later again is its next occurrence.
 pub fn sections(blocks: &[Block]) -> Vec<Section> {
+    bounded_sections(blocks, MAX_SECTION_PATH_BYTES).0
+}
+
+/// The most bytes of heading paths one paper's sections hold, counting each section's path and its copy in the
+/// occurrence map. Keys stay the knowledge service's (whole paths, never clipped); a paper whose sections would pass it
+/// is read in part (r48 review round 5: an inherited path is copied into every section it starts).
+pub const MAX_SECTION_PATH_BYTES: usize = 8 * 1024 * 1024;
+
+/// `sections` within `max_path_bytes` of heading paths; true when sections were left out to stay within it.
+fn bounded_sections(blocks: &[Block], max_path_bytes: usize) -> (Vec<Section>, bool) {
+    let mut held = 0usize;
+    let mut left_out = false;
     let mut ordered: Vec<&Block> = blocks.iter().collect();
     ordered.sort_by_key(|b| b.ordinal);
     let mut out: Vec<Section> = Vec::new();
@@ -227,15 +242,23 @@ pub fn sections(blocks: &[Block]) -> Vec<Section> {
                     last.role = role;
                 }
             }
-            _ => out.push(Section {
-                key: String::new(),
-                path: here,
-                role,
-                texts: vec![block.text.trim().to_owned()],
-                cut,
-                page_from: block.page_from,
-                page_to: block.page_to.or(block.page_from),
-            }),
+            _ => {
+                let cost = 2 * path_bytes(&here) + 64;
+                if held + cost > max_path_bytes {
+                    left_out = true;
+                    break;
+                }
+                held += cost;
+                out.push(Section {
+                    key: String::new(),
+                    path: here,
+                    role,
+                    texts: vec![block.text.trim().to_owned()],
+                    cut,
+                    page_from: block.page_from,
+                    page_to: block.page_to.or(block.page_from),
+                })
+            }
         }
     }
     let mut seen: HashMap<Vec<String>, usize> = HashMap::new();
@@ -244,7 +267,7 @@ pub fn sections(blocks: &[Block]) -> Vec<Section> {
         *occurrence += 1;
         section.key = section_key(&section.path, *occurrence);
     }
-    out
+    (out, left_out)
 }
 
 /// A paper from its document summary and collections.
@@ -259,6 +282,7 @@ pub fn assemble(
             .as_u64()
             .map_or(0, |n| n as usize)
     };
+    let (sections, sections_cut) = bounded_sections(blocks, MAX_SECTION_PATH_BYTES);
     Paper {
         title: library::bounded_text(&summary["title"], 2048),
         year: library::year(&summary["published_on"]),
@@ -273,7 +297,8 @@ pub fn assemble(
             })
             .unwrap_or_default(),
         abstract_text: library::bounded_text(&summary["abstract"], 6000),
-        sections: sections(blocks),
+        sections,
+        sections_cut,
         figures_total: total("figures").max(figures.len()),
         tables_total: total("tables").max(tables.len()),
         figures,
@@ -351,12 +376,13 @@ fn block_bytes(block: &Block) -> usize {
     block.text.len()
         + block.kind.len()
         + block.section.as_ref().map_or(0, String::len)
-        + block
-            .heading_path
-            .iter()
-            .map(|h| h.len() + 24)
-            .sum::<usize>()
+        + path_bytes(&block.heading_path)
         + 96
+}
+
+/// A heading path's memory: each entry's text plus its `String` header and the allocator's smallest allocation.
+fn path_bytes(path: &[String]) -> usize {
+    path.iter().map(|h| h.len() + 48).sum()
 }
 
 /// Adds a page of blocks while the read stays within `MAX_RETAINED_BLOCK_BYTES`; false once it is full.
@@ -598,5 +624,38 @@ mod retained_tests {
         }
         assert!(retained <= MAX_RETAINED_BLOCK_BYTES);
         assert!(blocks.len() < 3000 && !blocks.is_empty());
+    }
+
+    #[test]
+    fn inherited_heading_paths_stay_within_their_bound() {
+        // Review round 5's shape: a heading with a long path, then body blocks that alternate between inheriting it
+        // and naming a short path of their own, so every inherited block starts a new section with a copy.
+        let long = vec!["h".repeat(1000); 20];
+        let mut blocks = vec![Block {
+            ordinal: 0,
+            kind: "heading".into(),
+            text: "Heading".into(),
+            heading_path: long.clone(),
+            ..Default::default()
+        }];
+        for n in 1..3000 {
+            blocks.push(Block {
+                ordinal: n,
+                kind: "paragraph".into(),
+                text: "Body.".into(),
+                heading_path: if n % 2 == 0 {
+                    vec!["Other".into()]
+                } else {
+                    Vec::new()
+                },
+                ..Default::default()
+            });
+        }
+        let (found, left_out) = bounded_sections(&blocks, MAX_SECTION_PATH_BYTES);
+        let held: usize = found.iter().map(|s| 2 * path_bytes(&s.path) + 64).sum();
+        assert!(left_out && held <= MAX_SECTION_PATH_BYTES, "{held}");
+        assert!(found.len() < 2999 && !found.is_empty());
+        let (all, cut) = bounded_sections(&blocks[..5], MAX_SECTION_PATH_BYTES);
+        assert!(!cut && all.len() == 4);
     }
 }

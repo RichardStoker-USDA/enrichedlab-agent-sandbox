@@ -286,8 +286,13 @@ uses (`broker::paper`): its blocks grouped into sections by heading, each with t
 so on), its figures and its tables. The page shows a contents list, every section's text, each figure with its image
 when the parse saved one, and tables on request. A figure description written by a model during parsing is shown
 folded and labeled as derived, never as the authors' text. Long paragraphs the document service shortens to 2,048
-characters say so, and a paper longer than the reader's limits (3,000 blocks, 200 figures or tables) says it was read in
-part.
+characters say so, and a paper longer than the reader's limits says it was read in part: 3,000 blocks or 24 MiB of
+block text and heading paths, 8 MiB of section heading paths, 200 figures or tables (captions and descriptions cut to
+4,000 characters), and an 8 MiB reading.
+
+Each read takes a share of the library's 384 MiB memory budget before it fetches anything and keeps it until the
+connection has released the response bytes: 128 MiB for a whole paper, 48 MiB for a table, 12.5 MiB for a figure
+image. A read that cannot get its share within 30 seconds answers `library_busy`.
 
 Every route checks lab membership and that the paper is still in the library, then reaches the document service with
 the lab's own corpus token. A figure image is fetched only after the broker finds that figure in the paper's own figure
