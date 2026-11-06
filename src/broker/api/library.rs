@@ -552,6 +552,34 @@ fn json_len(value: &Value) -> usize {
     count.0
 }
 
+/// The bytes `reading_value` takes around its lists, reserved before any value is counted, so the whole body stays
+/// within `MAX_READING_BYTES` (r48 review round 6).
+const READING_ENVELOPE_BYTES: usize = 512;
+
+/// The reading's response body around its lists.
+#[allow(clippy::too_many_arguments)]
+fn reading_value(
+    sections: Vec<Value>,
+    figures: Vec<Value>,
+    tables: Vec<Value>,
+    figures_total: usize,
+    tables_total: usize,
+    blocks_read: usize,
+    blocks_total: usize,
+    complete: bool,
+) -> Value {
+    json!({"reading": {
+        "sections": sections,
+        "figures": figures,
+        "tables": tables,
+        "figures_total": figures_total,
+        "tables_total": tables_total,
+        "blocks_read": blocks_read,
+        "blocks_total": blocks_total,
+        "complete": complete,
+    }})
+}
+
 /// Adds each value while the reading stays within `MAX_READING_BYTES`, measured as serialized; false once one is left out.
 fn within(out: &mut Vec<Value>, bytes: &mut usize, values: impl Iterator<Item = Value>) -> bool {
     for value in values {
@@ -631,7 +659,7 @@ pub(super) async fn read(
         .map_err(library_error)?;
     // Figures and tables first: each is clipped to a few kilobytes, so the paper's parts are listed before its text
     // takes the rest of the reading's bytes.
-    let mut bytes = 0usize;
+    let mut bytes = READING_ENVELOPE_BYTES;
     let mut figures = Vec::new();
     let mut tables = Vec::new();
     let mut sections = Vec::new();
@@ -675,16 +703,17 @@ pub(super) async fn read(
                 })
             }),
         );
-    let body = serde_json::to_vec(&json!({"reading": {
-        "sections": sections,
-        "figures": figures,
-        "tables": tables,
-        "figures_total": read.figures_total,
-        "tables_total": read.tables_total,
-        "blocks_read": read.blocks_read,
-        "blocks_total": read.blocks_total,
-        "complete": read.complete() && sections_whole,
-    }}))
+    let complete = read.complete() && sections_whole;
+    let body = serde_json::to_vec(&reading_value(
+        sections,
+        figures,
+        tables,
+        read.figures_total,
+        read.tables_total,
+        read.blocks_read,
+        read.blocks_total,
+        complete,
+    ))
     .map_err(|_| ApiError::internal())?;
     drop(read);
     Ok((
@@ -802,7 +831,43 @@ pub(super) async fn table(
 mod tests {
     use super::*;
 
-    /// A reader's memory share returns only when the response bytes are released, and the body keeps its exact length
+    /// The whole reading body, envelope included, stays within `MAX_READING_BYTES` (r48 review round 6).
+    #[test]
+    fn a_full_reading_stays_within_its_bytes() {
+        let empty = reading_value(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            false,
+        );
+        assert!(json_len(&empty) <= READING_ENVELOPE_BYTES);
+        // Values admitted up to the limit, then the whole body measured.
+        let paragraph = json!({"key": "k", "paragraphs": ["x".repeat(5000)]});
+        let mut sections = Vec::new();
+        let mut bytes = READING_ENVELOPE_BYTES;
+        assert!(!within(
+            &mut sections,
+            &mut bytes,
+            std::iter::repeat_n(paragraph, 10_000)
+        ));
+        let body = reading_value(
+            sections,
+            Vec::new(),
+            Vec::new(),
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            false,
+        );
+        assert!(json_len(&body) <= MAX_READING_BYTES, "{}", json_len(&body));
+    }
+
+    /// Each value is counted at its serialized length, and a value that would pass the reading's bytes is left out.
     #[test]
     fn a_reading_counts_each_value_as_serialized() {
         let value = json!({"heading": "Méthodes \"quoted\"\u{1}", "path": ["a", "b"]});
@@ -815,6 +880,7 @@ mod tests {
         assert_eq!(out.len(), 1);
     }
 
+    /// A reader's memory share returns only when the response bytes are released, and the body keeps its exact length
     /// so conditional GET still applies (r48 review round 2).
     #[tokio::test]
     async fn a_held_body_keeps_its_share_until_its_bytes_are_dropped() {
